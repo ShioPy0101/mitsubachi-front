@@ -1,0 +1,87 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  fetchDriveItems,
+  previewUrl,
+  streamUrl,
+  uploadFile,
+  downloadDriveItem,
+} from "./api";
+
+describe("drive api", () => {
+  it("accepts array responses directly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Response(
+            JSON.stringify([
+              {
+                id: 1,
+                parent_id: null,
+                name: "Reports",
+                item_type: "directory",
+              },
+            ]),
+            { headers: { "Content-Type": "application/json" } },
+          ),
+      ),
+    );
+
+    await expect(fetchDriveItems(null)).resolves.toHaveLength(1);
+  });
+
+  it("uploads multipart without setting json content type", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        if (url === "/api/v1/csrf_token") {
+          return new Response(JSON.stringify({ csrf_token: "csrf" }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            id: 1,
+            parent_id: null,
+            name: "quarterly.report",
+            item_type: "file",
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+
+    await uploadFile({
+      file: new File(["content"], "quarterly.report.pdf", { type: "application/pdf" }),
+      name: "quarterly.report",
+      parentId: null,
+    });
+
+    const [, request] = vi.mocked(fetch).mock.calls[1];
+    expect(request?.body).toBeInstanceOf(FormData);
+    expect((request?.headers as Headers).get("Content-Type")).toBeNull();
+  });
+
+  it("uses native browser download for single downloads", () => {
+    const append = vi.spyOn(document.body, "append");
+    const click = vi.fn();
+    const remove = vi.fn();
+    vi.spyOn(document, "createElement").mockReturnValue({
+      href: "",
+      click,
+      remove,
+    } as unknown as HTMLAnchorElement);
+
+    downloadDriveItem(10);
+
+    expect(append).toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
+    expect(remove).toHaveBeenCalled();
+  });
+
+  it("builds preview and stream URLs without internal paths", () => {
+    expect(previewUrl(1)).toBe("/api/v1/drive_items/1/preview");
+    expect(streamUrl(1)).toBe("/api/v1/drive_items/1/stream");
+  });
+});
