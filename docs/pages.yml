@@ -92,7 +92,7 @@ pages:
       - "GET /api/v1/admin/audit_logs"
     response_contracts:
       - "System admin can see all audit logs because Rails scopes system_admin to AdminAuditLog.all."
-      - "POST /api/v1/admin/organizations is required for organization creation."
+      - "POST /api/v1/admin/organizations creates an organization and returns { data: Organization }."
 
   - id: admin_organizations
     path: "/admin/organizations"

@@ -2,11 +2,7 @@ import { createContext } from "react";
 
 import type { CurrentUser } from "../api/schemas";
 
-export type AuthStatus =
-  | "checking"
-  | "authenticated"
-  | "unauthenticated"
-  | "error";
+export type AuthStatus = "checking" | "authenticated" | "unauthenticated" | "error";
 
 export type AuthErrorInfo = {
   message: string;

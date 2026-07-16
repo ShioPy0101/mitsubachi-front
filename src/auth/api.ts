@@ -5,7 +5,9 @@ export const authKeys = {
   me: ["auth", "me"] as const,
 };
 
-export async function fetchCurrentUser(options: { signal?: AbortSignal } = {}): Promise<CurrentUser> {
+export async function fetchCurrentUser(
+  options: { signal?: AbortSignal } = {},
+): Promise<CurrentUser> {
   const response = await apiRequest<unknown>("/api/v1/me", {
     signal: options.signal,
   });

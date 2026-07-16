@@ -70,4 +70,4 @@
 13. Exact file `name` and `extension` display rule is not described.
 14. Suspended user `/me` status is not described because `/me` is not described.
 15. Admin API exact detail JSON schemas are not fully described.
-16. `POST /api/v1/admin/organizations` is required by the system admin UI but is not currently routed by Rails.
+16. `POST /api/v1/admin/organizations` is defined by the OpenAPI contract for system_admin organization creation.
