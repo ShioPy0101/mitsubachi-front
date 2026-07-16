@@ -46,6 +46,29 @@ describe("admin api", () => {
     });
   });
 
+  it("allows recent dashboard drive items without parent_id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        jsonResponse({
+          data: {
+            recent_drive_items: [
+              {
+                id: 1,
+                name: "Root file",
+                item_type: "file",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    await expect(fetchDashboard()).resolves.toMatchObject({
+      recent_drive_items: [{ id: 1, name: "Root file" }],
+    });
+  });
+
   it("parses Rails audit log target and change_set fields", async () => {
     vi.stubGlobal(
       "fetch",
