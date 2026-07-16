@@ -3,14 +3,22 @@ import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query";
 
 import { createAppQueryClient } from "../api/queryClient";
-import {
-  AdminAuditLogsPage,
-  AdminDashboard,
-  AdminDriveItemsPage,
-  AdminOrganizationsPage,
-  AdminSystemPage,
-  AdminUsersPage,
-} from "../admin/AdminPages";
+import { AdminAuditEventDetailPage } from "../admin/audit-events/AdminAuditEventDetailPage";
+import { AdminAuditEventsPage } from "../admin/audit-events/AdminAuditEventsPage";
+import { AdminAuditLogDetailPage } from "../admin/audit-logs/AdminAuditLogDetailPage";
+import { AdminAuditLogsPage } from "../admin/audit-logs/AdminAuditLogsPage";
+import { AdminLayout } from "../admin/components/AdminScaffold";
+import { AdminDashboardPage } from "../admin/dashboard/AdminDashboardPage";
+import { AdminDriveItemDetailPage } from "../admin/drive-items/AdminDriveItemDetailPage";
+import { AdminDriveItemsPage } from "../admin/drive-items/AdminDriveItemsPage";
+import { AdminOrganizationDetailPage } from "../admin/organizations/AdminOrganizationDetailPage";
+import { AdminOrganizationEditPage } from "../admin/organizations/AdminOrganizationEditPage";
+import { AdminOrganizationInviteNewPage } from "../admin/organizations/AdminOrganizationInviteNewPage";
+import { AdminOrganizationNewPage } from "../admin/organizations/AdminOrganizationNewPage";
+import { AdminOrganizationsPage } from "../admin/organizations/AdminOrganizationsPage";
+import { AdminUserDetailPage } from "../admin/users/AdminUserDetailPage";
+import { AdminUserEditPage } from "../admin/users/AdminUserEditPage";
+import { AdminUsersPage } from "../admin/users/AdminUsersPage";
 import { AuthProvider } from "../auth/AuthProvider";
 import { LoginPage } from "../auth/LoginPage";
 import { RequireAuth } from "../auth/RequireAuth";
@@ -34,30 +42,59 @@ const router = createBrowserRouter([
           { path: "/drive", element: <DrivePage /> },
           { path: "/drive/folder/:folderId", element: <DrivePage /> },
           { path: "/trash", element: <DrivePage mode="trash" /> },
+        ],
+      },
+      {
+        element: <RequireAuth admin />,
+        children: [
           {
-            element: <RequireAuth admin />,
+            element: <AdminLayout />,
             children: [
-              { path: "/admin", element: <AdminDashboard /> },
+              { path: "/admin", element: <Navigate to="/admin/dashboard" replace /> },
               {
-                element: <RequireAuth system />,
-                children: [{ path: "/admin/system", element: <AdminSystemPage /> }],
+                path: "/admin/system",
+                element: <Navigate to="/admin/dashboard" replace />,
               },
+              { path: "/admin/dashboard", element: <AdminDashboardPage /> },
               { path: "/admin/organizations", element: <AdminOrganizationsPage /> },
               {
+                element: <RequireAuth allowedRoles={["system_admin"]} />,
+                children: [
+                  {
+                    path: "/admin/organizations/new",
+                    element: <AdminOrganizationNewPage />,
+                  },
+                ],
+              },
+              {
+                path: "/admin/organizations/:organizationId/invites/new",
+                element: <AdminOrganizationInviteNewPage />,
+              },
+              {
+                path: "/admin/organizations/:organizationId/edit",
+                element: <AdminOrganizationEditPage />,
+              },
+              {
                 path: "/admin/organizations/:organizationId",
-                element: <AdminOrganizationsPage />,
+                element: <AdminOrganizationDetailPage />,
               },
               { path: "/admin/users", element: <AdminUsersPage /> },
-              { path: "/admin/users/:userId", element: <AdminUsersPage /> },
+              { path: "/admin/users/:userId/edit", element: <AdminUserEditPage /> },
+              { path: "/admin/users/:userId", element: <AdminUserDetailPage /> },
               { path: "/admin/drive-items", element: <AdminDriveItemsPage /> },
               {
                 path: "/admin/drive-items/:driveItemId",
-                element: <AdminDriveItemsPage />,
+                element: <AdminDriveItemDetailPage />,
               },
               { path: "/admin/audit-logs", element: <AdminAuditLogsPage /> },
               {
                 path: "/admin/audit-logs/:auditLogId",
-                element: <AdminAuditLogsPage />,
+                element: <AdminAuditLogDetailPage />,
+              },
+              { path: "/admin/audit-events", element: <AdminAuditEventsPage /> },
+              {
+                path: "/admin/audit-events/:auditEventId",
+                element: <AdminAuditEventDetailPage />,
               },
             ],
           },

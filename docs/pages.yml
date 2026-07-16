@@ -1,4 +1,4 @@
-version: 1
+version: 2
 updated_at: "2026-07-17"
 source_of_truth: "src/app/App.tsx"
 maintenance:
@@ -68,80 +68,170 @@ pages:
       - "POST /api/v1/drive_items/:id/restore"
       - "POST /api/v1/drive_items/bulk_restore"
 
-  - id: admin_dashboard
+  - id: admin_root_redirect
     path: "/admin"
+    name: "Admin root redirect"
+    component: "src/app/App.tsx:Navigate"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    redirects_to: "/admin/dashboard"
+    apis:
+      - "GET /api/v1/me"
+
+  - id: admin_system_compat_redirect
+    path: "/admin/system"
+    name: "Deprecated admin system redirect"
+    component: "src/app/App.tsx:Navigate"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    redirects_to: "/admin/dashboard"
+    deprecated: true
+    replacement: "/admin/dashboard"
+    apis:
+      - "GET /api/v1/me"
+
+  - id: admin_dashboard
+    path: "/admin/dashboard"
     name: "Admin dashboard"
-    component: "src/admin/AdminPages.tsx:AdminDashboard"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/dashboard/AdminDashboardPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
     apis:
       - "GET /api/v1/me"
       - "GET /api/v1/admin/dashboard"
     response_contracts:
       - "GET /api/v1/admin/dashboard returns { data: dashboard }."
 
-  - id: admin_system
-    path: "/admin/system"
-    name: "System admin"
-    component: "src/admin/AdminPages.tsx:AdminSystemPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "system_admin"
-    apis:
-      - "GET /api/v1/me"
-      - "POST /api/v1/admin/organizations"
-      - "GET /api/v1/admin/audit_logs"
-    response_contracts:
-      - "System admin can see all audit logs because Rails scopes system_admin to AdminAuditLog.all."
-      - "POST /api/v1/admin/organizations creates an organization and returns { data: Organization }."
-
   - id: admin_organizations
     path: "/admin/organizations"
     name: "Admin organizations"
-    component: "src/admin/AdminPages.tsx:AdminOrganizationsPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/organizations/AdminOrganizationsPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    query_params: ["page", "per_page", "q", "sort", "direction"]
     apis:
       - "GET /api/v1/me"
       - "GET /api/v1/admin/organizations"
+
+  - id: admin_organization_new
+    path: "/admin/organizations/new"
+    name: "New organization"
+    component: "src/admin/organizations/AdminOrganizationNewPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["system_admin"]
+    apis:
+      - "GET /api/v1/me"
+      - "POST /api/v1/admin/organizations"
 
   - id: admin_organization_detail
     path: "/admin/organizations/:organizationId"
     name: "Admin organization detail"
-    component: "src/admin/AdminPages.tsx:AdminOrganizationsPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/organizations/AdminOrganizationDetailPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
     apis:
       - "GET /api/v1/me"
-      - "GET /api/v1/admin/organizations"
+      - "GET /api/v1/admin/organizations/:id"
+
+  - id: admin_organization_edit
+    path: "/admin/organizations/:organizationId/edit"
+    name: "Edit organization"
+    component: "src/admin/organizations/AdminOrganizationEditPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/organizations/:id"
+      - "PATCH /api/v1/admin/organizations/:id"
+
+  - id: admin_organization_invite_new
+    path: "/admin/organizations/:organizationId/invites/new"
+    name: "Create organization invite"
+    component: "src/admin/organizations/AdminOrganizationInviteNewPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/organizations/:id"
+      - "POST /api/v1/admin/organization_invites"
+    response_contracts:
+      - "POST payload uses organization_invite.organization_id from the URL, not a user-editable field."
 
   - id: admin_users
     path: "/admin/users"
     name: "Admin users"
-    component: "src/admin/AdminPages.tsx:AdminUsersPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/users/AdminUsersPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    query_params:
+      [
+        "page",
+        "per_page",
+        "q",
+        "organization_id",
+        "role",
+        "status",
+        "sort",
+        "direction",
+      ]
     apis:
       - "GET /api/v1/me"
       - "GET /api/v1/admin/users"
-      - "PATCH /api/v1/admin/users/:id/suspend"
-      - "PATCH /api/v1/admin/users/:id/unsuspend"
 
   - id: admin_user_detail
     path: "/admin/users/:userId"
     name: "Admin user detail"
-    component: "src/admin/AdminPages.tsx:AdminUsersPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/users/AdminUserDetailPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
     apis:
       - "GET /api/v1/me"
-      - "GET /api/v1/admin/users"
+      - "GET /api/v1/admin/users/:id"
+      - "PATCH /api/v1/admin/users/:id/suspend"
+      - "PATCH /api/v1/admin/users/:id/unsuspend"
+
+  - id: admin_user_edit
+    path: "/admin/users/:userId/edit"
+    name: "Edit admin user"
+    component: "src/admin/users/AdminUserEditPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/users/:id"
+      - "PATCH /api/v1/admin/users/:id"
 
   - id: admin_drive_items
     path: "/admin/drive-items"
     name: "Admin drive items"
-    component: "src/admin/AdminPages.tsx:AdminDriveItemsPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/drive-items/AdminDriveItemsPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    query_params:
+      [
+        "page",
+        "per_page",
+        "q",
+        "organization_id",
+        "user_id",
+        "item_type",
+        "content_type",
+        "deleted",
+        "sort",
+        "direction",
+      ]
     apis:
       - "GET /api/v1/me"
       - "GET /api/v1/admin/drive_items"
@@ -149,35 +239,87 @@ pages:
   - id: admin_drive_item_detail
     path: "/admin/drive-items/:driveItemId"
     name: "Admin drive item detail"
-    component: "src/admin/AdminPages.tsx:AdminDriveItemsPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/drive-items/AdminDriveItemDetailPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
     apis:
       - "GET /api/v1/me"
-      - "GET /api/v1/admin/drive_items"
+      - "GET /api/v1/admin/drive_items/:id"
+      - "DELETE /api/v1/admin/drive_items/:id"
+      - "PATCH /api/v1/admin/drive_items/:id/restore"
 
   - id: admin_audit_logs
     path: "/admin/audit-logs"
     name: "Admin audit logs"
-    component: "src/admin/AdminPages.tsx:AdminAuditLogsPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/audit-logs/AdminAuditLogsPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    query_params:
+      [
+        "page",
+        "per_page",
+        "actor_user_id",
+        "organization_id",
+        "action",
+        "target_type",
+        "created_from",
+        "created_to",
+      ]
     apis:
       - "GET /api/v1/me"
       - "GET /api/v1/admin/audit_logs"
     response_contracts:
-      - "Audit log targets use target_type and target_id."
-      - "Audit log details use change_set."
+      - "Audit logs use target_type, target_id, and change_set."
+      - "change_set is { field: [before, after] } in Rails."
 
   - id: admin_audit_log_detail
     path: "/admin/audit-logs/:auditLogId"
     name: "Admin audit log detail"
-    component: "src/admin/AdminPages.tsx:AdminAuditLogsPage"
-    layout: "src/app/AppLayout.tsx"
-    auth: "admin"
+    component: "src/admin/audit-logs/AdminAuditLogDetailPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
     apis:
       - "GET /api/v1/me"
-      - "GET /api/v1/admin/audit_logs"
+      - "GET /api/v1/admin/audit_logs/:id"
+
+  - id: admin_audit_events
+    path: "/admin/audit-events"
+    name: "Admin audit events"
+    component: "src/admin/audit-events/AdminAuditEventsPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    query_params:
+      [
+        "page",
+        "per_page",
+        "actor_user_id",
+        "organization_id",
+        "action",
+        "outcome",
+        "target_type",
+        "occurred_from",
+        "occurred_to",
+      ]
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/audit_events"
+    response_contracts:
+      - "Audit events are separate from audit logs and include outcome, metadata, request_id, and occurred_at when present."
+
+  - id: admin_audit_event_detail
+    path: "/admin/audit-events/:auditEventId"
+    name: "Admin audit event detail"
+    component: "src/admin/audit-events/AdminAuditEventDetailPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/audit_events/:id"
 
   - id: forbidden
     path: "/403"

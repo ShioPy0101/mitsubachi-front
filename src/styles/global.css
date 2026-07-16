@@ -518,12 +518,65 @@ td:last-child {
 }
 
 .field input,
+.field select,
 .admin-search input {
   min-height: 40px;
   padding: 0 var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-size: 16px;
+}
+
+.admin-section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.admin-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.admin-section-header h2 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+}
+
+.admin-form {
+  max-width: 520px;
+}
+
+.admin-filter-grid {
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.detail-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.detail-list div {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.detail-list dt {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.detail-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .field-error {

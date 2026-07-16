@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { API_BASE_URL } from "../api/client";
+import type { Role } from "./permissions";
 import { AuthProvider } from "./AuthProvider";
 import { RequireAuth } from "./RequireAuth";
 
@@ -81,14 +82,46 @@ describe("RequireAuth", () => {
     expect(await screen.findByText("Forbidden page")).toBeInTheDocument();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
   });
+
+  it("allows organization admins on explicit admin role routes", async () => {
+    mockMe(jsonResponse({ data: currentUser({ role: "organization_admin" }) }));
+
+    renderProtectedRoute({
+      allowedRoles: ["organization_admin", "system_admin"],
+    });
+
+    expect(await screen.findByText("Protected content")).toBeInTheDocument();
+  });
+
+  it("rejects members on explicit admin role routes", async () => {
+    mockMe(jsonResponse({ data: currentUser({ role: "member" }) }));
+
+    renderProtectedRoute({
+      allowedRoles: ["organization_admin", "system_admin"],
+    });
+
+    expect(await screen.findByText("Forbidden page")).toBeInTheDocument();
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+  });
+
+  it("rejects organization admins on system-admin-only routes", async () => {
+    mockMe(jsonResponse({ data: currentUser({ role: "organization_admin" }) }));
+
+    renderProtectedRoute({ allowedRoles: ["system_admin"] });
+
+    expect(await screen.findByText("Forbidden page")).toBeInTheDocument();
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+  });
 });
 
 function renderProtectedRoute({
   strict = false,
   system = false,
+  allowedRoles,
 }: {
   strict?: boolean;
   system?: boolean;
+  allowedRoles?: Role[];
 } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -100,7 +133,9 @@ function renderProtectedRoute({
       <AuthProvider>
         <MemoryRouter initialEntries={["/drive"]}>
           <Routes>
-            <Route element={<RequireAuth system={system} />}>
+            <Route
+              element={<RequireAuth system={system} allowedRoles={allowedRoles} />}
+            >
               <Route path="/drive" element={<div>Protected content</div>} />
             </Route>
             <Route path="/login" element={<div>Login page</div>} />

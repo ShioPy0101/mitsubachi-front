@@ -3,8 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import { API_BASE_URL } from "../api/client";
 import {
   createOrganization,
+  createOrganizationInvite,
+  fetchAdminDriveItem,
+  fetchAuditEvent,
+  fetchAuditEvents,
+  fetchAuditLog,
   fetchAuditLogs,
   fetchDashboard,
+  fetchOrganization,
+  fetchUser,
   suspendUser,
   unsuspendUser,
 } from "./api";
@@ -80,6 +87,72 @@ describe("admin api", () => {
     });
   });
 
+  it("fetches resource details through detail endpoints", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        if (url === `${API_BASE_URL}/api/v1/admin/organizations/12`) {
+          return jsonResponse({ data: { id: 12, name: "Org" } });
+        }
+        if (url === `${API_BASE_URL}/api/v1/admin/users/10`) {
+          return jsonResponse({ data: userJson(10) });
+        }
+        if (url === `${API_BASE_URL}/api/v1/admin/drive_items/5`) {
+          return jsonResponse({
+            data: { id: 5, parent_id: null, name: "File", item_type: "file" },
+          });
+        }
+        if (url === `${API_BASE_URL}/api/v1/admin/audit_logs/7`) {
+          return jsonResponse({
+            data: { id: 7, action: "user.update", change_set: { name: ["a", "b"] } },
+          });
+        }
+        if (url === `${API_BASE_URL}/api/v1/admin/audit_events/8`) {
+          return jsonResponse({
+            data: { id: 8, action: "auth.login", outcome: "success" },
+          });
+        }
+        return jsonResponse({});
+      }),
+    );
+
+    await fetchOrganization(12);
+    await fetchUser(10);
+    await fetchAdminDriveItem(5);
+    await fetchAuditLog(7);
+    await fetchAuditEvent(8);
+
+    const urls = vi.mocked(fetch).mock.calls.map(([url]) => url);
+    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/organizations/12`);
+    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/users/10`);
+    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/drive_items/5`);
+    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/audit_logs/7`);
+    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/audit_events/8`);
+  });
+
+  it("parses audit events separately from audit logs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        jsonResponse({
+          data: [
+            {
+              id: 8,
+              action: "auth.login_link.create",
+              outcome: "failure",
+              metadata: { reason: "invalid" },
+            },
+          ],
+          meta: { current_page: 1, per_page: 20, total_pages: 1, total_count: 1 },
+        }),
+      ),
+    );
+
+    await expect(fetchAuditEvents("?outcome=failure")).resolves.toMatchObject({
+      data: [{ outcome: "failure", metadata: { reason: "invalid" } }],
+    });
+  });
+
   it("posts organization creation requests to the system admin endpoint", async () => {
     vi.stubGlobal(
       "fetch",
@@ -118,6 +191,46 @@ describe("admin api", () => {
     });
   });
 
+  it("posts organization invite creation with the route organization id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
+          return jsonResponse({ csrf_token: "csrf" });
+        }
+        return jsonResponse({
+          data: {
+            id: 1,
+            organization_id: 12,
+            organization_name: "Org",
+            code: "invite-code",
+            expires_at: "2026-07-31T23:59:59+09:00",
+          },
+        });
+      }),
+    );
+
+    await expect(
+      createOrganizationInvite({
+        organizationId: 12,
+        expiresAt: "2026-07-31T23:59:59+09:00",
+      }),
+    ).resolves.toMatchObject({ code: "invite-code" });
+
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
+      `${API_BASE_URL}/api/v1/admin/organization_invites`,
+    );
+    expect(vi.mocked(fetch).mock.calls[1][1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({
+        organization_invite: {
+          organization_id: 12,
+          expires_at: "2026-07-31T23:59:59+09:00",
+        },
+      }),
+    });
+  });
+
   it("uses PATCH for user suspend operations", async () => {
     vi.stubGlobal(
       "fetch",
@@ -127,9 +240,7 @@ describe("admin api", () => {
             headers: { "Content-Type": "application/json" },
           });
         }
-        return new Response(JSON.stringify({ ok: true }), {
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse({ data: userJson(10) });
       }),
     );
 
@@ -146,3 +257,18 @@ describe("admin api", () => {
     expect(vi.mocked(fetch).mock.calls[2][1]).toMatchObject({ method: "PATCH" });
   });
 });
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function userJson(id: number) {
+  return {
+    id,
+    email: `user${id}@example.com`,
+    name: `User ${id}`,
+    role: "member",
+  };
+}
