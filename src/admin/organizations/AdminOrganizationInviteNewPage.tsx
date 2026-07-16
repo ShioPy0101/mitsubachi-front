@@ -1,7 +1,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 
+import { useAuth } from "../../auth/useAuth";
 import { Button } from "../../components/Button";
 import { useToast } from "../../components/ToastProvider";
 import {
@@ -22,11 +23,16 @@ export function AdminOrganizationInviteNewPage() {
   const organizationId = Number(useParams().organizationId);
   const [expiresAt, setExpiresAt] = useState("");
   const [invite, setInvite] = useState<OrganizationInvite | null>(null);
+  const auth = useAuth();
   const toast = useToast();
+  const forbidden =
+    auth.user?.role === "organization_admin" &&
+    auth.user.organization_id !== organizationId;
+
   const query = useQuery({
     queryKey: adminKeys.organization(organizationId),
     queryFn: () => fetchOrganization(organizationId),
-    enabled: Number.isFinite(organizationId),
+    enabled: Number.isFinite(organizationId) && !forbidden,
   });
   const mutation = useMutation({
     mutationFn: createOrganizationInvite,
@@ -36,6 +42,10 @@ export function AdminOrganizationInviteNewPage() {
     },
     onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
   });
+  if (forbidden) {
+    return <Navigate to="/403" replace />;
+  }
+
   return (
     <AdminFrame
       title="招待コード発行"
