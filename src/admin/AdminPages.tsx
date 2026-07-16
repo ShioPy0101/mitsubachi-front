@@ -251,10 +251,10 @@ export function AdminAuditLogsPage() {
                     <td>{log.id}</td>
                     <td>{log.action ?? "-"}</td>
                     <td>
-                      {log.auditable_type ?? "-"} {log.auditable_id ?? ""}
+                      {log.target_type ?? "-"} {log.target_id ?? ""}
                     </td>
                     <td>
-                      <pre className="json-preview">{safeJson(log.metadata)}</pre>
+                      <pre className="json-preview">{safeJson(log.change_set)}</pre>
                     </td>
                   </tr>
                 ))}
