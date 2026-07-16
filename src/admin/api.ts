@@ -65,9 +65,11 @@ export async function fetchAuditLogs(query: string) {
 }
 
 export function suspendUser(id: number) {
-  return apiRequest<unknown>(`/api/v1/admin/users/${id}/suspend`, { method: "POST" });
+  return apiRequest<unknown>(`/api/v1/admin/users/${id}/suspend`, { method: "PATCH" });
 }
 
 export function unsuspendUser(id: number) {
-  return apiRequest<unknown>(`/api/v1/admin/users/${id}/unsuspend`, { method: "POST" });
+  return apiRequest<unknown>(`/api/v1/admin/users/${id}/unsuspend`, {
+    method: "PATCH",
+  });
 }

@@ -32,7 +32,7 @@ export function verifyEmailToken(token: string) {
 }
 
 export function logout() {
-  return apiRequest<unknown>("/api/v1/auth/logout", {
+  return apiRequest<unknown>("/api/v1/logout", {
     method: "DELETE",
   });
 }
