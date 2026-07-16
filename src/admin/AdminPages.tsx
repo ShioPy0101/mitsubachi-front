@@ -3,7 +3,6 @@ import { Search } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useSearchParams } from "react-router-dom";
 
-import { ApiError } from "../api/errors";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
@@ -82,7 +81,7 @@ export function AdminSystemPage() {
       });
     },
     onError: (error) => {
-      toast.show({ tone: "danger", message: organizationCreateErrorMessage(error) });
+      toast.show({ tone: "danger", message: errorMessage(error) });
     },
   });
 
@@ -123,7 +122,7 @@ export function AdminSystemPage() {
           </form>
           {createMutation.isError ? (
             <p className="system-admin-note" role="alert">
-              {organizationCreateErrorMessage(createMutation.error)}
+              {errorMessage(createMutation.error)}
             </p>
           ) : null}
         </section>
@@ -497,11 +496,4 @@ function safeJson(value: unknown) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "処理に失敗しました。";
-}
-
-function organizationCreateErrorMessage(error: unknown) {
-  if (error instanceof ApiError && [404, 405].includes(error.status)) {
-    return "Organization作成APIがRails側にまだ公開されていません。";
-  }
-  return errorMessage(error);
 }
