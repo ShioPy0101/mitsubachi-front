@@ -10,7 +10,7 @@ import { RequireAuth } from "./RequireAuth";
 
 describe("RequireAuth", () => {
   it("shows protected content when /api/v1/me returns 200", async () => {
-    mockMe(jsonResponse({ user: currentUser() }));
+    mockMe(jsonResponse({ data: currentUser() }));
 
     renderProtectedRoute();
 
@@ -55,7 +55,7 @@ describe("RequireAuth", () => {
   });
 
   it("does not loop requests under StrictMode remount checks", async () => {
-    mockMe(jsonResponse({ user: currentUser() }));
+    mockMe(jsonResponse({ data: currentUser() }));
 
     renderProtectedRoute({ strict: true });
 
@@ -91,7 +91,10 @@ function renderProtectedRoute({ strict = false }: { strict?: boolean } = {}) {
 }
 
 function mockMe(response: Response) {
-  vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(response.clone())));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(response.clone())),
+  );
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -104,6 +107,8 @@ function jsonResponse(body: unknown, status = 200) {
 function currentUser() {
   return {
     id: 1,
+    organization_id: 7,
+    organization_name: "Mitsubachi",
     email: "user@example.com",
     name: "User",
     role: "member",

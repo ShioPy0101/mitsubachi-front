@@ -11,8 +11,10 @@ describe("auth api", () => {
         Promise.resolve(
           new Response(
             JSON.stringify({
-              user: {
+              data: {
                 id: 1,
+                organization_id: 7,
+                organization_name: "Mitsubachi",
                 email: "user@example.com",
                 name: "User",
                 role: "member",
@@ -26,6 +28,7 @@ describe("auth api", () => {
 
     await expect(fetchCurrentUser()).resolves.toMatchObject({
       email: "user@example.com",
+      organization: { id: 7, name: "Mitsubachi" },
     });
 
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(`${API_BASE_URL}/api/v1/me`);

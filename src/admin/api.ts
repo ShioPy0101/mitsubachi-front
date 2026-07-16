@@ -20,24 +20,42 @@ export const auditLogSchema = z.object({
   id: z.number(),
   action: z.string().optional(),
   actor_user_id: z.number().nullable().optional(),
-  auditable_type: z.string().nullable().optional(),
-  auditable_id: z.number().nullable().optional(),
-  metadata: z.unknown().optional(),
+  actor_email: z.string().optional(),
+  organization_id: z.number().nullable().optional(),
+  organization_name: z.string().nullable().optional(),
+  target_type: z.string().nullable().optional(),
+  target_id: z.number().nullable().optional(),
+  change_set: z.unknown().optional(),
+  ip_address: z.string().nullable().optional(),
+  user_agent: z.string().nullable().optional(),
   created_at: z.string().optional(),
 });
 
 export const dashboardSchema = z.object({
   organizations_count: z.number().optional(),
   users_count: z.number().optional(),
+  active_users_count: z.number().optional(),
   drive_items_count: z.number().optional(),
+  files_count: z.number().optional(),
+  directories_count: z.number().optional(),
+  total_storage_bytes: z.number().optional(),
   audit_logs_count: z.number().optional(),
+  recent_users: z.array(userSchema).optional(),
+  recent_drive_items: z.array(driveItemSchema).optional(),
 });
+
+export const dashboardResponseSchema = z.union([
+  z.object({ data: dashboardSchema }).transform(({ data }) => data),
+  dashboardSchema,
+]);
 
 export type AuditLog = z.infer<typeof auditLogSchema>;
 export type Dashboard = z.infer<typeof dashboardSchema>;
 
 export async function fetchDashboard() {
-  return dashboardSchema.parse(await apiRequest<unknown>("/api/v1/admin/dashboard"));
+  return dashboardResponseSchema.parse(
+    await apiRequest<unknown>("/api/v1/admin/dashboard"),
+  );
 }
 
 export async function fetchOrganizations(query: string) {

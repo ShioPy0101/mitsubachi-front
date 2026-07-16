@@ -5,18 +5,30 @@ export const organizationSchema = z.object({
   name: z.string(),
 });
 
-export const userSchema = z.object({
-  id: z.number(),
-  email: z.string(),
-  name: z.string().nullable().optional(),
-  role: z.enum(["member", "organization_admin", "system_admin"]),
-  suspended: z.boolean().optional().default(false),
-  organization: organizationSchema.nullable().optional(),
-});
+export const userSchema = z
+  .object({
+    id: z.number(),
+    email: z.string(),
+    name: z.string().nullable().optional(),
+    role: z.enum(["member", "organization_admin", "system_admin"]),
+    suspended: z.boolean().optional().default(false),
+    organization_id: z.number().nullable().optional(),
+    organization_name: z.string().nullable().optional(),
+    organization: organizationSchema.nullable().optional(),
+  })
+  .transform((user) => ({
+    ...user,
+    organization:
+      user.organization ??
+      (typeof user.organization_id === "number" && user.organization_name
+        ? { id: user.organization_id, name: user.organization_name }
+        : user.organization),
+  }));
 
-export const meSchema = z.object({
-  user: userSchema,
-});
+export const meSchema = z.union([
+  z.object({ user: userSchema }),
+  z.object({ data: userSchema }).transform(({ data }) => ({ user: data })),
+]);
 
 export const driveItemSchema = z.object({
   id: z.number(),
