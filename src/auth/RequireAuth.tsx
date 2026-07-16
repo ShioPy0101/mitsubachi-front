@@ -3,15 +3,22 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { API_BASE_URL } from "../api/client";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingIndicator } from "../components/LoadingIndicator";
-import { canUseAdmin, canUseSystemAdmin } from "./permissions";
+import {
+  canUseAdmin,
+  canUseSystemAdmin,
+  hasAllowedRole,
+  type Role,
+} from "./permissions";
 import { useAuth } from "./useAuth";
 
 export function RequireAuth({
   admin = false,
   system = false,
+  allowedRoles,
 }: {
   admin?: boolean;
   system?: boolean;
+  allowedRoles?: Role[];
 }) {
   const auth = useAuth();
   const location = useLocation();
@@ -52,6 +59,10 @@ export function RequireAuth({
 
   if (auth.status === "unauthenticated") {
     return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  if (allowedRoles && !hasAllowedRole(auth.user, allowedRoles)) {
+    return <Navigate to="/403" replace />;
   }
 
   if (system && !canUseSystemAdmin(auth.user)) {
