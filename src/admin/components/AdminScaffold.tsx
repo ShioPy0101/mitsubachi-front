@@ -14,23 +14,30 @@ import { useAuth } from "../../auth/useAuth";
 export function AdminLayout() {
   const auth = useAuth();
   return (
-    <section className="admin-page">
-      <div className="page-header">
-        <h1>管理画面</h1>
+    <div className="admin-shell">
+      <header className="admin-header">
+        <div className="admin-header-inner">
+          <p className="admin-header-kicker">Mitsubachi</p>
+          <h1>管理画面</h1>
+        </div>
+      </header>
+      <div className="admin-page">
         <nav className="admin-tabs" aria-label="管理メニュー">
           <NavLink to="/admin/dashboard">ダッシュボード</NavLink>
           <NavLink to="/admin/organizations">組織</NavLink>
           <NavLink to="/admin/users">ユーザー</NavLink>
           <NavLink to="/admin/drive-items">ファイル</NavLink>
-          <NavLink to="/admin/audit-logs">管理監査ログ</NavLink>
-          <NavLink to="/admin/audit-events">監査イベント</NavLink>
+          <NavLink to="/admin/audit-logs">操作履歴</NavLink>
+          <NavLink to="/admin/audit-events">システムイベント</NavLink>
           {canUseSystemAdmin(auth.user) ? (
             <NavLink to="/admin/organizations/new">組織作成</NavLink>
           ) : null}
         </nav>
+        <main className="admin-main">
+          <Outlet />
+        </main>
       </div>
-      <Outlet />
-    </section>
+    </div>
   );
 }
 
@@ -56,15 +63,18 @@ export function AdminFrame({
 
 export function AdminSearch({
   fields = ["q"],
+  busy = false,
 }: {
   fields?:
     | Array<{
         name: string;
         label: string;
         type?: string;
+        placeholder?: string;
         options?: Array<{ value: string; label: string }>;
       }>
     | string[];
+  busy?: boolean;
 }) {
   const [params, setParams] = useSearchParams();
   const normalized = fields.map((field) =>
@@ -74,6 +84,7 @@ export function AdminSearch({
   return (
     <form
       className="admin-search admin-filter-grid"
+      aria-label="検索条件"
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -87,6 +98,9 @@ export function AdminSearch({
         setParams(next);
       }}
     >
+      <div className="admin-search-heading">
+        <h3>検索条件</h3>
+      </div>
       {normalized.map((field) => (
         <label className="field" key={field.name}>
           <span>{field.label}</span>
@@ -103,14 +117,25 @@ export function AdminSearch({
             <input
               name={field.name}
               type={field.type ?? "text"}
+              placeholder={field.placeholder}
               defaultValue={params.get(field.name) ?? ""}
             />
           )}
         </label>
       ))}
-      <Button type="submit" variant="secondary">
-        適用
-      </Button>
+      <div className="admin-search-actions">
+        <Button type="submit" variant="secondary" disabled={busy}>
+          {busy ? "検索中" : "適用"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => setParams(new URLSearchParams({ page: "1" }))}
+        >
+          条件をリセット
+        </Button>
+      </div>
     </form>
   );
 }
@@ -129,7 +154,14 @@ export function QueryState<T>({
     if (query.error instanceof ApiError && query.error.status === 404) {
       return <EmptyState title="対象が見つかりません。" />;
     }
-    return <ErrorState message={errorMessage(query.error)} />;
+    return (
+      <ErrorState
+        message={errorMessage(query.error)}
+        onRetry={() => {
+          void query.refetch();
+        }}
+      />
+    );
   }
   if (!query.data) return <EmptyState title={emptyTitle} />;
   return children(query.data);
@@ -156,6 +188,12 @@ export function PaginatedState<T extends { data: unknown[]; meta: AdminMeta }>({
               onPageChange={(page) => {
                 const next = new URLSearchParams(params);
                 next.set("page", String(page));
+                setParams(next);
+              }}
+              onPerPageChange={(perPage) => {
+                const next = new URLSearchParams(params);
+                next.set("page", "1");
+                next.set("per_page", String(perPage));
                 setParams(next);
               }}
             />
@@ -190,6 +228,9 @@ export function adminQueryString(params: URLSearchParams) {
 }
 
 export function errorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    return `HTTPステータス: ${error.status}。${error.message}`;
+  }
   return error instanceof Error ? error.message : "処理に失敗しました。";
 }
 

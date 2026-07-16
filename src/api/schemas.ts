@@ -34,7 +34,7 @@ export const driveItemSchema = z.object({
   id: z.number(),
   organization_id: z.number().optional(),
   owner_user_id: z.number().nullable().optional(),
-  parent_id: z.number().nullable(),
+  parent_id: z.number().nullable().optional(),
   name: z.string(),
   item_type: z.enum(["file", "directory"]),
   extension: z.string().nullable().optional(),
