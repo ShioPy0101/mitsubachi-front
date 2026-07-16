@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { API_BASE_URL } from "../api/client";
 import {
+  adminDriveItemDownloadUrl,
+  adminDriveItemPreviewUrl,
+  adminDriveItemStreamUrl,
   createOrganization,
   createOrganizationInvite,
   fetchAdminDriveItem,
@@ -12,11 +15,24 @@ import {
   fetchDashboard,
   fetchOrganization,
   fetchUser,
+  purgeAdminDriveItem,
   suspendUser,
   unsuspendUser,
 } from "./api";
 
 describe("admin api", () => {
+  it("builds file access URLs from the existing drive delivery API", () => {
+    expect(adminDriveItemPreviewUrl(5)).toBe(
+      `${API_BASE_URL}/api/v1/admin/drive_items/5/preview`,
+    );
+    expect(adminDriveItemDownloadUrl(5)).toBe(
+      `${API_BASE_URL}/api/v1/admin/drive_items/5/download`,
+    );
+    expect(adminDriveItemStreamUrl(5)).toBe(
+      `${API_BASE_URL}/api/v1/admin/drive_items/5/stream`,
+    );
+  });
+
   it("parses dashboard metrics from the Rails data envelope", async () => {
     vi.stubGlobal(
       "fetch",
@@ -278,6 +294,30 @@ describe("admin api", () => {
       `${API_BASE_URL}/api/v1/admin/users/10/unsuspend`,
     );
     expect(vi.mocked(fetch).mock.calls[2][1]).toMatchObject({ method: "PATCH" });
+  });
+
+  it("uses DELETE for irreversible admin drive item purge", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
+          return jsonResponse({ csrf_token: "csrf" });
+        }
+        return jsonResponse({ message: "ファイルを完全削除しました" });
+      }),
+    );
+
+    await expect(purgeAdminDriveItem(5)).resolves.toMatchObject({
+      message: "ファイルを完全削除しました",
+    });
+
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
+      `${API_BASE_URL}/api/v1/admin/drive_items/5/purge`,
+    );
+    expect(vi.mocked(fetch).mock.calls[1][1]).toMatchObject({
+      method: "DELETE",
+      credentials: "include",
+    });
   });
 });
 
