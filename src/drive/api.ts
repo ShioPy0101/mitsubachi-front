@@ -1,4 +1,4 @@
-import { apiRequest, getCsrfToken } from "../api/client";
+import { apiFetch, apiRequest, apiUrl, getCsrfToken } from "../api/client";
 import { driveItemSchema, driveItemsSchema, type DriveItem } from "../api/schemas";
 
 export const driveKeys = {
@@ -99,9 +99,8 @@ export function bulkMove(ids: number[], parentId: number | null) {
 }
 
 export async function bulkDownload(ids: number[], signal?: AbortSignal) {
-  const response = await fetch("/api/v1/drive_items/bulk_download", {
+  const response = await apiFetch("/api/v1/drive_items/bulk_download", {
     method: "POST",
-    credentials: "same-origin",
     headers: {
       Accept: "application/zip, application/json",
       "Content-Type": "application/json",
@@ -142,18 +141,18 @@ export async function bulkDownload(ids: number[], signal?: AbortSignal) {
 
 export function downloadDriveItem(id: number) {
   const anchor = document.createElement("a");
-  anchor.href = `/api/v1/drive_items/${id}/download`;
+  anchor.href = apiUrl(`/api/v1/drive_items/${id}/download`);
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
 }
 
 export function previewUrl(id: number) {
-  return `/api/v1/drive_items/${id}/preview`;
+  return apiUrl(`/api/v1/drive_items/${id}/preview`);
 }
 
 export function streamUrl(id: number) {
-  return `/api/v1/drive_items/${id}/stream`;
+  return apiUrl(`/api/v1/drive_items/${id}/stream`);
 }
 
 function contentDispositionFilename(value: string | null) {

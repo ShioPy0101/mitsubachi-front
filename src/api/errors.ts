@@ -7,13 +7,32 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly details: string[];
+  readonly url?: string;
 
-  constructor(status: number, message: string, details: string[] = [], code?: string) {
+  constructor(
+    status: number,
+    message: string,
+    details: string[] = [],
+    code?: string,
+    url?: string,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.details = details;
     this.code = code;
+    this.url = url;
+  }
+}
+
+export class ApiNetworkError extends Error {
+  readonly url: string;
+
+  constructor(url: string, cause: unknown) {
+    super("APIサーバーへ接続できません。");
+    this.name = "ApiNetworkError";
+    this.url = url;
+    this.cause = cause;
   }
 }
 
@@ -27,10 +46,10 @@ const statusMessages: Record<number, string> = {
   503: "ファイルを配信できません。時間をおいて再試行してください。",
 };
 
-export function parseApiError(status: number, body: unknown): ApiError {
+export function parseApiError(status: number, body: unknown, url?: string): ApiError {
   if (isRecord(body)) {
     if (typeof body.error === "string") {
-      return new ApiError(status, body.error);
+      return new ApiError(status, body.error, [], undefined, url);
     }
 
     if (
@@ -39,7 +58,7 @@ export function parseApiError(status: number, body: unknown): ApiError {
     ) {
       const [first = statusMessages[status] ?? "リクエストに失敗しました。"] =
         body.errors;
-      return new ApiError(status, first, body.errors);
+      return new ApiError(status, first, body.errors, undefined, url);
     }
 
     if (isRecord(body.error)) {
@@ -48,11 +67,17 @@ export function parseApiError(status: number, body: unknown): ApiError {
           ? body.error.message
           : (statusMessages[status] ?? "リクエストに失敗しました。");
       const code = typeof body.error.code === "string" ? body.error.code : undefined;
-      return new ApiError(status, message, [], code);
+      return new ApiError(status, message, [], code, url);
     }
   }
 
-  return new ApiError(status, statusMessages[status] ?? "リクエストに失敗しました。");
+  return new ApiError(
+    status,
+    statusMessages[status] ?? "リクエストに失敗しました。",
+    [],
+    undefined,
+    url,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,9 +1,17 @@
-import { ApiError, parseApiError } from "./errors";
+import { ApiError, ApiNetworkError, parseApiError } from "./errors";
 
 type ApiRequestOptions = Omit<RequestInit, "body" | "credentials"> & {
   body?: unknown;
   retryCsrf?: boolean;
 };
+
+const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+
+if (!rawApiBaseUrl) {
+  throw new Error("VITE_API_BASE_URL is not configured");
+}
+
+export const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, "");
 
 let csrfToken: string | null = null;
 
@@ -14,16 +22,48 @@ export function clearCsrfToken() {
 export async function getCsrfToken(): Promise<string> {
   if (csrfToken) return csrfToken;
 
-  const response = await fetch("/api/v1/csrf_token", {
-    credentials: "same-origin",
+  const response = await apiFetch("/api/v1/csrf_token", {
     headers: { Accept: "application/json" },
   });
   const body = (await readResponseBody(response)) as { csrf_token?: unknown };
   if (!response.ok || typeof body.csrf_token !== "string") {
-    throw parseApiError(response.status, body);
+    throw parseApiError(response.status, body, apiUrl("/api/v1/csrf_token"));
   }
   csrfToken = body.csrf_token;
   return csrfToken;
+}
+
+export async function apiFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const url = apiUrl(path);
+  const headers = new Headers(init.headers);
+
+  if (
+    init.body !== undefined &&
+    !(init.body instanceof FormData) &&
+    !headers.has("Content-Type")
+  ) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  try {
+    return await fetch(url, {
+      ...init,
+      headers,
+      credentials: "include",
+    });
+  } catch (error) {
+    throw new ApiNetworkError(url, error);
+  }
+}
+
+export function apiUrl(path: string) {
+  if (!path.startsWith("/")) {
+    throw new Error(`API path must start with "/": ${path}`);
+  }
+  return `${API_BASE_URL}${path}`;
 }
 
 export async function apiRequest<T>(
@@ -54,16 +94,15 @@ async function requestWithCsrfRetry<T>(
     headers.set("X-CSRF-Token", await getCsrfToken());
   }
 
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     ...options,
     body,
-    credentials: "same-origin",
     headers,
   });
   const responseBody = await readResponseBody(response);
 
   if (!response.ok) {
-    const error = parseApiError(response.status, responseBody);
+    const error = parseApiError(response.status, responseBody, apiUrl(path));
     if (isCsrfFailure(error) && !hasRetried && options.retryCsrf !== false) {
       clearCsrfToken();
       return requestWithCsrfRetry<T>(path, options, true);

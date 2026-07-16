@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { apiRequest, clearCsrfToken } from "./client";
+import { API_BASE_URL, apiRequest, clearCsrfToken } from "./client";
 import { ApiError } from "./errors";
 
 describe("apiRequest", () => {
-  it("sends same-origin credentials and json body", async () => {
+  it("sends include credentials and json body to the configured API", async () => {
     mockFetch([jsonResponse({ csrf_token: "csrf" }), jsonResponse({ ok: true })]);
 
     await apiRequest("/api/v1/drive_items", {
@@ -13,7 +13,8 @@ describe("apiRequest", () => {
     });
 
     const [, request] = vi.mocked(fetch).mock.calls[1];
-    expect(request).toMatchObject({ credentials: "same-origin" });
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(`${API_BASE_URL}/api/v1/drive_items`);
+    expect(request).toMatchObject({ credentials: "include" });
     expect((request?.headers as Headers).get("Content-Type")).toBe("application/json");
     expect((request?.headers as Headers).get("X-CSRF-Token")).toBe("csrf");
     expect(request?.body).toBe(JSON.stringify({ name: "Reports" }));
@@ -78,6 +79,17 @@ describe("apiRequest", () => {
 
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(4);
   });
+
+  it("uses VITE_API_BASE_URL for /api/v1/me", async () => {
+    mockFetch([jsonResponse({ user: currentUser() })]);
+
+    await apiRequest("/api/v1/me");
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(`${API_BASE_URL}/api/v1/me`);
+    expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({
+      credentials: "include",
+    });
+  });
 });
 
 function jsonResponse(body: unknown, status = 200) {
@@ -96,4 +108,13 @@ function mockFetch(responses: Response[]) {
       return response;
     }),
   );
+}
+
+function currentUser() {
+  return {
+    id: 1,
+    email: "user@example.com",
+    name: "User",
+    role: "member",
+  };
 }

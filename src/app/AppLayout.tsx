@@ -5,7 +5,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { clearCsrfToken } from "../api/client";
 import { authKeys, logout } from "../auth/api";
-import { canUseAdmin, useAuth } from "../auth/AuthProvider";
+import { canUseAdmin } from "../auth/permissions";
+import { useAuth } from "../auth/useAuth";
 import { IconButton } from "../components/IconButton";
 import { useToast } from "../components/ToastProvider";
 

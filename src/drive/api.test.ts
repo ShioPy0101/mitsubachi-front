@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { API_BASE_URL } from "../api/client";
 import {
   fetchDriveItems,
   previewUrl,
@@ -35,7 +36,7 @@ describe("drive api", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url) => {
-        if (url === "/api/v1/csrf_token") {
+        if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
           return new Response(JSON.stringify({ csrf_token: "csrf" }), {
             headers: { "Content-Type": "application/json" },
           });
@@ -67,21 +68,23 @@ describe("drive api", () => {
     const append = vi.spyOn(document.body, "append");
     const click = vi.fn();
     const remove = vi.fn();
-    vi.spyOn(document, "createElement").mockReturnValue({
+    const anchor = {
       href: "",
       click,
       remove,
-    } as unknown as HTMLAnchorElement);
+    } as unknown as HTMLAnchorElement;
+    vi.spyOn(document, "createElement").mockReturnValue(anchor);
 
     downloadDriveItem(10);
 
     expect(append).toHaveBeenCalled();
     expect(click).toHaveBeenCalled();
     expect(remove).toHaveBeenCalled();
+    expect(anchor.href).toBe(`${API_BASE_URL}/api/v1/drive_items/10/download`);
   });
 
   it("builds preview and stream URLs without internal paths", () => {
-    expect(previewUrl(1)).toBe("/api/v1/drive_items/1/preview");
-    expect(streamUrl(1)).toBe("/api/v1/drive_items/1/stream");
+    expect(previewUrl(1)).toBe(`${API_BASE_URL}/api/v1/drive_items/1/preview`);
+    expect(streamUrl(1)).toBe(`${API_BASE_URL}/api/v1/drive_items/1/stream`);
   });
 });

@@ -1,37 +1,38 @@
 import { useQuery } from "@tanstack/react-query";
-import { createContext, useContext } from "react";
 
-import { ApiError } from "../api/errors";
-import type { CurrentUser } from "../api/schemas";
+import { ApiError, ApiNetworkError } from "../api/errors";
 import { authKeys, fetchCurrentUser } from "./api";
-
-type AuthContextValue = {
-  user: CurrentUser | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  meUnavailable: boolean;
-};
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+import { AuthContext, type AuthErrorInfo, type AuthStatus } from "./AuthContext";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const meQuery = useQuery({
     queryKey: authKeys.me,
-    queryFn: fetchCurrentUser,
+    queryFn: ({ signal }) => fetchCurrentUser({ signal }),
     retry: false,
+    staleTime: 30_000,
   });
 
   const user = meQuery.data ?? null;
-  const meUnavailable =
-    meQuery.error instanceof ApiError && [404, 501].includes(meQuery.error.status);
+  const authError = toAuthErrorInfo(meQuery.error);
+  const status: AuthStatus = meQuery.isLoading
+    ? "checking"
+    : user
+      ? "authenticated"
+      : authError?.status === 401
+        ? "unauthenticated"
+        : authError
+          ? "error"
+          : "unauthenticated";
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isLoading: meQuery.isLoading,
-        isAuthenticated: Boolean(user),
-        meUnavailable,
+        status,
+        error: authError?.status === 401 ? null : authError,
+        isLoading: status === "checking",
+        isAuthenticated: status === "authenticated",
+        retryAuthCheck: () => void meQuery.refetch(),
       }}
     >
       {children}
@@ -39,12 +40,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within AuthProvider");
-  return context;
-}
+function toAuthErrorInfo(error: unknown): AuthErrorInfo | null {
+  if (!error) return null;
 
-export function canUseAdmin(user: CurrentUser | null) {
-  return user?.role === "organization_admin" || user?.role === "system_admin";
+  if (error instanceof ApiNetworkError) {
+    return {
+      message: error.message,
+      kind: "network",
+      url: error.url,
+    };
+  }
+
+  if (error instanceof ApiError) {
+    return {
+      message: error.message,
+      kind: "http",
+      status: error.status,
+      url: error.url,
+    };
+  }
+
+  return {
+    message: error instanceof Error ? error.message : "認証状態を確認できませんでした。",
+    kind: "unknown",
+  };
 }
