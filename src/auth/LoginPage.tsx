@@ -63,7 +63,7 @@ export function LoginPage() {
           M
         </div>
         <h1 id="auth-title">{mode === "login" ? "ログイン" : "招待コードで登録"}</h1>
-        <p>メールで届く確認リンクからMitsubachi Driveへ入ります。</p>
+        <p>入力したメールアドレスに確認メールを送信します。</p>
         <form
           onSubmit={(event) => {
             void form.handleSubmit((values) => {
