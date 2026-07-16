@@ -15,11 +15,20 @@ const actionLabels: Record<string, string> = {
   "drive_item.restore": "ファイルを復元",
   "drive_item.create": "ファイルを作成",
   "drive_item.update": "ファイルを更新",
+  "drive_item.bulk_delete": "ファイルを一括削除",
+  "drive_item.bulk_restore": "ファイルを一括復元",
+  "drive_item.bulk_move": "ファイルを一括移動",
+  "drive_item.preview": "ファイルをプレビュー",
+  "drive_item.download": "ファイルをダウンロード",
   "auth.login_link.create": "ログインリンクを発行",
   "auth.registration_link.create": "登録リンクを発行",
+  "auth.login": "ログイン",
   "auth.verify": "ログイン認証",
+  "auth.failure": "ログイン失敗",
+  "authorization.denied": "アクセス拒否",
   "audit_log.index": "管理監査ログを閲覧",
   "audit_log.show": "管理監査ログ詳細を閲覧",
+  "admin.audit_log.view": "監査ログを閲覧",
 };
 
 const targetLabels: Record<string, string> = {
@@ -57,6 +66,26 @@ export function formatDateTime(value?: string | null) {
     dateStyle: "long",
     timeStyle: "medium",
   }).format(date);
+}
+
+export function formatCompactDateTime(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}/${get("month")}/${get("day")} ${get("hour")}:${get(
+    "minute",
+  )}:${get("second")}`;
 }
 
 export function summarizeChangeSet(
