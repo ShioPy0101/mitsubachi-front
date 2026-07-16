@@ -8,6 +8,7 @@ import {
   AdminDashboard,
   AdminDriveItemsPage,
   AdminOrganizationsPage,
+  AdminSystemPage,
   AdminUsersPage,
 } from "../admin/AdminPages";
 import { AuthProvider } from "../auth/AuthProvider";
@@ -37,6 +38,10 @@ const router = createBrowserRouter([
             element: <RequireAuth admin />,
             children: [
               { path: "/admin", element: <AdminDashboard /> },
+              {
+                element: <RequireAuth system />,
+                children: [{ path: "/admin/system", element: <AdminSystemPage /> }],
+              },
               { path: "/admin/organizations", element: <AdminOrganizationsPage /> },
               {
                 path: "/admin/organizations/:organizationId",

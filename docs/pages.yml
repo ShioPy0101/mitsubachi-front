@@ -80,6 +80,20 @@ pages:
     response_contracts:
       - "GET /api/v1/admin/dashboard returns { data: dashboard }."
 
+  - id: admin_system
+    path: "/admin/system"
+    name: "System admin"
+    component: "src/admin/AdminPages.tsx:AdminSystemPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "system_admin"
+    apis:
+      - "GET /api/v1/me"
+      - "POST /api/v1/admin/organizations"
+      - "GET /api/v1/admin/audit_logs"
+    response_contracts:
+      - "System admin can see all audit logs because Rails scopes system_admin to AdminAuditLog.all."
+      - "POST /api/v1/admin/organizations is required for organization creation."
+
   - id: admin_organizations
     path: "/admin/organizations"
     name: "Admin organizations"

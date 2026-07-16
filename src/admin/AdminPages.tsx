@@ -1,16 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
+import { useState } from "react";
 import { Link, NavLink, useSearchParams } from "react-router-dom";
 
+import { ApiError } from "../api/errors";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { FieldError } from "../components/FieldError";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { Pagination } from "../components/Pagination";
 import { StatusBadge } from "../components/StatusBadge";
 import { useToast } from "../components/ToastProvider";
+import { canUseSystemAdmin } from "../auth/permissions";
+import { useAuth } from "../auth/useAuth";
 import {
   adminKeys,
+  createOrganization,
   fetchAdminDriveItems,
   fetchAuditLogs,
   fetchDashboard,
@@ -49,6 +55,121 @@ export function AdminDashboard() {
         <Metric label="Users" value={data?.users_count} />
         <Metric label="DriveItems" value={data?.drive_items_count} />
         <Metric label="AuditLogs" value={data?.audit_logs_count} />
+      </div>
+    </AdminFrame>
+  );
+}
+
+export function AdminSystemPage() {
+  const [params, setParams] = useSearchParams();
+  const queryString = queryWithDefaults(params);
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [organizationName, setOrganizationName] = useState("");
+  const [organizationNameError, setOrganizationNameError] = useState<string>();
+  const auditQuery = useQuery({
+    queryKey: adminKeys.auditLogs(queryString),
+    queryFn: () => fetchAuditLogs(queryString),
+  });
+  const createMutation = useMutation({
+    mutationFn: createOrganization,
+    onSuccess: async (organization) => {
+      setOrganizationName("");
+      await queryClient.invalidateQueries({ queryKey: adminKeys.all });
+      toast.show({
+        tone: "success",
+        message: `${organization.name} を作成しました。`,
+      });
+    },
+    onError: (error) => {
+      toast.show({ tone: "danger", message: organizationCreateErrorMessage(error) });
+    },
+  });
+
+  return (
+    <AdminFrame title="System管理">
+      <div className="system-admin-grid">
+        <section className="system-admin-panel" aria-labelledby="system-org-create">
+          <h2 id="system-org-create">Organization作成</h2>
+          <form
+            className="form-stack"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = organizationName.trim();
+              if (!name) {
+                setOrganizationNameError("Organization名を入力してください。");
+                return;
+              }
+              setOrganizationNameError(undefined);
+              createMutation.mutate({ name });
+            }}
+          >
+            <label className="field">
+              <span>Organization名</span>
+              <input
+                value={organizationName}
+                onChange={(event) => {
+                  setOrganizationName(event.target.value);
+                  if (organizationNameError) setOrganizationNameError(undefined);
+                }}
+                aria-invalid={Boolean(organizationNameError)}
+                autoComplete="organization"
+              />
+              <FieldError error={organizationNameError} />
+            </label>
+            <Button type="submit" loading={createMutation.isPending}>
+              作成
+            </Button>
+          </form>
+          {createMutation.isError ? (
+            <p className="system-admin-note" role="alert">
+              {organizationCreateErrorMessage(createMutation.error)}
+            </p>
+          ) : null}
+        </section>
+
+        <section className="system-admin-panel" aria-labelledby="system-audit-logs">
+          <h2 id="system-audit-logs">全監査ログ</h2>
+          <AdminSearch params={params} setParams={setParams} />
+          <AdminTableState query={auditQuery}>
+            {auditQuery.data ? (
+              <>
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">ID</th>
+                      <th scope="col">Organization</th>
+                      <th scope="col">Actor</th>
+                      <th scope="col">Action</th>
+                      <th scope="col">Target</th>
+                      <th scope="col">ChangeSet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditQuery.data.data.map((log) => (
+                      <tr key={log.id}>
+                        <td>{log.id}</td>
+                        <td>{log.organization_name ?? log.organization_id ?? "-"}</td>
+                        <td>{log.actor_email ?? log.actor_user_id ?? "-"}</td>
+                        <td>{log.action ?? "-"}</td>
+                        <td>
+                          {log.target_type ?? "-"} {log.target_id ?? ""}
+                        </td>
+                        <td>
+                          <pre className="json-preview">{safeJson(log.change_set)}</pre>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Pagination
+                  meta={auditQuery.data.meta}
+                  onPageChange={(page) => updatePage(params, setParams, page)}
+                />
+              </>
+            ) : null}
+          </AdminTableState>
+        </section>
       </div>
     </AdminFrame>
   );
@@ -272,6 +393,7 @@ export function AdminAuditLogsPage() {
 }
 
 function AdminFrame({ title, children }: { title: string; children: React.ReactNode }) {
+  const auth = useAuth();
   return (
     <section className="admin-page">
       <div className="page-header">
@@ -282,6 +404,9 @@ function AdminFrame({ title, children }: { title: string; children: React.ReactN
           <NavLink to="/admin/users">User</NavLink>
           <NavLink to="/admin/drive-items">DriveItem</NavLink>
           <NavLink to="/admin/audit-logs">監査ログ</NavLink>
+          {canUseSystemAdmin(auth.user) ? (
+            <NavLink to="/admin/system">System管理</NavLink>
+          ) : null}
         </nav>
       </div>
       {children}
@@ -372,4 +497,11 @@ function safeJson(value: unknown) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "処理に失敗しました。";
+}
+
+function organizationCreateErrorMessage(error: unknown) {
+  if (error instanceof ApiError && [404, 405].includes(error.status)) {
+    return "Organization作成APIがRails側にまだ公開されていません。";
+  }
+  return errorMessage(error);
 }

@@ -1,11 +1,11 @@
-import { LogOut, Menu, Shield, Trash2, UploadCloud } from "lucide-react";
+import { KeyRound, LogOut, Menu, Shield, Trash2, UploadCloud } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { clearCsrfToken } from "../api/client";
 import { authKeys, logout } from "../auth/api";
-import { canUseAdmin } from "../auth/permissions";
+import { canUseAdmin, canUseSystemAdmin } from "../auth/permissions";
 import { useAuth } from "../auth/useAuth";
 import { IconButton } from "../components/IconButton";
 import { useToast } from "../components/ToastProvider";
@@ -106,6 +106,12 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavLink to="/admin" onClick={onNavigate}>
           <Shield size={18} aria-hidden="true" />
           管理画面
+        </NavLink>
+      ) : null}
+      {canUseSystemAdmin(auth.user) ? (
+        <NavLink to="/admin/system" onClick={onNavigate}>
+          <KeyRound size={18} aria-hidden="true" />
+          System管理
         </NavLink>
       ) : null}
     </nav>

@@ -49,6 +49,11 @@ export const dashboardResponseSchema = z.union([
   dashboardSchema,
 ]);
 
+export const organizationResponseSchema = z.union([
+  z.object({ data: organizationSchema }).transform(({ data }) => data),
+  organizationSchema,
+]);
+
 export type AuditLog = z.infer<typeof auditLogSchema>;
 export type Dashboard = z.infer<typeof dashboardSchema>;
 
@@ -62,6 +67,13 @@ export async function fetchOrganizations(query: string) {
   return adminListSchema(organizationSchema).parse(
     await apiRequest<unknown>(`/api/v1/admin/organizations${query}`),
   );
+}
+
+export function createOrganization(input: { name: string }) {
+  return apiRequest<unknown>("/api/v1/admin/organizations", {
+    method: "POST",
+    body: { organization: { name: input.name } },
+  }).then((response) => organizationResponseSchema.parse(response));
 }
 
 export async function fetchUsers(query: string) {
