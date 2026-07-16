@@ -13,7 +13,9 @@ describe("apiRequest", () => {
     });
 
     const [, request] = vi.mocked(fetch).mock.calls[1];
-    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(`${API_BASE_URL}/api/v1/drive_items`);
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
+      `${API_BASE_URL}/api/v1/drive_items`,
+    );
     expect(request).toMatchObject({ credentials: "include" });
     expect((request?.headers as Headers).get("Content-Type")).toBe("application/json");
     expect((request?.headers as Headers).get("X-CSRF-Token")).toBe("csrf");

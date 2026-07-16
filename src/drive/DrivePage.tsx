@@ -8,7 +8,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import type { DriveItem } from "../api/schemas";
@@ -48,7 +48,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const toast = useToast();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
+  const uploadInProgressRef = useRef(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [dialog, setDialog] = useState<
     "folder" | "rename" | "delete" | "preview" | null
   >(null);
@@ -71,11 +74,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     [items, selectedIds],
   );
 
-  const invalidateCurrent = async () => {
+  const invalidateCurrent = useCallback(async () => {
     await queryClient.invalidateQueries({
       queryKey: mode === "trash" ? driveKeys.trash() : driveKeys.list(folderId),
     });
-  };
+  }, [folderId, mode, queryClient]);
 
   const createMutation = useMutation({
     mutationFn: createDirectory,
@@ -98,11 +101,6 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   });
   const uploadMutation = useMutation({
     mutationFn: uploadFile,
-    onSuccess: async () => {
-      await invalidateCurrent();
-      toast.show({ tone: "success", message: "アップロードしました。" });
-    },
-    onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
   });
   const deleteMutation = useMutation({
     mutationFn: async () =>
@@ -158,21 +156,135 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     setDialog("preview");
   };
 
+  const uploadFiles = useCallback(
+    async (files: File[]) => {
+      if (mode !== "drive" || files.length === 0) return;
+
+      if (uploadInProgressRef.current) {
+        toast.show({
+          tone: "info",
+          message: "アップロード中です。完了してから再度実行してください。",
+        });
+        return;
+      }
+
+      uploadInProgressRef.current = true;
+      let succeeded = 0;
+      const failures: string[] = [];
+
+      try {
+        for (const file of files) {
+          try {
+            await uploadMutation.mutateAsync({
+              file,
+              name: file.name.replace(/\.[^.]+$/, ""),
+              parentId: folderId,
+            });
+            succeeded += 1;
+          } catch (error) {
+            failures.push(`${file.name}: ${errorMessage(error)}`);
+          }
+        }
+
+        if (succeeded > 0) await invalidateCurrent();
+
+        if (failures.length === 0) {
+          toast.show({
+            tone: "success",
+            message:
+              succeeded === 1
+                ? "アップロードしました。"
+                : `${succeeded}件アップロードしました。`,
+          });
+          return;
+        }
+
+        toast.show({
+          tone: succeeded > 0 ? "info" : "danger",
+          message:
+            succeeded > 0
+              ? `${succeeded}件アップロードしました。${failures.length}件失敗しました。`
+              : `アップロードに失敗しました。${failures[0]}`,
+        });
+      } finally {
+        uploadInProgressRef.current = false;
+      }
+    },
+    [folderId, invalidateCurrent, mode, toast, uploadMutation],
+  );
+
   const handleUpload = (files: FileList | null) => {
     if (!files?.length) return;
-    Array.from(files)
-      .slice(0, 3)
-      .forEach((file) =>
-        uploadMutation.mutate({
-          file,
-          name: file.name.replace(/\.[^.]+$/, ""),
-          parentId: folderId,
-        }),
-      );
+    void uploadFiles(Array.from(files));
   };
 
+  const handleDragEnter = (event: React.DragEvent<HTMLElement>) => {
+    if (mode !== "drive" || !hasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLElement>) => {
+    if (mode !== "drive" || !hasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = uploadMutation.isPending ? "none" : "copy";
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLElement>) => {
+    if (mode !== "drive" || !hasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLElement>) => {
+    if (mode !== "drive" || !hasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
+
+    const files = filesFromDataTransfer(event.dataTransfer);
+    if (files.length === 0) {
+      toast.show({
+        tone: "info",
+        message: "アップロードできるファイルがありません。",
+      });
+      return;
+    }
+
+    void uploadFiles(files);
+  };
+
+  useEffect(() => {
+    const preventFileOpen = (event: DragEvent) => {
+      if (!event.dataTransfer || !hasFiles(event.dataTransfer)) return;
+      event.preventDefault();
+    };
+
+    window.addEventListener("dragover", preventFileOpen);
+    window.addEventListener("drop", preventFileOpen);
+    return () => {
+      window.removeEventListener("dragover", preventFileOpen);
+      window.removeEventListener("drop", preventFileOpen);
+    };
+  }, []);
+
   return (
-    <section className="drive-page" aria-busy={listQuery.isFetching}>
+    <section
+      className={`drive-page ${isDraggingFiles ? "drag-active" : ""}`.trim()}
+      aria-busy={listQuery.isFetching || uploadMutation.isPending}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {mode === "drive" && isDraggingFiles ? (
+        <div className="drop-overlay" role="status" aria-live="polite">
+          <FilePlus size={20} aria-hidden="true" />
+          <span>ここにファイルをドロップしてアップロード</span>
+        </div>
+      ) : null}
       <div className="page-header">
         <div className="breadcrumbs" aria-label="パンくず">
           <Link to="/drive">マイドライブ</Link>
@@ -232,6 +344,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                 <Button
                   type="button"
                   variant="secondary"
+                  loading={uploadMutation.isPending}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <FilePlus size={16} aria-hidden="true" />
@@ -254,7 +367,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           className="visually-hidden"
           type="file"
           multiple
-          onChange={(event) => handleUpload(event.currentTarget.files)}
+          disabled={uploadMutation.isPending}
+          onChange={(event) => {
+            handleUpload(event.currentTarget.files);
+            event.currentTarget.value = "";
+          }}
         />
       </div>
       {listQuery.isLoading ? <LoadingIndicator label="一覧を読み込んでいます" /> : null}
@@ -525,4 +642,19 @@ function formatSize(value?: number | null) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "処理に失敗しました。";
+}
+
+function hasFiles(dataTransfer: DataTransfer) {
+  return Array.from(dataTransfer.types).includes("Files");
+}
+
+function filesFromDataTransfer(dataTransfer: DataTransfer) {
+  if (dataTransfer.items.length > 0) {
+    return Array.from(dataTransfer.items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+  }
+
+  return Array.from(dataTransfer.files);
 }

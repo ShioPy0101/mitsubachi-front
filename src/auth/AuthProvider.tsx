@@ -61,7 +61,8 @@ function toAuthErrorInfo(error: unknown): AuthErrorInfo | null {
   }
 
   return {
-    message: error instanceof Error ? error.message : "認証状態を確認できませんでした。",
+    message:
+      error instanceof Error ? error.message : "認証状態を確認できませんでした。",
     kind: "unknown",
   };
 }
