@@ -246,7 +246,11 @@ pages:
     apis:
       - "GET /api/v1/me"
       - "GET /api/v1/admin/drive_items/:id"
+      - "GET /api/v1/admin/drive_items/:id/preview"
+      - "GET /api/v1/admin/drive_items/:id/download"
+      - "GET /api/v1/admin/drive_items/:id/stream"
       - "DELETE /api/v1/admin/drive_items/:id"
+      - "DELETE /api/v1/admin/drive_items/:id/purge"
       - "PATCH /api/v1/admin/drive_items/:id/restore"
 
   - id: admin_audit_logs

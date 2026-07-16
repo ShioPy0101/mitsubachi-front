@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { apiRequest } from "../api/client";
+import { apiRequest, apiUrl } from "../api/client";
 import {
   adminMetaSchema,
   driveItemSchema,
@@ -35,6 +35,8 @@ export const adminOrganizationSchema = organizationSchema.extend({
 export const adminDriveItemSchema = driveItemSchema.extend({
   organization_name: z.string().optional(),
   owner_email: z.string().optional(),
+  upload_ip_address: z.string().nullable().optional(),
+  uploaded_at: z.string().nullable().optional(),
 });
 
 export const auditLogSchema = z.object({
@@ -256,6 +258,30 @@ export function restoreAdminDriveItem(id: number): Promise<AdminDriveItem> {
   return apiRequest<unknown>(`/api/v1/admin/drive_items/${id}/restore`, {
     method: "PATCH",
   }).then((response) => parseEnvelope(adminDriveItemSchema, response));
+}
+
+export function purgeAdminDriveItem(id: number): Promise<{ message: string }> {
+  return apiRequest<unknown>(`/api/v1/admin/drive_items/${id}/purge`, {
+    method: "DELETE",
+  }).then((response) =>
+    z
+      .object({
+        message: z.string(),
+      })
+      .parse(response),
+  );
+}
+
+export function adminDriveItemPreviewUrl(id: number) {
+  return apiUrl(`/api/v1/admin/drive_items/${id}/preview`);
+}
+
+export function adminDriveItemDownloadUrl(id: number) {
+  return apiUrl(`/api/v1/admin/drive_items/${id}/download`);
+}
+
+export function adminDriveItemStreamUrl(id: number) {
+  return apiUrl(`/api/v1/admin/drive_items/${id}/stream`);
 }
 
 export async function fetchAuditLogs(query: string): Promise<AdminList<AuditLog>> {
