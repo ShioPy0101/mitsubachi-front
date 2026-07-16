@@ -64,9 +64,32 @@ describe("RequireAuth", () => {
       expect(vi.mocked(fetch).mock.calls.length).toBeLessThanOrEqual(2);
     });
   });
+
+  it("allows system-only routes for system admins", async () => {
+    mockMe(jsonResponse({ data: currentUser({ role: "system_admin" }) }));
+
+    renderProtectedRoute({ system: true });
+
+    expect(await screen.findByText("Protected content")).toBeInTheDocument();
+  });
+
+  it("rejects system-only routes for organization admins", async () => {
+    mockMe(jsonResponse({ data: currentUser({ role: "organization_admin" }) }));
+
+    renderProtectedRoute({ system: true });
+
+    expect(await screen.findByText("Forbidden page")).toBeInTheDocument();
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+  });
 });
 
-function renderProtectedRoute({ strict = false }: { strict?: boolean } = {}) {
+function renderProtectedRoute({
+  strict = false,
+  system = false,
+}: {
+  strict?: boolean;
+  system?: boolean;
+} = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -77,10 +100,11 @@ function renderProtectedRoute({ strict = false }: { strict?: boolean } = {}) {
       <AuthProvider>
         <MemoryRouter initialEntries={["/drive"]}>
           <Routes>
-            <Route element={<RequireAuth />}>
+            <Route element={<RequireAuth system={system} />}>
               <Route path="/drive" element={<div>Protected content</div>} />
             </Route>
             <Route path="/login" element={<div>Login page</div>} />
+            <Route path="/403" element={<div>Forbidden page</div>} />
           </Routes>
         </MemoryRouter>
       </AuthProvider>
@@ -104,13 +128,13 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function currentUser() {
+function currentUser({ role = "member" } = {}) {
   return {
     id: 1,
     organization_id: 7,
     organization_name: "Mitsubachi",
     email: "user@example.com",
     name: "User",
-    role: "member",
+    role,
   };
 }

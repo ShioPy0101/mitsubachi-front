@@ -658,6 +658,31 @@ td:last-child {
   gap: var(--space-3);
 }
 
+.system-admin-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.system-admin-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.system-admin-panel h2 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+}
+
+.system-admin-note {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
 .metric {
   display: grid;
   gap: var(--space-2);

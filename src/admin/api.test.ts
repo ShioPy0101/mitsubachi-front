@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { API_BASE_URL } from "../api/client";
-import { fetchAuditLogs, fetchDashboard, suspendUser, unsuspendUser } from "./api";
+import {
+  createOrganization,
+  fetchAuditLogs,
+  fetchDashboard,
+  suspendUser,
+  unsuspendUser,
+} from "./api";
 
 describe("admin api", () => {
   it("parses dashboard metrics from the Rails data envelope", async () => {
@@ -71,6 +77,44 @@ describe("admin api", () => {
           change_set: { suspended: [false, true] },
         },
       ],
+    });
+  });
+
+  it("posts organization creation requests to the system admin endpoint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
+          return new Response(JSON.stringify({ csrf_token: "csrf" }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              id: 12,
+              name: "New Organization",
+            },
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+
+    await expect(
+      createOrganization({ name: "New Organization" }),
+    ).resolves.toMatchObject({
+      id: 12,
+      name: "New Organization",
+    });
+
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
+      `${API_BASE_URL}/api/v1/admin/organizations`,
+    );
+    expect(vi.mocked(fetch).mock.calls[1][1]).toMatchObject({
+      method: "POST",
+      credentials: "include",
+      body: JSON.stringify({ organization: { name: "New Organization" } }),
     });
   });
 
