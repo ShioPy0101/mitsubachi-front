@@ -1,0 +1,178 @@
+version: 1
+updated_at: "2026-07-17"
+source_of_truth: "src/app/App.tsx"
+maintenance:
+  required: true
+  rule: "Update this file whenever routes, page components, auth requirements, or page-level API contracts change."
+pages:
+  - id: login
+    path: "/login"
+    name: "Login"
+    component: "src/auth/LoginPage.tsx"
+    auth: "public"
+    apis:
+      - "POST /api/v1/auth/login"
+      - "POST /api/v1/auth/create"
+
+  - id: auth_verify
+    path: "/auth/verify"
+    name: "Email verification"
+    component: "src/auth/VerifyPage.tsx"
+    auth: "public"
+    apis:
+      - "POST /api/v1/auth/verify"
+      - "GET /api/v1/me"
+
+  - id: root_redirect
+    path: "/"
+    name: "Root redirect"
+    component: "src/app/App.tsx:NavigateToDrive"
+    auth: "authenticated"
+    redirects_to: "/drive"
+    apis:
+      - "GET /api/v1/me"
+
+  - id: drive
+    path: "/drive"
+    name: "My Drive"
+    component: "src/drive/DrivePage.tsx"
+    layout: "src/app/AppLayout.tsx"
+    auth: "authenticated"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/drive_items"
+      - "POST /api/v1/drive_items"
+      - "POST /api/v1/drive_items/bulk_download"
+
+  - id: drive_folder
+    path: "/drive/folder/:folderId"
+    name: "Drive folder"
+    component: "src/drive/DrivePage.tsx"
+    layout: "src/app/AppLayout.tsx"
+    auth: "authenticated"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/drive_items"
+      - "GET /api/v1/drive_items/:id"
+      - "POST /api/v1/drive_items"
+
+  - id: trash
+    path: "/trash"
+    name: "Trash"
+    component: "src/drive/DrivePage.tsx"
+    layout: "src/app/AppLayout.tsx"
+    auth: "authenticated"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/drive_items/trash"
+      - "POST /api/v1/drive_items/:id/restore"
+      - "POST /api/v1/drive_items/bulk_restore"
+
+  - id: admin_dashboard
+    path: "/admin"
+    name: "Admin dashboard"
+    component: "src/admin/AdminPages.tsx:AdminDashboard"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/dashboard"
+    response_contracts:
+      - "GET /api/v1/admin/dashboard returns { data: dashboard }."
+
+  - id: admin_organizations
+    path: "/admin/organizations"
+    name: "Admin organizations"
+    component: "src/admin/AdminPages.tsx:AdminOrganizationsPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/organizations"
+
+  - id: admin_organization_detail
+    path: "/admin/organizations/:organizationId"
+    name: "Admin organization detail"
+    component: "src/admin/AdminPages.tsx:AdminOrganizationsPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/organizations"
+
+  - id: admin_users
+    path: "/admin/users"
+    name: "Admin users"
+    component: "src/admin/AdminPages.tsx:AdminUsersPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/users"
+      - "PATCH /api/v1/admin/users/:id/suspend"
+      - "PATCH /api/v1/admin/users/:id/unsuspend"
+
+  - id: admin_user_detail
+    path: "/admin/users/:userId"
+    name: "Admin user detail"
+    component: "src/admin/AdminPages.tsx:AdminUsersPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/users"
+
+  - id: admin_drive_items
+    path: "/admin/drive-items"
+    name: "Admin drive items"
+    component: "src/admin/AdminPages.tsx:AdminDriveItemsPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/drive_items"
+
+  - id: admin_drive_item_detail
+    path: "/admin/drive-items/:driveItemId"
+    name: "Admin drive item detail"
+    component: "src/admin/AdminPages.tsx:AdminDriveItemsPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/drive_items"
+
+  - id: admin_audit_logs
+    path: "/admin/audit-logs"
+    name: "Admin audit logs"
+    component: "src/admin/AdminPages.tsx:AdminAuditLogsPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/audit_logs"
+    response_contracts:
+      - "Audit log targets use target_type and target_id."
+      - "Audit log details use change_set."
+
+  - id: admin_audit_log_detail
+    path: "/admin/audit-logs/:auditLogId"
+    name: "Admin audit log detail"
+    component: "src/admin/AdminPages.tsx:AdminAuditLogsPage"
+    layout: "src/app/AppLayout.tsx"
+    auth: "admin"
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/admin/audit_logs"
+
+  - id: forbidden
+    path: "/403"
+    name: "Forbidden"
+    component: "src/app/App.tsx:StatePage"
+    auth: "public"
+
+  - id: not_found
+    path: "*"
+    name: "Not found"
+    component: "src/app/App.tsx:StatePage"
+    auth: "public"
