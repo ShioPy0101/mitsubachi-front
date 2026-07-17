@@ -96,7 +96,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         新規アップロード
       </NavLink>
       <NavLink to="/drive" onClick={onNavigate}>
-        マイドライブ
+        共有ドライブ
       </NavLink>
       <NavLink to="/trash" onClick={onNavigate}>
         <Trash2 size={18} aria-hidden="true" />

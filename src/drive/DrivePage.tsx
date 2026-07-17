@@ -287,13 +287,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       ) : null}
       <div className="page-header">
         <div className="breadcrumbs" aria-label="パンくず">
-          <Link to="/drive">マイドライブ</Link>
+          <Link to="/drive">共有ドライブ</Link>
           {folderQuery.data ? (
             <span aria-current="page">/ {folderQuery.data.name}</span>
           ) : null}
         </div>
         <h1>
-          {mode === "trash" ? "ゴミ箱" : (folderQuery.data?.name ?? "マイドライブ")}
+          {mode === "trash" ? "ゴミ箱" : (folderQuery.data?.name ?? "共有ドライブ")}
         </h1>
       </div>
       <div className="toolbar">
