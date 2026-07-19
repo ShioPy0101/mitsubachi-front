@@ -134,7 +134,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         next.set("scope", searchScope);
       } else {
         next.delete("q");
-        next.delete("scope");
+        if (searchScope === "organization") next.set("scope", searchScope);
+        else next.delete("scope");
       }
       setSearchParams(next, { replace: true });
     }, 350);

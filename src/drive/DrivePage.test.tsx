@@ -454,6 +454,27 @@ describe("DrivePage drag and drop upload", () => {
     );
   });
 
+  it("keeps organization scope when selected before entering a search keyword", async () => {
+    renderDrivePage("/drive");
+
+    const scopeSelect = screen.getByLabelText("検索範囲");
+    fireEvent.change(scopeSelect, { target: { value: "organization" } });
+
+    await waitFor(() => expect(scopeSelect).toHaveValue("organization"));
+    await new Promise((resolve) => window.setTimeout(resolve, 400));
+    expect(scopeSelect).toHaveValue("organization");
+
+    fireEvent.change(screen.getByPlaceholderText("ファイル名、拡張子、作成者名"), {
+      target: { value: "meeting" },
+    });
+
+    await waitFor(() => {
+      expect(mocks.searchDriveItems).toHaveBeenCalledWith(
+        expect.objectContaining({ query: "meeting", scope: "organization" }),
+      );
+    });
+  });
+
   it("shows all breadcrumbs and navigates from an intermediate breadcrumb", async () => {
     mocks.fetchDriveItem.mockResolvedValueOnce({
       id: 40,
