@@ -45,10 +45,10 @@ import {
   restoreDriveItem,
   streamUrl,
   uploadFile,
-  moveDriveItem,
 } from "./api";
 
 type DriveMode = "drive" | "trash";
+const DRIVE_ITEM_MIME = "application/x-mitsubachi-drive-items";
 
 type UploadTask = {
   id: string;
@@ -256,8 +256,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     onError: (error) => captureError(error, "一括ダウンロード"),
   });
   const moveMutation = useMutation({
-    mutationFn: async ({ ids, parentId }: { ids: number[]; parentId: number | null }) =>
-      ids.length === 1 ? moveDriveItem({ id: ids[0], parentId }) : bulkMove(ids, parentId),
+    mutationFn: async ({ ids, parentId }: { ids: number[]; parentId: number | null; targetName: string }) =>
+      bulkMove(ids, parentId),
     onSuccess: async () => {
       await invalidateCurrent();
       await queryClient.invalidateQueries({ queryKey: driveKeys.all });
@@ -268,7 +268,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       setLastError(null);
       toast.show({ tone: "success", message: "移動しました。" });
     },
-    onError: (error) => captureError(error, draggingIds.length > 1 ? "一括移動" : "移動"),
+    onError: (error, variables) =>
+      captureError(error, variables.ids.length > 1 ? "一括移動" : "移動", {
+        targetFolder: variables.targetName,
+      }),
+    onSettled: () => {
+      setDraggingIds([]);
+      setDragOverFolderId(null);
+      setDragOverBreadcrumbId(null);
+    },
   });
 
   const toggleSelected = (id: number) => {
@@ -507,26 +515,22 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     });
   };
 
-  const draggedItems = useMemo(
-    () => items.filter((item) => draggingIds.includes(item.id)),
-    [draggingIds, items],
-  );
-
   const moveDraggedItems = useCallback(
-    (targetParentId: number | null, targetName: string) => {
-      if (draggingIds.length === 0 || moveMutation.isPending) return;
-      if (draggedItems.every((item) => (item.parent_id ?? null) === targetParentId)) {
+    (itemIds: number[], targetParentId: number | null, targetName: string) => {
+      if (itemIds.length === 0 || moveMutation.isPending) return;
+      const movingItems = items.filter((item) => itemIds.includes(item.id));
+      if (movingItems.every((item) => (item.parent_id ?? null) === targetParentId)) {
         const appError = normalizeAppError(new Error("同じ場所へは移動できません。"), {
-          operation: draggingIds.length > 1 ? "一括移動" : "移動",
+          operation: itemIds.length > 1 ? "一括移動" : "移動",
           page: pageLabel,
           safeDetails: { targetFolder: targetName },
         });
         setLastError(appError);
         return;
       }
-      moveMutation.mutate({ ids: draggingIds, parentId: targetParentId });
+      moveMutation.mutate({ ids: itemIds, parentId: targetParentId, targetName });
     },
-    [draggedItems, draggingIds, moveMutation, pageLabel],
+    [items, moveMutation, pageLabel],
   );
 
   const startItemDrag = useCallback(
@@ -535,7 +539,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       const ids = selectedIds.includes(item.id) ? selectedIds : [item.id];
       setDraggingIds(ids);
       event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("application/x-mitsubachi-drive-item", ids.join(","));
+      event.dataTransfer.setData(DRIVE_ITEM_MIME, JSON.stringify({ itemIds: ids }));
       event.dataTransfer.setData("text/plain", `${ids.length}件を移動`);
     },
     [mode, selectedIds],
@@ -594,8 +598,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                 onDragLeave={() => setDragOverBreadcrumbId(null)}
                 onDrop={(event) => {
                   if (draggingIds.length === 0 || current) return;
+                  const payload = dragMovePayload(event.dataTransfer);
+                  if (!payload) return;
                   event.preventDefault();
-                  moveDraggedItems(crumb.id, crumb.name);
+                  moveDraggedItems(payload.itemIds, crumb.id, crumb.name);
                 }}
               >
                 {index > 0 ? <span aria-hidden="true">/</span> : null}
@@ -814,7 +820,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           onDownload={downloadDriveItem}
           onDragStart={startItemDrag}
           onDragEnd={endItemDrag}
-          onDropToFolder={(item) => moveDraggedItems(item.id, item.name)}
+          onDropToFolder={(event, item) => {
+            const payload = dragMovePayload(event.dataTransfer);
+            if (!payload) return;
+            moveDraggedItems(payload.itemIds, item.id, item.name);
+          }}
           onDragOverFolder={setDragOverFolderId}
           onOpenParent={(parentId) => void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`)}
           draggingIds={draggingIds}
@@ -927,7 +937,7 @@ function FileTable({
   onDownload: (id: number) => void;
   onDragStart: (event: React.DragEvent, item: DriveItem) => void;
   onDragEnd: () => void;
-  onDropToFolder: (item: DriveItem) => void;
+  onDropToFolder: (event: React.DragEvent, item: DriveItem) => void;
   onDragOverFolder: (id: number | null) => void;
   onOpenParent: (parentId: number | null) => void;
   draggingIds: number[];
@@ -970,8 +980,9 @@ function FileTable({
               onDragLeave={() => onDragOverFolder(null)}
               onDrop={(event) => {
                 if (item.item_type !== "directory" || draggingIds.length === 0) return;
+                if (!dragMovePayload(event.dataTransfer)) return;
                 event.preventDefault();
-                onDropToFolder(item);
+                onDropToFolder(event, item);
               }}
               onDoubleClick={() => onOpen(item)}
               onKeyDown={(event) => event.key === "Enter" && onOpen(item)}
@@ -1255,6 +1266,30 @@ function errorMessage(error: unknown) {
 
 function hasFiles(dataTransfer: DataTransfer) {
   return Array.from(dataTransfer.types).includes("Files");
+}
+
+function dragMovePayload(dataTransfer: DataTransfer) {
+  const raw = dataTransfer.getData(DRIVE_ITEM_MIME);
+  if (!raw) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (isDragMovePayload(parsed)) {
+      return { itemIds: parsed.itemIds };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function isDragMovePayload(value: unknown): value is { itemIds: number[] } {
+  if (typeof value !== "object" || value === null || !("itemIds" in value)) {
+    return false;
+  }
+  const itemIds = value.itemIds;
+  return Array.isArray(itemIds) && itemIds.every((id) => Number.isInteger(id));
 }
 
 async function filesFromDataTransfer(dataTransfer: DataTransfer) {

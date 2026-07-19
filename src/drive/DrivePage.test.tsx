@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "../api/errors";
 import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "./DrivePage";
 
@@ -359,15 +360,39 @@ describe("DrivePage drag and drop upload", () => {
       throw new Error("rows were not rendered");
     }
 
-    fireEvent.dragStart(source, { dataTransfer: driveItemDataTransfer() });
-    fireEvent.dragOver(target, { dataTransfer: driveItemDataTransfer() });
+    const dataTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
     expect(target).toHaveClass("drop-target");
-    fireEvent.drop(target, { dataTransfer: driveItemDataTransfer() });
+    fireEvent.drop(target, { dataTransfer });
 
     await waitFor(() => {
-      expect(mocks.moveDriveItem).toHaveBeenCalledWith({ id: 1, parentId: 2 });
+      expect(mocks.bulkMove).toHaveBeenCalledWith([1], 2);
     });
+    expect(mocks.moveDriveItem).not.toHaveBeenCalled();
     expect(container.querySelector(".dragging-row")).not.toBeInTheDocument();
+  });
+
+  it("moves a folder to another folder by drag and drop", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "before", item_type: "directory" },
+      { id: 2, parent_id: null, name: "after", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+
+    const source = (await screen.findByText("before")).closest("tr");
+    const target = screen.getByText("after").closest("tr");
+    if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+      throw new Error("rows were not rendered");
+    }
+
+    const dataTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    await waitFor(() => {
+      expect(mocks.bulkMove).toHaveBeenCalledWith([1], 2);
+    });
   });
 
   it("moves selected files together by drag and drop", async () => {
@@ -386,12 +411,118 @@ describe("DrivePage drag and drop upload", () => {
       throw new Error("rows were not rendered");
     }
 
-    fireEvent.dragStart(source, { dataTransfer: driveItemDataTransfer() });
-    fireEvent.drop(target, { dataTransfer: driveItemDataTransfer() });
+    const dataTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
 
     await waitFor(() => {
       expect(mocks.bulkMove).toHaveBeenCalledWith([1, 2], 3);
     });
+  });
+
+  it("moves only the dragged item when it is not selected", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "selected", item_type: "file", extension: "txt" },
+      { id: 2, parent_id: null, name: "dragged", item_type: "file", extension: "txt" },
+      { id: 3, parent_id: null, name: "folder", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByLabelText("selectedを選択"));
+    const source = screen.getByText("dragged.txt").closest("tr");
+    const target = screen.getByText("folder").closest("tr");
+    if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+      throw new Error("rows were not rendered");
+    }
+
+    const dataTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    await waitFor(() => {
+      expect(mocks.bulkMove).toHaveBeenCalledWith([2], 3);
+    });
+  });
+
+  it("does not move when dropping on a file or itself", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "folder", item_type: "directory" },
+      { id: 2, parent_id: null, name: "file", item_type: "file", extension: "txt" },
+    ]);
+    renderDrivePage("/drive");
+
+    const source = (await screen.findByText("folder")).closest("tr");
+    const fileTarget = screen.getByText("file.txt").closest("tr");
+    if (!(source instanceof HTMLElement) || !(fileTarget instanceof HTMLElement)) {
+      throw new Error("rows were not rendered");
+    }
+
+    const dataTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.drop(fileTarget, { dataTransfer });
+    fireEvent.drop(source, { dataTransfer });
+
+    expect(mocks.bulkMove).not.toHaveBeenCalled();
+  });
+
+  it("does not treat external file drops as item moves", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 3, parent_id: null, name: "folder", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+    const target = (await screen.findByText("folder")).closest("tr");
+    if (!(target instanceof HTMLElement)) throw new Error("row was not rendered");
+
+    fireEvent.drop(target, {
+      dataTransfer: dataTransferWithFiles([
+        new File(["content"], "external.txt", { type: "text/plain" }),
+      ]),
+    });
+
+    expect(mocks.bulkMove).not.toHaveBeenCalled();
+  });
+
+  it("shows and copies a structured error when drag move fails with 409", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    mocks.bulkMove.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        "同じ名前のファイルが移動先に存在します",
+        [],
+        "duplicate_name",
+        "/api/v1/drive_items/bulk_move",
+        "name",
+        "sample.mp4",
+        "request-409",
+        { conflicting_name: "sample.mp4" },
+      ),
+    );
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "sample", item_type: "file", extension: "mp4" },
+      { id: 2, parent_id: null, name: "納品データ", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+
+    const source = (await screen.findByText("sample.mp4")).closest("tr");
+    const target = screen.getByText("納品データ").closest("tr");
+    if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+      throw new Error("rows were not rendered");
+    }
+
+    const dataTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    expect(await screen.findAllByText("同じ名前のファイルが移動先に存在します")).not.toHaveLength(0);
+    fireEvent.click(screen.getByText("エラー内容をコピー"));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const copied = writeText.mock.calls[0]?.[0] as string;
+    expect(copied).toContain("操作: 移動");
+    expect(copied).toContain("HTTPステータス: 409");
+    expect(copied).toContain("Request ID: request-409");
+    expect(copied).toContain("移動先: 納品データ");
   });
 
   it("stops media when preview is closed or unmounted", async () => {
@@ -479,12 +610,15 @@ function dataTransferWithFiles(files: File[]) {
 }
 
 function driveItemDataTransfer() {
+  const store = new Map<string, string>();
   return {
-    types: ["application/x-mitsubachi-drive-item"],
+    types: ["application/x-mitsubachi-drive-items"],
     effectAllowed: "move",
     dropEffect: "move",
-    setData: vi.fn(),
-    getData: vi.fn(),
+    setData: vi.fn((type: string, value: string) => {
+      store.set(type, value);
+    }),
+    getData: vi.fn((type: string) => store.get(type) ?? ""),
   };
 }
 
