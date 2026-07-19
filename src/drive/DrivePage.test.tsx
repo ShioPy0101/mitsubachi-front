@@ -10,6 +10,7 @@ type UploadFileInput = {
   file: File;
   name: string;
   parentId: number | null;
+  onProgress?: (progress: { loaded: number; total?: number; percent?: number }) => void;
 };
 
 const mocks = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   fetchDriveItem: vi.fn(),
   fetchTrash: vi.fn(),
   uploadFile: vi.fn<(input: UploadFileInput) => Promise<unknown>>(),
+  searchDriveItems: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -30,6 +32,7 @@ vi.mock("./api", () => ({
   fetchDriveItem: mocks.fetchDriveItem,
   fetchTrash: mocks.fetchTrash,
   uploadFile: mocks.uploadFile,
+  searchDriveItems: mocks.searchDriveItems,
   bulkDelete: vi.fn(),
   bulkDownload: vi.fn(),
   bulkRestore: vi.fn(),
@@ -53,11 +56,24 @@ describe("DrivePage drag and drop upload", () => {
       item_type: "directory",
     });
     mocks.fetchTrash.mockResolvedValue([]);
-    mocks.uploadFile.mockResolvedValue({
-      id: 1,
-      parent_id: 42,
-      name: "report",
-      item_type: "file",
+    mocks.uploadFile.mockImplementation((input) => {
+      input.onProgress?.({ loaded: input.file.size, total: input.file.size, percent: 100 });
+      return Promise.resolve({
+        id: 1,
+        parent_id: 42,
+        name: "report",
+        item_type: "file",
+      });
+    });
+    mocks.searchDriveItems.mockResolvedValue({
+      data: [],
+      meta: { current_page: 1, per_page: 50, total_pages: 0, total_count: 0 },
+    });
+    HTMLDialogElement.prototype.showModal = vi.fn(function showModal(this: HTMLDialogElement) {
+      this.open = true;
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function close(this: HTMLDialogElement) {
+      this.open = false;
     });
   });
 
@@ -199,6 +215,87 @@ describe("DrivePage drag and drop upload", () => {
 
     resolveUpload?.();
   });
+
+  it("shows upload progress while a file is uploading", async () => {
+    let resolveUpload: (() => void) | undefined;
+    mocks.uploadFile.mockImplementation(
+      (input) =>
+        new Promise((resolve) => {
+          input.onProgress?.({ loaded: 5, total: 10, percent: 50 });
+          resolveUpload = () =>
+            resolve({
+              id: 1,
+              parent_id: 42,
+              name: "movie",
+              item_type: "file",
+            });
+        }),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.change(fileInput(container), {
+      target: { files: [new File(["1234567890"], "movie.mp4", { type: "video/mp4" })] },
+    });
+
+    expect(await screen.findByText("アップロード状況")).toBeInTheDocument();
+    expect(await screen.findByText(/50%/)).toBeInTheDocument();
+    resolveUpload?.();
+  });
+
+  it("shows search results from organization scope", async () => {
+    mocks.searchDriveItems.mockResolvedValue({
+      data: [
+        {
+          id: 9,
+          parent_id: null,
+          parent_name: "素材",
+          name: "meeting",
+          item_type: "file",
+          extension: "mp4",
+          content_type: "video/mp4",
+          owner_display_name: "佐藤",
+        },
+      ],
+      meta: { current_page: 1, per_page: 50, total_pages: 1, total_count: 1 },
+    });
+
+    renderDrivePage("/drive?q=meeting&scope=organization");
+
+    expect(await screen.findByText("meeting.mp4")).toBeInTheDocument();
+    expect(screen.getByText("佐藤")).toBeInTheDocument();
+    expect(mocks.searchDriveItems).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "meeting", scope: "organization" }),
+    );
+  });
+
+  it("stops media when preview is closed or unmounted", async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    mocks.fetchDriveItems.mockResolvedValue([
+      {
+        id: 7,
+        parent_id: null,
+        name: "clip",
+        item_type: "file",
+        extension: "mp4",
+        content_type: "video/mp4",
+      },
+    ]);
+    const view = renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByText("clip.mp4"));
+    fireEvent.click(openDialogCloseButton("clip"));
+
+    await waitFor(() => expect(pause).toHaveBeenCalled());
+    expect(load).toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByText("clip.mp4"));
+    view.unmount();
+
+    expect(pause).toHaveBeenCalledTimes(2);
+  });
+
 });
 
 function renderDrivePage(initialEntry: string) {
@@ -246,4 +343,16 @@ function dataTransferWithFiles(files: File[]) {
       getAsFile: () => file,
     })),
   };
+}
+
+
+function openDialogCloseButton(title: string) {
+  const dialog = Array.from(document.querySelectorAll("dialog")).find((element) =>
+    element.textContent?.includes(title),
+  );
+  const button = dialog?.querySelector('button[aria-label="閉じる"]');
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error("Open dialog close button was not rendered.");
+  }
+  return button;
 }

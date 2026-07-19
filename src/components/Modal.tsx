@@ -51,6 +51,9 @@ export function Modal({ open, title, children, onClose }: ModalProps) {
         event.preventDefault();
         onClose();
       }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div className="modal-header">
         <h2 id="modal-title">{title}</h2>

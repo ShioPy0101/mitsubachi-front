@@ -25,6 +25,7 @@ import { RequireAuth } from "../auth/RequireAuth";
 import { VerifyPage } from "../auth/VerifyPage";
 import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "../drive/DrivePage";
+import { GroupDashboardPage } from "../GroupDashboardPage";
 import { AppLayout } from "./AppLayout";
 
 const queryClient = createAppQueryClient();
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
           { path: "/drive", element: <DrivePage /> },
           { path: "/drive/folder/:folderId", element: <DrivePage /> },
           { path: "/trash", element: <DrivePage mode="trash" /> },
+          { path: "/settings/group", element: <GroupDashboardPage /> },
         ],
       },
       {
