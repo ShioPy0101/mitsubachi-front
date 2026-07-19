@@ -13,6 +13,11 @@ type UploadFileInput = {
   onProgress?: (progress: { loaded: number; total?: number; percent?: number }) => void;
 };
 
+type CreateDirectoryInput = {
+  name: string;
+  parentId: number | null;
+};
+
 const mocks = vi.hoisted(() => ({
   fetchDriveItems: vi.fn(),
   fetchDriveItem: vi.fn(),
@@ -21,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   searchDriveItems: vi.fn(),
   bulkMove: vi.fn(),
   moveDriveItem: vi.fn(),
-  createDirectory: vi.fn(),
+  createDirectory: vi.fn<(input: CreateDirectoryInput) => Promise<unknown>>(),
 }));
 
 vi.mock("./api", () => ({
