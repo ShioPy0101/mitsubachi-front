@@ -10,6 +10,7 @@ export const userSchema = z
     id: z.number(),
     email: z.string(),
     name: z.string().nullable().optional(),
+    display_name: z.string().nullable().optional(),
     role: z.enum(["member", "organization_admin", "system_admin"]),
     suspended: z.boolean().optional().default(false),
     organization_id: z.number().nullable().optional(),
@@ -34,7 +35,9 @@ export const driveItemSchema = z.object({
   id: z.number(),
   organization_id: z.number().optional(),
   owner_user_id: z.number().nullable().optional(),
+  owner_display_name: z.string().nullable().optional(),
   parent_id: z.number().nullable().optional(),
+  parent_name: z.string().nullable().optional(),
   name: z.string(),
   item_type: z.enum(["file", "directory"]),
   extension: z.string().nullable().optional(),
@@ -63,3 +66,29 @@ export const adminListSchema = <T extends z.ZodTypeAny>(item: T) =>
 export type CurrentUser = z.infer<typeof userSchema>;
 export type DriveItem = z.infer<typeof driveItemSchema>;
 export type AdminMeta = z.infer<typeof adminMetaSchema>;
+
+
+export const groupMemberSchema = z.object({
+  id: z.number(),
+  display_name: z.string(),
+  role: z.enum(["member", "organization_admin", "system_admin"]),
+  joined_at: z.string().optional(),
+  suspended: z.boolean(),
+});
+
+export const groupSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  member_count: z.number(),
+  current_user_role: z.enum(["member", "organization_admin", "system_admin"]),
+  members: z.array(groupMemberSchema),
+});
+
+export const groupResponseSchema = z.object({ data: groupSchema });
+export const driveSearchResponseSchema = z.object({
+  data: z.array(driveItemSchema),
+  meta: adminMetaSchema,
+});
+
+export type Group = z.infer<typeof groupSchema>;

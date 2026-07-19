@@ -6,11 +6,15 @@ import {
   MoreVertical,
   RefreshCw,
   RotateCcw,
+  Search,
   Trash2,
+  UploadCloud,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
+import { ApiError } from "../api/errors";
 import type { DriveItem } from "../api/schemas";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -32,6 +36,7 @@ import {
   fetchDriveItem,
   fetchDriveItems,
   fetchTrash,
+  searchDriveItems,
   previewUrl,
   renameDriveItem,
   restoreDriveItem,
@@ -41,6 +46,24 @@ import {
 
 type DriveMode = "drive" | "trash";
 
+type UploadTask = {
+  id: string;
+  fileName: string;
+  loaded: number;
+  total?: number;
+  percent?: number;
+  status: "uploading" | "processing" | "done" | "failed" | "canceled";
+  message?: string;
+  abortController?: AbortController;
+};
+
+type ConflictState = {
+  file: File;
+  parentId: number | null;
+  suggestedName: string;
+  message: string;
+};
+
 export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const params = useParams();
   const folderId = params.folderId ? Number(params.folderId) : null;
@@ -48,15 +71,24 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const toast = useToast();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const directoryInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
   const uploadInProgressRef = useRef(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [dialog, setDialog] = useState<
-    "folder" | "rename" | "delete" | "preview" | null
+    "folder" | "rename" | "delete" | "preview" | "conflict" | null
   >(null);
   const [activeItem, setActiveItem] = useState<DriveItem | null>(null);
   const [nameValue, setNameValue] = useState("");
+  const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
+  const searchScope =
+    searchParams.get("scope") === "organization" ? "organization" : "current";
+  const searchTerm = searchParams.get("q")?.trim() ?? "";
+  const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [conflict, setConflict] = useState<ConflictState | null>(null);
 
   const listQuery = useQuery({
     queryKey: mode === "trash" ? driveKeys.trash() : driveKeys.list(folderId),
@@ -67,8 +99,37 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     queryFn: () => (folderId ? fetchDriveItem(folderId) : Promise.resolve(null)),
     enabled: mode === "drive" && folderId !== null,
   });
+  const searchQuery = useQuery({
+    queryKey: ["drive-items", "search", { folderId, searchTerm, searchScope }],
+    queryFn: () =>
+      searchDriveItems({
+        query: searchTerm,
+        parentId: folderId,
+        scope: searchScope,
+      }),
+    enabled: mode === "drive" && searchTerm.length > 0,
+  });
 
-  const items = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const next = new URLSearchParams(searchParams);
+      if (searchInput.trim()) {
+        next.set("q", searchInput.trim());
+        next.set("scope", searchScope);
+      } else {
+        next.delete("q");
+        next.delete("scope");
+      }
+      setSearchParams(next, { replace: true });
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput, searchParams, searchScope, setSearchParams]);
+
+  const visibleQuery = searchTerm ? searchQuery : listQuery;
+  const items = useMemo(
+    () => (searchTerm ? searchQuery.data?.data : listQuery.data) ?? [],
+    [listQuery.data, searchQuery.data, searchTerm],
+  );
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIds.includes(item.id)),
     [items, selectedIds],
@@ -98,9 +159,6 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       toast.show({ tone: "success", message: "名前を変更しました。" });
     },
     onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
-  });
-  const uploadMutation = useMutation({
-    mutationFn: uploadFile,
   });
   const deleteMutation = useMutation({
     mutationFn: async () =>
@@ -156,6 +214,65 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     setDialog("preview");
   };
 
+  const updateUploadTask = useCallback((id: string, patch: Partial<UploadTask>) => {
+    setUploadTasks((current) =>
+      current.map((task) => (task.id === id ? { ...task, ...patch } : task)),
+    );
+  }, []);
+
+  const uploadSingleFile = useCallback(
+    async (file: File, parentId: number | null, nameOverride?: string) => {
+      const taskId = `${Date.now()}-${Math.random()}`;
+      const abortController = new AbortController();
+      setUploadTasks((current) => [
+        ...current,
+        {
+          id: taskId,
+          fileName: file.name,
+          loaded: 0,
+          total: file.size,
+          percent: 0,
+          status: "uploading",
+          abortController,
+        },
+      ]);
+
+      try {
+        await uploadFile({
+          file,
+          name: nameOverride ?? file.name.replace(/\.[^.]+$/, ""),
+          parentId,
+          signal: abortController.signal,
+          onProgress: (progress) => updateUploadTask(taskId, progress),
+        });
+        updateUploadTask(taskId, { status: "processing", percent: 100 });
+        updateUploadTask(taskId, { status: "done", message: "完了" });
+        return true;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          updateUploadTask(taskId, { status: "canceled", message: "キャンセルしました" });
+          return false;
+        }
+        updateUploadTask(taskId, {
+          status: "failed",
+          message: errorMessage(error),
+        });
+        if (isNameConflict(error)) {
+          setConflict({
+            file,
+            parentId,
+            suggestedName: nextAvailableName(file.name),
+            message: `「${file.name}」はすでに存在します。別の名前を入力してください。`,
+          });
+          setNameValue(nextAvailableName(file.name).replace(/\.[^.]+$/, ""));
+          setDialog("conflict");
+        }
+        return false;
+      }
+    },
+    [updateUploadTask],
+  );
+
   const uploadFiles = useCallback(
     async (files: File[]) => {
       if (mode !== "drive" || files.length === 0) return;
@@ -169,53 +286,95 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       }
 
       uploadInProgressRef.current = true;
+      setIsUploading(true);
       let succeeded = 0;
-      const failures: string[] = [];
 
       try {
         for (const file of files) {
-          try {
-            await uploadMutation.mutateAsync({
-              file,
-              name: file.name.replace(/\.[^.]+$/, ""),
-              parentId: folderId,
-            });
-            succeeded += 1;
-          } catch (error) {
-            failures.push(`${file.name}: ${errorMessage(error)}`);
-          }
+          if (await uploadSingleFile(file, folderId)) succeeded += 1;
         }
 
         if (succeeded > 0) await invalidateCurrent();
 
-        if (failures.length === 0) {
-          toast.show({
-            tone: "success",
-            message:
-              succeeded === 1
-                ? "アップロードしました。"
-                : `${succeeded}件アップロードしました。`,
-          });
-          return;
-        }
-
         toast.show({
-          tone: succeeded > 0 ? "info" : "danger",
+          tone: succeeded === files.length ? "success" : succeeded > 0 ? "info" : "danger",
           message:
-            succeeded > 0
-              ? `${succeeded}件アップロードしました。${failures.length}件失敗しました。`
-              : `アップロードに失敗しました。${failures[0]}`,
+            succeeded === files.length
+              ? `${succeeded}件アップロードしました。`
+              : succeeded > 0
+                ? `${succeeded}件アップロードしました。${files.length - succeeded}件失敗しました。`
+                : "アップロードに失敗しました。",
         });
       } finally {
         uploadInProgressRef.current = false;
+        setIsUploading(false);
       }
     },
-    [folderId, invalidateCurrent, mode, toast, uploadMutation],
+    [folderId, invalidateCurrent, mode, toast, uploadSingleFile],
+  );
+
+  const ensureDirectoryPath = useCallback(
+    async (segments: string[]) => {
+      let parentId = folderId;
+      for (const segment of segments) {
+        const siblings = await fetchDriveItems(parentId);
+        const existing = siblings.find(
+          (item) => item.item_type === "directory" && item.name === segment,
+        );
+        if (existing) {
+          parentId = existing.id;
+          continue;
+        }
+        const created = await createDirectory({ name: segment, parentId });
+        parentId = created.id;
+      }
+      return parentId;
+    },
+    [folderId],
+  );
+
+  const uploadDirectory = useCallback(
+    async (files: File[]) => {
+      const safeFiles = files.filter((file) => safeRelativePath(file));
+      if (safeFiles.length !== files.length) {
+        toast.show({ tone: "danger", message: "安全でないパスを含むファイルは除外しました。" });
+      }
+      if (safeFiles.length === 0) return;
+      if (uploadInProgressRef.current) {
+        toast.show({ tone: "info", message: "アップロード中です。完了してから再度実行してください。" });
+        return;
+      }
+
+      uploadInProgressRef.current = true;
+      setIsUploading(true);
+      let succeeded = 0;
+      try {
+        for (const file of safeFiles) {
+          const segments = relativePathSegments(file);
+          const fileParentId = await ensureDirectoryPath(segments.slice(0, -1));
+          if (await uploadSingleFile(file, fileParentId)) succeeded += 1;
+        }
+        if (succeeded > 0) await invalidateCurrent();
+        toast.show({
+          tone: succeeded === safeFiles.length ? "success" : "info",
+          message: `${succeeded} / ${safeFiles.length} 件アップロードしました。`,
+        });
+      } finally {
+        uploadInProgressRef.current = false;
+        setIsUploading(false);
+      }
+    },
+    [ensureDirectoryPath, invalidateCurrent, toast, uploadSingleFile],
   );
 
   const handleUpload = (files: FileList | null) => {
     if (!files?.length) return;
     void uploadFiles(Array.from(files));
+  };
+
+  const handleDirectoryUpload = (files: FileList | null) => {
+    if (!files?.length) return;
+    void uploadDirectory(Array.from(files));
   };
 
   const handleDragEnter = (event: React.DragEvent<HTMLElement>) => {
@@ -228,7 +387,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const handleDragOver = (event: React.DragEvent<HTMLElement>) => {
     if (mode !== "drive" || !hasFiles(event.dataTransfer)) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = uploadMutation.isPending ? "none" : "copy";
+    event.dataTransfer.dropEffect = uploadInProgressRef.current ? "none" : "copy";
   };
 
   const handleDragLeave = (event: React.DragEvent<HTMLElement>) => {
@@ -273,7 +432,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   return (
     <section
       className={`drive-page ${isDraggingFiles ? "drag-active" : ""}`.trim()}
-      aria-busy={listQuery.isFetching || uploadMutation.isPending}
+      aria-busy={visibleQuery.isFetching || isUploading}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -296,6 +455,51 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           {mode === "trash" ? "ゴミ箱" : (folderQuery.data?.name ?? "共有ドライブ")}
         </h1>
       </div>
+      {mode === "drive" ? (
+        <form
+          className="drive-search"
+          role="search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const next = new URLSearchParams(searchParams);
+            if (searchInput.trim()) next.set("q", searchInput.trim());
+            else next.delete("q");
+            next.set("scope", searchScope);
+            setSearchParams(next);
+          }}
+        >
+          <label className="field drive-search-field">
+            <span>ファイル・フォルダーを検索</span>
+            <div className="search-input">
+              <Search size={16} aria-hidden="true" />
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="ファイル名、拡張子、作成者名"
+              />
+              {searchInput ? (
+                <IconButton label="検索を解除" onClick={() => setSearchInput("")}>
+                  <X size={16} aria-hidden="true" />
+                </IconButton>
+              ) : null}
+            </div>
+          </label>
+          <label className="field scope-field">
+            <span>検索範囲</span>
+            <select
+              value={searchScope}
+              onChange={(event) => {
+                const next = new URLSearchParams(searchParams);
+                next.set("scope", event.target.value);
+                setSearchParams(next);
+              }}
+            >
+              <option value="current">現在のフォルダー</option>
+              <option value="organization">グループ全体</option>
+            </select>
+          </label>
+        </form>
+      ) : null}
       <div className="toolbar">
         {selectedIds.length > 0 ? (
           <>
@@ -344,11 +548,20 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                 <Button
                   type="button"
                   variant="secondary"
-                  loading={uploadMutation.isPending}
+                  loading={isUploading}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <FilePlus size={16} aria-hidden="true" />
-                  アップロード
+                  ファイルアップロード
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={isUploading}
+                  onClick={() => directoryInputRef.current?.click()}
+                >
+                  <UploadCloud size={16} aria-hidden="true" />
+                  フォルダーアップロード
                 </Button>
               </>
             ) : null}
@@ -367,23 +580,41 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           className="visually-hidden"
           type="file"
           multiple
-          disabled={uploadMutation.isPending}
+          disabled={isUploading}
           onChange={(event) => {
             handleUpload(event.currentTarget.files);
             event.currentTarget.value = "";
           }}
         />
+        <input
+          ref={directoryInputRef}
+          className="visually-hidden"
+          type="file"
+          multiple
+          disabled={isUploading}
+          onChange={(event) => {
+            handleDirectoryUpload(event.currentTarget.files);
+            event.currentTarget.value = "";
+          }}
+          {...{ webkitdirectory: "" }}
+        />
       </div>
-      {listQuery.isLoading ? <LoadingIndicator label="一覧を読み込んでいます" /> : null}
-      {listQuery.isError ? (
-        <ErrorState
-          message={errorMessage(listQuery.error)}
-          onRetry={() => void listQuery.refetch()}
+      {uploadTasks.length > 0 ? (
+        <UploadProgressPanel
+          tasks={uploadTasks}
+          onCancel={(task) => task.abortController?.abort()}
         />
       ) : null}
-      {!listQuery.isLoading && !listQuery.isError && items.length === 0 ? (
+      {visibleQuery.isLoading ? <LoadingIndicator label="一覧を読み込んでいます" /> : null}
+      {visibleQuery.isError ? (
+        <ErrorState
+          message={errorMessage(visibleQuery.error)}
+          onRetry={() => void visibleQuery.refetch()}
+        />
+      ) : null}
+      {!visibleQuery.isLoading && !visibleQuery.isError && items.length === 0 ? (
         <EmptyState
-          title={mode === "trash" ? "ゴミ箱は空です。" : "このフォルダは空です。"}
+          title={searchTerm ? "検索結果はありません。" : mode === "trash" ? "ゴミ箱は空です。" : "このフォルダは空です。"}
           description={
             mode === "drive"
               ? "フォルダ作成またはアップロードから始められます。"
@@ -404,6 +635,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }}
           onDownload={downloadDriveItem}
           trash={mode === "trash"}
+          searchMode={Boolean(searchTerm)}
         />
       ) : null}
       <Modal
@@ -435,6 +667,29 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }}
         />
       </Modal>
+      <Modal
+        open={dialog === "conflict"}
+        title="名前の重複"
+        onClose={() => setDialog(null)}
+      >
+        {conflict ? (
+          <NameForm
+            value={nameValue}
+            submitLabel="名前を変更して再試行"
+            loading={isUploading}
+            message={conflict.message}
+            onChange={setNameValue}
+            onSubmit={(name) => {
+              setDialog(null);
+              void uploadSingleFile(conflict.file, conflict.parentId, name).then(
+                async (succeeded) => {
+                  if (succeeded) await invalidateCurrent();
+                },
+              );
+            }}
+          />
+        ) : null}
+      </Modal>
       <ConfirmDialog
         open={dialog === "delete"}
         title="ゴミ箱へ移動"
@@ -454,7 +709,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         title={activeItem?.name ?? "プレビュー"}
         onClose={() => setDialog(null)}
       >
-        {activeItem ? <Preview item={activeItem} /> : null}
+        {dialog === "preview" && activeItem ? <Preview item={activeItem} /> : null}
       </Modal>
     </section>
   );
@@ -464,6 +719,7 @@ function FileTable({
   items,
   selectedIds,
   trash,
+  searchMode,
   onToggle,
   onOpen,
   onRename,
@@ -472,6 +728,7 @@ function FileTable({
   items: DriveItem[];
   selectedIds: number[];
   trash: boolean;
+  searchMode: boolean;
   onToggle: (id: number) => void;
   onOpen: (item: DriveItem) => void;
   onRename: (item: DriveItem) => void;
@@ -484,6 +741,7 @@ function FileTable({
           <tr>
             <th scope="col">選択</th>
             <th scope="col">名前</th>
+            <th scope="col">作成者</th>
             <th scope="col">更新日時</th>
             <th scope="col">サイズ</th>
             <th scope="col">操作</th>
@@ -493,7 +751,7 @@ function FileTable({
           {items.map((item) => (
             <tr
               key={item.id}
-              className={selectedIds.includes(item.id) ? "selected" : ""}
+              className={`${selectedIds.includes(item.id) ? "selected" : ""} ${item.item_type === "directory" ? "directory-row" : ""}`.trim()}
               tabIndex={0}
               onDoubleClick={() => onOpen(item)}
               onKeyDown={(event) => event.key === "Enter" && onOpen(item)}
@@ -516,9 +774,14 @@ function FileTable({
                   <span className="file-name">{displayName(item)}</span>
                 </button>
                 <span className="mobile-meta">
-                  {formatDate(item.updated_at)} ・ {formatSize(item.file_size)}
+                  {item.owner_display_name ?? "不明"} ・ {formatDate(item.updated_at)} ・ {formatSize(item.file_size)}
+                  {searchMode && item.parent_name ? ` ・ ${item.parent_name}` : ""}
                 </span>
+                {searchMode && item.parent_name ? (
+                  <span className="file-location">場所: {item.parent_name}</span>
+                ) : null}
               </td>
+              <td>{item.owner_display_name ?? "不明"}</td>
               <td>{formatDate(item.updated_at)}</td>
               <td>{formatSize(item.file_size)}</td>
               <td>
@@ -553,12 +816,14 @@ function NameForm({
   value,
   submitLabel,
   loading,
+  message,
   onChange,
   onSubmit,
 }: {
   value: string;
   submitLabel: string;
   loading: boolean;
+  message?: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
 }) {
@@ -571,6 +836,7 @@ function NameForm({
         if (trimmed) onSubmit(trimmed);
       }}
     >
+      {message ? <p className="form-message">{message}</p> : null}
       <label className="field">
         <span>名前</span>
         <input
@@ -588,7 +854,70 @@ function NameForm({
   );
 }
 
+function UploadProgressPanel({
+  tasks,
+  onCancel,
+}: {
+  tasks: UploadTask[];
+  onCancel: (task: UploadTask) => void;
+}) {
+  const total = tasks.reduce((sum, task) => sum + (task.total ?? 0), 0);
+  const loaded = tasks.reduce((sum, task) => sum + task.loaded, 0);
+  const percent = total ? Math.round((loaded / total) * 100) : undefined;
+  return (
+    <section className="upload-progress" aria-label="アップロード進捗">
+      <div className="upload-progress-header">
+        <h2>アップロード状況</h2>
+        <span>
+          {tasks.filter((task) => task.status === "done").length} / {tasks.length} 件完了
+        </span>
+      </div>
+      <ProgressBar percent={percent} />
+      <ul>
+        {tasks.map((task) => (
+          <li key={task.id}>
+            <div>
+              <strong>{task.fileName}</strong>
+              <span>
+                {formatSize(task.loaded)} / {formatSize(task.total)}{" "}
+                {task.percent !== undefined ? `${task.percent}%` : ""}
+              </span>
+              <span>{uploadStatusText(task)}</span>
+            </div>
+            {task.status === "uploading" ? (
+              <Button type="button" variant="ghost" onClick={() => onCancel(task)}>
+                キャンセル
+              </Button>
+            ) : null}
+            <ProgressBar percent={task.percent} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ProgressBar({ percent }: { percent?: number }) {
+  return (
+    <div className="progress-bar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} role="progressbar">
+      <span style={{ width: `${percent ?? 100}%` }} />
+    </div>
+  );
+}
+
 function Preview({ item }: { item: DriveItem }) {
+  const mediaRef = useRef<HTMLMediaElement | null>(null);
+  const stopMedia = useCallback(() => {
+    const media = mediaRef.current;
+    if (!media) return;
+    media.pause();
+    media.currentTime = 0;
+    media.removeAttribute("src");
+    media.load();
+  }, []);
+
+  useEffect(() => stopMedia, [stopMedia]);
+
   if (item.content_type?.startsWith("image/")) {
     return <img className="preview-media" src={previewUrl(item.id)} alt={item.name} />;
   }
@@ -600,6 +929,9 @@ function Preview({ item }: { item: DriveItem }) {
   if (item.content_type?.startsWith("video/")) {
     return (
       <video
+        ref={(element) => {
+          if (element) mediaRef.current = element;
+        }}
         className="preview-media"
         src={streamUrl(item.id)}
         controls
@@ -610,6 +942,9 @@ function Preview({ item }: { item: DriveItem }) {
   if (item.content_type?.startsWith("audio/")) {
     return (
       <audio
+        ref={(element) => {
+          if (element) mediaRef.current = element;
+        }}
         className="preview-media"
         src={streamUrl(item.id)}
         controls
@@ -638,6 +973,42 @@ function formatSize(value?: number | null) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function uploadStatusText(task: UploadTask) {
+  if (task.status === "processing") return "アップロード完了。サーバーで処理しています。";
+  if (task.status === "done") return "完了";
+  if (task.status === "failed") return task.message ?? "失敗";
+  if (task.status === "canceled") return "キャンセルしました";
+  return "アップロード中";
+}
+
+function isNameConflict(error: unknown) {
+  return error instanceof ApiError && error.status === 409 && error.code === "name_conflict";
+}
+
+function nextAvailableName(filename: string) {
+  const match = /^(.*?)(\.[^.]+)?$/.exec(filename);
+  const base = match?.[1] || filename;
+  const extension = match?.[2] ?? "";
+  return `${base} (2)${extension}`;
+}
+
+function relativePathSegments(file: File) {
+  const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
+  return (relativePath || file.name).split(/[\\/]+/).filter(Boolean);
+}
+
+function safeRelativePath(file: File) {
+  return relativePathSegments(file).every(
+    (part) =>
+      part !== "." &&
+      part !== ".." &&
+      Array.from(part).every((char) => {
+        const code = char.charCodeAt(0);
+        return code > 31 && code !== 127;
+      }),
+  );
 }
 
 function errorMessage(error: unknown) {

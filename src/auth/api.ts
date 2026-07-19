@@ -21,10 +21,14 @@ export function login(email: string) {
   });
 }
 
-export function registerByInvite(email: string, inviteCode: string) {
+export function registerByInvite(
+  email: string,
+  inviteCode: string,
+  displayName?: string,
+) {
   return apiRequest<{ message?: string }>("/api/v1/auth/create", {
     method: "POST",
-    body: { email, invite_code: inviteCode },
+    body: { email, invite_code: inviteCode, display_name: displayName },
   });
 }
 

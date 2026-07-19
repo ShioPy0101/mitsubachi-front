@@ -1,4 +1,4 @@
-import { LogOut, Menu, Shield, Trash2, UploadCloud } from "lucide-react";
+import { LogOut, Menu, Shield, Trash2, UploadCloud, Users } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -50,7 +50,7 @@ export function AppLayout() {
           <span className="org-name">
             {auth.user?.organization?.name ?? "Organization"}
           </span>
-          <span className="user-chip">{auth.user?.name ?? auth.user?.email}</span>
+          <span className="user-chip">{auth.user?.display_name ?? auth.user?.name ?? "未設定ユーザー"}</span>
           <span className="role-chip">{auth.user?.role}</span>
           <IconButton
             label="ログアウト"
@@ -101,6 +101,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <NavLink to="/trash" onClick={onNavigate}>
         <Trash2 size={18} aria-hidden="true" />
         ゴミ箱
+      </NavLink>
+      <NavLink to="/settings/group" onClick={onNavigate}>
+        <Users size={18} aria-hidden="true" />
+        グループ
       </NavLink>
       {canUseAdmin(auth.user) ? (
         <NavLink to="/admin" onClick={onNavigate}>

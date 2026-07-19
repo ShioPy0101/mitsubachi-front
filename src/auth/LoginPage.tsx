@@ -14,11 +14,13 @@ import { login, registerByInvite } from "./api";
 
 const authSchema = z.object({
   email: z.string().email("メールアドレスを入力してください。"),
+  displayName: z.string().max(50, "表示名は50文字以内で入力してください。").optional(),
   inviteCode: z.string().optional(),
 });
 
 type AuthFormValues = {
   email: string;
+  displayName?: string;
   inviteCode?: string;
 };
 
@@ -27,13 +29,13 @@ export function LoginPage() {
   const toast = useToast();
   const form = useForm<AuthFormValues>({
     resolver: zodResolver(authSchema),
-    defaultValues: { email: "", inviteCode: "" },
+    defaultValues: { email: "", displayName: "", inviteCode: "" },
   });
   const mutation = useMutation({
-    mutationFn: (values: { email: string; inviteCode?: string }) =>
+    mutationFn: (values: AuthFormValues) =>
       mode === "login"
         ? login(values.email)
-        : registerByInvite(values.email, values.inviteCode ?? ""),
+        : registerByInvite(values.email, values.inviteCode ?? "", values.displayName ?? ""),
     onSuccess: () => {
       toast.show({
         tone: "success",
@@ -90,6 +92,17 @@ export function LoginPage() {
             <FieldError error={form.formState.errors.email?.message} />
           </label>
           {mode === "register" ? (
+            <>
+            <label className="field">
+              <span>表示名</span>
+              <input
+                type="text"
+                autoComplete="name"
+                aria-invalid={Boolean(form.formState.errors.displayName)}
+                {...form.register("displayName")}
+              />
+              <FieldError error={form.formState.errors.displayName?.message} />
+            </label>
             <label className="field">
               <span>招待コード</span>
               <input
@@ -106,6 +119,7 @@ export function LoginPage() {
                 }
               />
             </label>
+            </>
           ) : null}
           <Button type="submit" loading={mutation.isPending}>
             <Mail size={16} aria-hidden="true" />

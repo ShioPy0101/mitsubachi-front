@@ -1,13 +1,15 @@
 export type RawApiError =
   | { error: string }
   | { errors: string[] }
-  | { error: { code?: string; message?: string } };
+  | { error: { code?: string; message?: string; field?: string; conflicting_name?: string } };
 
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly details: string[];
   readonly url?: string;
+  readonly field?: string;
+  readonly conflictingName?: string;
 
   constructor(
     status: number,
@@ -15,6 +17,8 @@ export class ApiError extends Error {
     details: string[] = [],
     code?: string,
     url?: string,
+    field?: string,
+    conflictingName?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -22,6 +26,8 @@ export class ApiError extends Error {
     this.details = details;
     this.code = code;
     this.url = url;
+    this.field = field;
+    this.conflictingName = conflictingName;
   }
 }
 
@@ -67,7 +73,12 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
           ? body.error.message
           : (statusMessages[status] ?? "リクエストに失敗しました。");
       const code = typeof body.error.code === "string" ? body.error.code : undefined;
-      return new ApiError(status, message, [], code, url);
+      const field = typeof body.error.field === "string" ? body.error.field : undefined;
+      const conflictingName =
+        typeof body.error.conflicting_name === "string"
+          ? body.error.conflicting_name
+          : undefined;
+      return new ApiError(status, message, [], code, url, field, conflictingName);
     }
   }
 
