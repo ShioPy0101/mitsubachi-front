@@ -20,12 +20,15 @@ import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { ErrorReportPanel } from "../components/ErrorReportPanel";
 import { FileTypeIcon } from "../components/FileTypeIcon";
 import { IconButton } from "../components/IconButton";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { Modal } from "../components/Modal";
 import { useToast } from "../components/ToastProvider";
+import { normalizeAppError, type AppError } from "../errors/appError";
 import {
+  bulkMove,
   bulkDelete,
   bulkDownload,
   bulkRestore,
@@ -42,6 +45,7 @@ import {
   restoreDriveItem,
   streamUrl,
   uploadFile,
+  moveDriveItem,
 } from "./api";
 
 type DriveMode = "drive" | "trash";
@@ -49,11 +53,15 @@ type DriveMode = "drive" | "trash";
 type UploadTask = {
   id: string;
   fileName: string;
+  file: File;
+  parentId: number | null;
+  uploadName: string;
   loaded: number;
   total?: number;
   percent?: number;
   status: "uploading" | "processing" | "done" | "failed" | "canceled";
   message?: string;
+  error?: AppError;
   abortController?: AbortController;
 };
 
@@ -63,6 +71,8 @@ type ConflictState = {
   suggestedName: string;
   message: string;
 };
+
+type Breadcrumb = NonNullable<DriveItem["breadcrumbs"]>[number];
 
 export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const params = useParams();
@@ -89,6 +99,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
+  const [lastError, setLastError] = useState<AppError | null>(null);
+  const [draggingIds, setDraggingIds] = useState<number[]>([]);
+  const [dragOverFolderId, setDragOverFolderId] = useState<number | null>(null);
+  const [dragOverBreadcrumbId, setDragOverBreadcrumbId] = useState<number | null>(null);
 
   const listQuery = useQuery({
     queryKey: mode === "trash" ? driveKeys.trash() : driveKeys.list(folderId),
@@ -134,6 +148,17 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     () => items.filter((item) => selectedIds.includes(item.id)),
     [items, selectedIds],
   );
+  const breadcrumbs = useMemo<Breadcrumb[]>(
+    () => folderQuery.data?.breadcrumbs ?? [{ id: null, name: "共有ドライブ" }],
+    [folderQuery.data?.breadcrumbs],
+  );
+  const pageLabel = breadcrumbs.map((crumb) => crumb.name).join(" / ");
+  const visibleError = lastError ?? (visibleQuery.isError
+    ? normalizeAppError(visibleQuery.error, {
+        operation: searchTerm ? "検索" : "一覧取得",
+        page: pageLabel,
+      })
+    : null);
 
   const invalidateCurrent = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -141,24 +166,58 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     });
   }, [folderId, mode, queryClient]);
 
+  const captureError = useCallback(
+    (
+      error: unknown,
+      operation: string,
+      safeDetails?: Record<string, string | number | boolean | null | undefined>,
+    ) => {
+      const appError = normalizeAppError(error, {
+        operation,
+        page: pageLabel,
+        safeDetails,
+      });
+      setLastError(appError);
+      toast.show({ tone: "danger", message: appError.message });
+      if (appError.status === 401) void navigate("/login");
+      if (appError.status === 404) void invalidateCurrent();
+      return appError;
+    },
+    [invalidateCurrent, navigate, pageLabel, toast],
+  );
+
   const createMutation = useMutation({
     mutationFn: createDirectory,
     onSuccess: async () => {
       await invalidateCurrent();
       setDialog(null);
       setNameValue("");
+      setLastError(null);
       toast.show({ tone: "success", message: "フォルダを作成しました。" });
     },
-    onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
+    onError: (error) => {
+      const appError = captureError(error, "フォルダー作成", { itemType: "directory", itemName: nameValue });
+      if (appError.code === "duplicate_name") {
+        setConflict(null);
+        setDialog("folder");
+      }
+    },
   });
   const renameMutation = useMutation({
     mutationFn: renameDriveItem,
     onSuccess: async () => {
       await invalidateCurrent();
       setDialog(null);
+      setLastError(null);
       toast.show({ tone: "success", message: "名前を変更しました。" });
     },
-    onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
+    onError: (error) => {
+      const appError = captureError(error, "リネーム", {
+        itemType: activeItem?.item_type,
+        itemName: nameValue,
+      });
+      if (appError.code === "duplicate_name") setDialog("rename");
+    },
   });
   const deleteMutation = useMutation({
     mutationFn: async () =>
@@ -170,12 +229,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
       setSelectedIds([]);
       setDialog(null);
+      setLastError(null);
       toast.show({
         tone: "success",
         message: response.message ?? "一括操作が完了しました。",
       });
     },
-    onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
+    onError: (error) => captureError(error, selectedIds.length > 1 ? "一括削除" : "削除"),
   });
   const restoreMutation = useMutation({
     mutationFn: async () =>
@@ -186,13 +246,29 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
       await queryClient.invalidateQueries({ queryKey: driveKeys.all });
       setSelectedIds([]);
+      setLastError(null);
       toast.show({ tone: "success", message: "一括操作が完了しました。" });
     },
-    onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
+    onError: (error) => captureError(error, selectedIds.length > 1 ? "一括復元" : "復元"),
   });
   const bulkDownloadMutation = useMutation({
     mutationFn: () => bulkDownload(selectedIds),
-    onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
+    onError: (error) => captureError(error, "一括ダウンロード"),
+  });
+  const moveMutation = useMutation({
+    mutationFn: async ({ ids, parentId }: { ids: number[]; parentId: number | null }) =>
+      ids.length === 1 ? moveDriveItem({ id: ids[0], parentId }) : bulkMove(ids, parentId),
+    onSuccess: async () => {
+      await invalidateCurrent();
+      await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+      setSelectedIds([]);
+      setDraggingIds([]);
+      setDragOverFolderId(null);
+      setDragOverBreadcrumbId(null);
+      setLastError(null);
+      toast.show({ tone: "success", message: "移動しました。" });
+    },
+    onError: (error) => captureError(error, draggingIds.length > 1 ? "一括移動" : "移動"),
   });
 
   const toggleSelected = (id: number) => {
@@ -224,11 +300,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     async (file: File, parentId: number | null, nameOverride?: string) => {
       const taskId = `${Date.now()}-${Math.random()}`;
       const abortController = new AbortController();
+      const uploadName = nameOverride ?? file.name.replace(/\.[^.]+$/, "");
       setUploadTasks((current) => [
         ...current,
         {
           id: taskId,
           fileName: file.name,
+          file,
+          parentId,
+          uploadName,
           loaded: 0,
           total: file.size,
           percent: 0,
@@ -240,7 +320,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       try {
         await uploadFile({
           file,
-          name: nameOverride ?? file.name.replace(/\.[^.]+$/, ""),
+          name: uploadName,
           parentId,
           signal: abortController.signal,
           onProgress: (progress) => updateUploadTask(taskId, progress),
@@ -253,9 +333,16 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           updateUploadTask(taskId, { status: "canceled", message: "キャンセルしました" });
           return false;
         }
+        const appError = normalizeAppError(error, {
+          operation: "ファイルアップロード",
+          page: pageLabel,
+          safeDetails: { itemType: "file", itemName: file.name },
+        });
+        setLastError(appError);
         updateUploadTask(taskId, {
           status: "failed",
-          message: errorMessage(error),
+          message: appError.message,
+          error: appError,
         });
         if (isNameConflict(error)) {
           setConflict({
@@ -270,7 +357,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         return false;
       }
     },
-    [updateUploadTask],
+    [pageLabel, updateUploadTask],
   );
 
   const uploadFiles = useCallback(
@@ -403,17 +490,62 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     dragDepthRef.current = 0;
     setIsDraggingFiles(false);
 
-    const files = filesFromDataTransfer(event.dataTransfer);
-    if (files.length === 0) {
-      toast.show({
-        tone: "info",
-        message: "アップロードできるファイルがありません。",
-      });
-      return;
-    }
+    void filesFromDataTransfer(event.dataTransfer).then((files) => {
+      if (files.length === 0) {
+        toast.show({
+          tone: "info",
+          message: "アップロードできるファイルがありません。",
+        });
+        return;
+      }
 
-    void uploadFiles(files);
+      if (files.some((file) => (file as File & { webkitRelativePath?: string }).webkitRelativePath)) {
+        void uploadDirectory(files);
+      } else {
+        void uploadFiles(files);
+      }
+    });
   };
+
+  const draggedItems = useMemo(
+    () => items.filter((item) => draggingIds.includes(item.id)),
+    [draggingIds, items],
+  );
+
+  const moveDraggedItems = useCallback(
+    (targetParentId: number | null, targetName: string) => {
+      if (draggingIds.length === 0 || moveMutation.isPending) return;
+      if (draggedItems.every((item) => (item.parent_id ?? null) === targetParentId)) {
+        const appError = normalizeAppError(new Error("同じ場所へは移動できません。"), {
+          operation: draggingIds.length > 1 ? "一括移動" : "移動",
+          page: pageLabel,
+          safeDetails: { targetFolder: targetName },
+        });
+        setLastError(appError);
+        return;
+      }
+      moveMutation.mutate({ ids: draggingIds, parentId: targetParentId });
+    },
+    [draggedItems, draggingIds, moveMutation, pageLabel],
+  );
+
+  const startItemDrag = useCallback(
+    (event: React.DragEvent, item: DriveItem) => {
+      if (mode === "trash") return;
+      const ids = selectedIds.includes(item.id) ? selectedIds : [item.id];
+      setDraggingIds(ids);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-mitsubachi-drive-item", ids.join(","));
+      event.dataTransfer.setData("text/plain", `${ids.length}件を移動`);
+    },
+    [mode, selectedIds],
+  );
+
+  const endItemDrag = useCallback(() => {
+    setDraggingIds([]);
+    setDragOverFolderId(null);
+    setDragOverBreadcrumbId(null);
+  }, []);
 
   useEffect(() => {
     const preventFileOpen = (event: DragEvent) => {
@@ -445,12 +577,40 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         </div>
       ) : null}
       <div className="page-header">
-        <div className="breadcrumbs" aria-label="パンくず">
-          <Link to="/drive">共有ドライブ</Link>
-          {folderQuery.data ? (
-            <span aria-current="page">/ {folderQuery.data.name}</span>
-          ) : null}
-        </div>
+        <nav className="breadcrumbs" aria-label="パンくず">
+          {breadcrumbs.map((crumb, index) => {
+            const current = index === breadcrumbs.length - 1;
+            const to = crumb.id === null ? "/drive" : `/drive/folder/${crumb.id}`;
+            return (
+              <span
+                key={crumb.id ?? "root"}
+                className={`breadcrumb-item ${dragOverBreadcrumbId === crumb.id ? "drop-target" : ""}`.trim()}
+                onDragOver={(event) => {
+                  if (draggingIds.length === 0 || current) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setDragOverBreadcrumbId(crumb.id);
+                }}
+                onDragLeave={() => setDragOverBreadcrumbId(null)}
+                onDrop={(event) => {
+                  if (draggingIds.length === 0 || current) return;
+                  event.preventDefault();
+                  moveDraggedItems(crumb.id, crumb.name);
+                }}
+              >
+                {index > 0 ? <span aria-hidden="true">/</span> : null}
+                {current ? (
+                  <span aria-current="page">{crumb.name}</span>
+                ) : (
+                  <Link to={to}>{crumb.name}</Link>
+                )}
+              </span>
+            );
+          })}
+        </nav>
+        {draggingIds.length > 0 ? (
+          <p className="drag-status" role="status">{draggingIds.length}件を移動中</p>
+        ) : null}
         <h1>
           {mode === "trash" ? "ゴミ箱" : (folderQuery.data?.name ?? "共有ドライブ")}
         </h1>
@@ -603,13 +763,31 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         <UploadProgressPanel
           tasks={uploadTasks}
           onCancel={(task) => task.abortController?.abort()}
+          onRetry={(task) => void uploadSingleFile(task.file, task.parentId, task.uploadName)}
+        />
+      ) : null}
+      {visibleError ? (
+        <ErrorReportPanel
+          error={visibleError}
+          onRetry={() => {
+            if (visibleError.operation?.includes("検索")) void searchQuery.refetch();
+            else void visibleQuery.refetch();
+          }}
+          onResolveName={() => {
+            if (activeItem) setDialog("rename");
+            else if (conflict) setDialog("conflict");
+            else setDialog("folder");
+          }}
         />
       ) : null}
       {visibleQuery.isLoading ? <LoadingIndicator label="一覧を読み込んでいます" /> : null}
       {visibleQuery.isError ? (
         <ErrorState
           message={errorMessage(visibleQuery.error)}
-          onRetry={() => void visibleQuery.refetch()}
+          onRetry={() => {
+            captureError(visibleQuery.error, searchTerm ? "検索" : "一覧取得");
+            void visibleQuery.refetch();
+          }}
         />
       ) : null}
       {!visibleQuery.isLoading && !visibleQuery.isError && items.length === 0 ? (
@@ -634,6 +812,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             setDialog("rename");
           }}
           onDownload={downloadDriveItem}
+          onDragStart={startItemDrag}
+          onDragEnd={endItemDrag}
+          onDropToFolder={(item) => moveDraggedItems(item.id, item.name)}
+          onDragOverFolder={setDragOverFolderId}
+          onOpenParent={(parentId) => void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`)}
+          draggingIds={draggingIds}
+          dragOverFolderId={dragOverFolderId}
           trash={mode === "trash"}
           searchMode={Boolean(searchTerm)}
         />
@@ -724,6 +909,13 @@ function FileTable({
   onOpen,
   onRename,
   onDownload,
+  onDragStart,
+  onDragEnd,
+  onDropToFolder,
+  onDragOverFolder,
+  onOpenParent,
+  draggingIds,
+  dragOverFolderId,
 }: {
   items: DriveItem[];
   selectedIds: number[];
@@ -733,6 +925,13 @@ function FileTable({
   onOpen: (item: DriveItem) => void;
   onRename: (item: DriveItem) => void;
   onDownload: (id: number) => void;
+  onDragStart: (event: React.DragEvent, item: DriveItem) => void;
+  onDragEnd: () => void;
+  onDropToFolder: (item: DriveItem) => void;
+  onDragOverFolder: (id: number | null) => void;
+  onOpenParent: (parentId: number | null) => void;
+  draggingIds: number[];
+  dragOverFolderId: number | null;
 }) {
   return (
     <div className="file-list">
@@ -751,8 +950,29 @@ function FileTable({
           {items.map((item) => (
             <tr
               key={item.id}
-              className={`${selectedIds.includes(item.id) ? "selected" : ""} ${item.item_type === "directory" ? "directory-row" : ""}`.trim()}
+              className={[
+                selectedIds.includes(item.id) ? "selected" : "",
+                item.item_type === "directory" ? "directory-row" : "",
+                draggingIds.includes(item.id) ? "dragging-row" : "",
+                dragOverFolderId === item.id ? "drop-target" : "",
+              ].filter(Boolean).join(" ")}
               tabIndex={0}
+              draggable={!trash}
+              onDragStart={(event) => onDragStart(event, item)}
+              onDragEnd={onDragEnd}
+              onDragOver={(event) => {
+                if (item.item_type !== "directory" || draggingIds.length === 0) return;
+                if (draggingIds.includes(item.id)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                onDragOverFolder(item.id);
+              }}
+              onDragLeave={() => onDragOverFolder(null)}
+              onDrop={(event) => {
+                if (item.item_type !== "directory" || draggingIds.length === 0) return;
+                event.preventDefault();
+                onDropToFolder(item);
+              }}
               onDoubleClick={() => onOpen(item)}
               onKeyDown={(event) => event.key === "Enter" && onOpen(item)}
             >
@@ -778,7 +998,13 @@ function FileTable({
                   {searchMode && item.parent_name ? ` ・ ${item.parent_name}` : ""}
                 </span>
                 {searchMode && item.parent_name ? (
-                  <span className="file-location">場所: {item.parent_name}</span>
+                  <button
+                    type="button"
+                    className="file-location"
+                    onClick={() => onOpenParent(item.parent_id ?? null)}
+                  >
+                    場所: {item.parent_name}
+                  </button>
                 ) : null}
               </td>
               <td>{item.owner_display_name ?? "不明"}</td>
@@ -857,9 +1083,11 @@ function NameForm({
 function UploadProgressPanel({
   tasks,
   onCancel,
+  onRetry,
 }: {
   tasks: UploadTask[];
   onCancel: (task: UploadTask) => void;
+  onRetry: (task: UploadTask) => void;
 }) {
   const total = tasks.reduce((sum, task) => sum + (task.total ?? 0), 0);
   const loaded = tasks.reduce((sum, task) => sum + task.loaded, 0);
@@ -889,7 +1117,13 @@ function UploadProgressPanel({
                 キャンセル
               </Button>
             ) : null}
+            {task.status === "failed" ? (
+              <Button type="button" variant="secondary" onClick={() => onRetry(task)}>
+                再試行
+              </Button>
+            ) : null}
             <ProgressBar percent={task.percent} />
+            {task.error ? <ErrorReportPanel error={task.error} onRetry={() => onRetry(task)} /> : null}
           </li>
         ))}
       </ul>
@@ -984,7 +1218,11 @@ function uploadStatusText(task: UploadTask) {
 }
 
 function isNameConflict(error: unknown) {
-  return error instanceof ApiError && error.status === 409 && error.code === "name_conflict";
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    (error.code === "duplicate_name" || error.code === "name_conflict")
+  );
 }
 
 function nextAvailableName(filename: string) {
@@ -1019,7 +1257,21 @@ function hasFiles(dataTransfer: DataTransfer) {
   return Array.from(dataTransfer.types).includes("Files");
 }
 
-function filesFromDataTransfer(dataTransfer: DataTransfer) {
+async function filesFromDataTransfer(dataTransfer: DataTransfer) {
+  const entries: BrowserFileSystemEntry[] = [];
+  for (const item of Array.from(dataTransfer.items)) {
+    const entryItem = item as DataTransferItem & {
+      webkitGetAsEntry?: () => unknown;
+    };
+    const entry = entryItem.webkitGetAsEntry?.();
+    if (isBrowserFileSystemEntry(entry)) entries.push(entry);
+  }
+
+  if (entries.some((entry) => entry.isDirectory)) {
+    const files = await Promise.all(entries.map((entry) => filesFromEntry(entry, "")));
+    return files.flat();
+  }
+
   if (dataTransfer.items.length > 0) {
     return Array.from(dataTransfer.items)
       .filter((item) => item.kind === "file")
@@ -1028,4 +1280,53 @@ function filesFromDataTransfer(dataTransfer: DataTransfer) {
   }
 
   return Array.from(dataTransfer.files);
+}
+
+type BrowserFileSystemEntry = {
+  isFile: boolean;
+  isDirectory: boolean;
+  name: string;
+};
+
+function isBrowserFileSystemEntry(value: unknown): value is BrowserFileSystemEntry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "isFile" in value &&
+    "isDirectory" in value &&
+    "name" in value
+  );
+}
+
+type BrowserFileSystemFileEntry = BrowserFileSystemEntry & {
+  file: (success: (file: File) => void, failure: (error: DOMException) => void) => void;
+};
+
+type BrowserFileSystemDirectoryEntry = BrowserFileSystemEntry & {
+  createReader: () => {
+    readEntries: (
+      success: (entries: BrowserFileSystemEntry[]) => void,
+      failure: (error: DOMException) => void,
+    ) => void;
+  };
+};
+
+async function filesFromEntry(entry: BrowserFileSystemEntry, parentPath: string): Promise<File[]> {
+  const path = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+  if (entry.isFile) {
+    const file = await new Promise<File>((resolve, reject) => {
+      (entry as BrowserFileSystemFileEntry).file(resolve, reject);
+    });
+    Object.defineProperty(file, "webkitRelativePath", { value: path, configurable: true });
+    return [file];
+  }
+
+  const directory = entry as BrowserFileSystemDirectoryEntry;
+  const children = await new Promise<BrowserFileSystemEntry[]>((resolve, reject) => {
+    directory.createReader().readEntries(resolve, reject);
+  });
+  const nestedFiles = await Promise.all(
+    children.map((child) => filesFromEntry(child, path)),
+  );
+  return nestedFiles.flat();
 }

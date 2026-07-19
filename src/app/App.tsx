@@ -23,6 +23,7 @@ import { AuthProvider } from "../auth/AuthProvider";
 import { LoginPage } from "../auth/LoginPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { VerifyPage } from "../auth/VerifyPage";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "../drive/DrivePage";
 import { GroupDashboardPage } from "../GroupDashboardPage";
@@ -116,7 +117,9 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AuthProvider>
-          <RouterProvider router={router} />
+          <ErrorBoundary>
+            <RouterProvider router={router} />
+          </ErrorBoundary>
         </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>

@@ -1,7 +1,16 @@
 export type RawApiError =
   | { error: string }
   | { errors: string[] }
-  | { error: { code?: string; message?: string; field?: string; conflicting_name?: string } };
+  | {
+      error: {
+        code?: string;
+        message?: string;
+        request_id?: string;
+        details?: Record<string, unknown>;
+        field?: string;
+        conflicting_name?: string;
+      };
+    };
 
 export class ApiError extends Error {
   readonly status: number;
@@ -10,6 +19,8 @@ export class ApiError extends Error {
   readonly url?: string;
   readonly field?: string;
   readonly conflictingName?: string;
+  readonly requestId?: string;
+  readonly safeDetails?: Record<string, string | number | boolean | null>;
 
   constructor(
     status: number,
@@ -19,6 +30,8 @@ export class ApiError extends Error {
     url?: string,
     field?: string,
     conflictingName?: string,
+    requestId?: string,
+    safeDetails?: Record<string, string | number | boolean | null>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -28,6 +41,8 @@ export class ApiError extends Error {
     this.url = url;
     this.field = field;
     this.conflictingName = conflictingName;
+    this.requestId = requestId;
+    this.safeDetails = safeDetails;
   }
 }
 
@@ -74,11 +89,30 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
           : (statusMessages[status] ?? "リクエストに失敗しました。");
       const code = typeof body.error.code === "string" ? body.error.code : undefined;
       const field = typeof body.error.field === "string" ? body.error.field : undefined;
+      const errorDetails = isRecord(body.error.details) ? body.error.details : {};
+      const detailField =
+        typeof errorDetails.field === "string" ? errorDetails.field : undefined;
       const conflictingName =
-        typeof body.error.conflicting_name === "string"
-          ? body.error.conflicting_name
+        typeof errorDetails.conflicting_name === "string"
+          ? errorDetails.conflicting_name
+          : typeof body.error.conflicting_name === "string"
+            ? body.error.conflicting_name
+            : undefined;
+      const requestId =
+        typeof body.error.request_id === "string"
+          ? body.error.request_id
           : undefined;
-      return new ApiError(status, message, [], code, url, field, conflictingName);
+      return new ApiError(
+        status,
+        message,
+        [],
+        code,
+        url,
+        field ?? detailField,
+        conflictingName,
+        requestId,
+        safeDetailsFrom(errorDetails),
+      );
     }
   }
 
@@ -93,4 +127,16 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function safeDetailsFrom(value: Record<string, unknown>) {
+  return Object.entries(value).reduce<Record<string, string | number | boolean | null>>(
+    (details, [key, entry]) => {
+      if (["string", "number", "boolean"].includes(typeof entry) || entry === null) {
+        details[key] = entry as string | number | boolean | null;
+      }
+      return details;
+    },
+    {},
+  );
 }
