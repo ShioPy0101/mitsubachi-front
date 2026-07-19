@@ -99,6 +99,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
+  const [nameConflictMessage, setNameConflictMessage] = useState<string | null>(null);
   const [lastError, setLastError] = useState<AppError | null>(null);
   const [draggingIds, setDraggingIds] = useState<number[]>([]);
   const [dragOverFolderId, setDragOverFolderId] = useState<number | null>(null);
@@ -188,35 +189,64 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
 
   const createMutation = useMutation({
     mutationFn: createDirectory,
+    onMutate: () => {
+      setNameConflictMessage(null);
+    },
     onSuccess: async () => {
       await invalidateCurrent();
       setDialog(null);
       setNameValue("");
+      setNameConflictMessage(null);
       setLastError(null);
       toast.show({ tone: "success", message: "フォルダを作成しました。" });
     },
     onError: (error) => {
-      const appError = captureError(error, "フォルダー作成", { itemType: "directory", itemName: nameValue });
-      if (appError.code === "duplicate_name") {
+      if (isNameConflict(error)) {
+        const appError = normalizeAppError(error, {
+          operation: "フォルダー作成",
+          page: pageLabel,
+          safeDetails: { itemType: "directory", itemName: nameValue },
+        });
+        setNameConflictMessage(appError.message);
+        setLastError(null);
         setConflict(null);
         setDialog("folder");
+        return;
       }
+      captureError(error, "フォルダー作成", { itemType: "directory", itemName: nameValue });
     },
   });
   const renameMutation = useMutation({
     mutationFn: renameDriveItem,
+    onMutate: () => {
+      setNameConflictMessage(null);
+    },
     onSuccess: async () => {
       await invalidateCurrent();
       setDialog(null);
+      setNameConflictMessage(null);
       setLastError(null);
       toast.show({ tone: "success", message: "名前を変更しました。" });
     },
     onError: (error) => {
-      const appError = captureError(error, "リネーム", {
+      if (isNameConflict(error)) {
+        const appError = normalizeAppError(error, {
+          operation: "リネーム",
+          page: pageLabel,
+          safeDetails: {
+            itemType: activeItem?.item_type,
+            itemName: nameValue,
+          },
+        });
+        setNameConflictMessage(appError.message);
+        setLastError(null);
+        setDialog("rename");
+        return;
+      }
+      captureError(error, "リネーム", {
         itemType: activeItem?.item_type,
         itemName: nameValue,
       });
-      if (appError.code === "duplicate_name") setDialog("rename");
     },
   });
   const deleteMutation = useMutation({
@@ -269,7 +299,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       toast.show({ tone: "success", message: "移動しました。" });
     },
     onError: (error, variables) =>
-      captureError(error, variables.ids.length > 1 ? "一括移動" : "移動", {
+      captureError(error, variables.ids.length > 1 ? "一括ドラッグ移動" : "ドラッグ移動", {
         targetFolder: variables.targetName,
       }),
     onSettled: () => {
@@ -346,12 +376,6 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           page: pageLabel,
           safeDetails: { itemType: "file", itemName: file.name },
         });
-        setLastError(appError);
-        updateUploadTask(taskId, {
-          status: "failed",
-          message: appError.message,
-          error: appError,
-        });
         if (isNameConflict(error)) {
           setConflict({
             file,
@@ -360,8 +384,21 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             message: `「${file.name}」はすでに存在します。別の名前を入力してください。`,
           });
           setNameValue(nextAvailableName(file.name).replace(/\.[^.]+$/, ""));
+          setLastError(null);
+          updateUploadTask(taskId, {
+            status: "failed",
+            message: appError.message,
+            error: appError,
+          });
           setDialog("conflict");
+          return false;
         }
+        setLastError(appError);
+        updateUploadTask(taskId, {
+          status: "failed",
+          message: appError.message,
+          error: appError,
+        });
         return false;
       }
     },
@@ -779,11 +816,6 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             if (visibleError.operation?.includes("検索")) void searchQuery.refetch();
             else void visibleQuery.refetch();
           }}
-          onResolveName={() => {
-            if (activeItem) setDialog("rename");
-            else if (conflict) setDialog("conflict");
-            else setDialog("folder");
-          }}
         />
       ) : null}
       {visibleQuery.isLoading ? <LoadingIndicator label="一覧を読み込んでいます" /> : null}
@@ -815,6 +847,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           onRename={(item) => {
             setActiveItem(item);
             setNameValue(item.name);
+            setNameConflictMessage(null);
             setDialog("rename");
           }}
           onDownload={downloadDriveItem}
@@ -836,12 +869,16 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       <Modal
         open={dialog === "folder"}
         title="新しいフォルダ"
-        onClose={() => setDialog(null)}
+        onClose={() => {
+          setDialog(null);
+          setNameConflictMessage(null);
+        }}
       >
         <NameForm
           value={nameValue}
           submitLabel="作成"
           loading={createMutation.isPending}
+          message={dialog === "folder" ? (nameConflictMessage ?? undefined) : undefined}
           onChange={setNameValue}
           onSubmit={(name) => createMutation.mutate({ name, parentId: folderId })}
         />
@@ -849,12 +886,16 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       <Modal
         open={dialog === "rename"}
         title="名前を変更"
-        onClose={() => setDialog(null)}
+        onClose={() => {
+          setDialog(null);
+          setNameConflictMessage(null);
+        }}
       >
         <NameForm
           value={nameValue}
           submitLabel="変更"
           loading={renameMutation.isPending}
+          message={dialog === "rename" ? (nameConflictMessage ?? undefined) : undefined}
           onChange={setNameValue}
           onSubmit={(name) => {
             if (activeItem && name !== activeItem.name)
