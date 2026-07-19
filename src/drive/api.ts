@@ -147,10 +147,13 @@ export function renameDriveItem(input: { id: number; name: string }) {
 }
 
 export function moveDriveItem(input: { id: number; parentId: number | null }) {
-  return apiRequest<DriveItem>(`/api/v1/drive_items/${input.id}`, {
+  return apiRequest<{ data: DriveItem; request_id?: string }>(
+    `/api/v1/drive_items/${input.id}/move`,
+    {
     method: "PATCH",
     body: { parent_id: input.parentId },
-  });
+    },
+  );
 }
 
 export function deleteDriveItem(id: number) {
@@ -203,7 +206,7 @@ export async function bulkDownload(ids: number[], signal?: AbortSignal) {
     response.headers.get("Content-Type")?.includes("application/json")
   ) {
     const body: unknown = await response.json().catch(() => null);
-    throw new Error(bulkDownloadErrorMessage(body));
+    throw parseApiError(response.status, body, apiUrl("/api/v1/drive_items/bulk_download"));
   }
 
   if (!response.headers.get("Content-Type")?.includes("application/zip")) {
@@ -249,18 +252,6 @@ function contentDispositionFilename(value: string | null) {
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(value);
   if (!match?.[1]) return fallback;
   return decodeURIComponent(match[1]).replace(/[\\/:*?"<>|]/g, "_");
-}
-
-function bulkDownloadErrorMessage(body: unknown) {
-  if (typeof body === "object" && body !== null && "error" in body) {
-    const error = (body as { error?: unknown }).error;
-    if (typeof error === "string") return error;
-    if (typeof error === "object" && error !== null && "message" in error) {
-      const message = (error as { message?: unknown }).message;
-      if (typeof message === "string") return message;
-    }
-  }
-  return "一括ダウンロードに失敗しました。";
 }
 
 function parseJson(value: string) {

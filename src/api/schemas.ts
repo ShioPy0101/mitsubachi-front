@@ -31,6 +31,11 @@ export const meSchema = z.union([
   z.object({ data: userSchema }).transform(({ data }) => ({ user: data })),
 ]);
 
+const breadcrumbSchema = z.object({
+  id: z.number().nullable(),
+  name: z.string(),
+});
+
 export const driveItemSchema = z.object({
   id: z.number(),
   organization_id: z.number().optional(),
@@ -46,6 +51,7 @@ export const driveItemSchema = z.object({
   deleted_at: z.string().nullable().optional(),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
+  breadcrumbs: z.array(breadcrumbSchema).optional(),
 });
 
 export const driveItemsSchema = z.array(driveItemSchema);
