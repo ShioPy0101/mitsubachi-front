@@ -14,7 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { ApiError } from "../api/errors";
+import { ApiError, type DuplicateContentFile } from "../api/errors";
 import type { DriveItem } from "../api/schemas";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -70,6 +70,7 @@ type ConflictState = {
   parentId: number | null;
   suggestedName: string;
   message: string;
+  duplicateFiles: DuplicateContentFile[];
 };
 
 type Breadcrumb = NonNullable<DriveItem["breadcrumbs"]>[number];
@@ -179,7 +180,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         safeDetails,
       });
       setLastError(appError);
-      toast.show({ tone: "danger", message: appError.message });
+      toast.show({ tone: appError.level === "warn" ? "warn" : appError.level, message: appError.message });
       if (appError.status === 401) void navigate("/login");
       if (appError.status === 404) void invalidateCurrent();
       return appError;
@@ -335,7 +336,12 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   }, []);
 
   const uploadSingleFile = useCallback(
-    async (file: File, parentId: number | null, nameOverride?: string) => {
+    async (
+      file: File,
+      parentId: number | null,
+      nameOverride?: string,
+      options: { allowDuplicateContent?: boolean } = {},
+    ) => {
       const taskId = `${Date.now()}-${Math.random()}`;
       const abortController = new AbortController();
       const uploadName = nameOverride ?? file.name.replace(/\.[^.]+$/, "");
@@ -346,7 +352,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           fileName: file.name,
           file,
           parentId,
-          uploadName,
+      uploadName,
           loaded: 0,
           total: file.size,
           percent: 0,
@@ -360,16 +366,17 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           file,
           name: uploadName,
           parentId,
+          allowDuplicateContent: options.allowDuplicateContent,
           signal: abortController.signal,
           onProgress: (progress) => updateUploadTask(taskId, progress),
         });
         updateUploadTask(taskId, { status: "processing", percent: 100 });
         updateUploadTask(taskId, { status: "done", message: "完了" });
-        return true;
+        return "done";
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           updateUploadTask(taskId, { status: "canceled", message: "キャンセルしました" });
-          return false;
+          return "failed";
         }
         const appError = normalizeAppError(error, {
           operation: "ファイルアップロード",
@@ -377,13 +384,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           safeDetails: { itemType: "file", itemName: file.name },
         });
         if (isNameConflict(error)) {
+          const suggestedName = suggestedUploadName(error, file, items, parentId);
           setConflict({
             file,
             parentId,
-            suggestedName: nextAvailableName(file.name),
-            message: `「${file.name}」はすでに存在します。別の名前を入力してください。`,
+            suggestedName,
+            message: appError.message,
+            duplicateFiles: error instanceof ApiError ? error.duplicateFiles : [],
           });
-          setNameValue(nextAvailableName(file.name).replace(/\.[^.]+$/, ""));
+          setNameValue(suggestedName);
           setLastError(null);
           updateUploadTask(taskId, {
             status: "failed",
@@ -391,7 +400,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             error: appError,
           });
           setDialog("conflict");
-          return false;
+          return "conflict";
         }
         setLastError(appError);
         updateUploadTask(taskId, {
@@ -399,10 +408,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           message: appError.message,
           error: appError,
         });
-        return false;
+        return "failed";
       }
     },
-    [pageLabel, updateUploadTask],
+    [items, pageLabel, updateUploadTask],
   );
 
   const uploadFiles = useCallback(
@@ -420,21 +429,26 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       uploadInProgressRef.current = true;
       setIsUploading(true);
       let succeeded = 0;
+      let conflicted = 0;
 
       try {
         for (const file of files) {
-          if (await uploadSingleFile(file, folderId)) succeeded += 1;
+          const result = await uploadSingleFile(file, folderId);
+          if (result === "done") succeeded += 1;
+          if (result === "conflict") conflicted += 1;
         }
 
         if (succeeded > 0) await invalidateCurrent();
 
         toast.show({
-          tone: succeeded === files.length ? "success" : succeeded > 0 ? "info" : "danger",
+          tone: succeeded === files.length ? "success" : succeeded > 0 || conflicted > 0 ? "info" : "danger",
           message:
             succeeded === files.length
               ? `${succeeded}件アップロードしました。`
               : succeeded > 0
                 ? `${succeeded}件アップロードしました。${files.length - succeeded}件失敗しました。`
+                : conflicted > 0
+                  ? "同名または同一内容のファイルがあります。名前を確認してください。"
                 : "アップロードに失敗しました。",
         });
       } finally {
@@ -480,16 +494,22 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       uploadInProgressRef.current = true;
       setIsUploading(true);
       let succeeded = 0;
+      let conflicted = 0;
       try {
         for (const file of safeFiles) {
           const segments = relativePathSegments(file);
           const fileParentId = await ensureDirectoryPath(segments.slice(0, -1));
-          if (await uploadSingleFile(file, fileParentId)) succeeded += 1;
+          const result = await uploadSingleFile(file, fileParentId);
+          if (result === "done") succeeded += 1;
+          if (result === "conflict") conflicted += 1;
         }
         if (succeeded > 0) await invalidateCurrent();
         toast.show({
-          tone: succeeded === safeFiles.length ? "success" : "info",
-          message: `${succeeded} / ${safeFiles.length} 件アップロードしました。`,
+          tone: succeeded === safeFiles.length ? "success" : succeeded > 0 || conflicted > 0 ? "info" : "danger",
+          message:
+            conflicted > 0 && succeeded === 0
+              ? "同名または同一内容のファイルがあります。名前を確認してください。"
+              : `${succeeded} / ${safeFiles.length} 件アップロードしました。`,
         });
       } finally {
         uploadInProgressRef.current = false;
@@ -879,6 +899,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           submitLabel="作成"
           loading={createMutation.isPending}
           message={dialog === "folder" ? (nameConflictMessage ?? undefined) : undefined}
+          messageTone="info"
           onChange={setNameValue}
           onSubmit={(name) => createMutation.mutate({ name, parentId: folderId })}
         />
@@ -896,6 +917,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           submitLabel="変更"
           loading={renameMutation.isPending}
           message={dialog === "rename" ? (nameConflictMessage ?? undefined) : undefined}
+          messageTone="info"
           onChange={setNameValue}
           onSubmit={(name) => {
             if (activeItem && name !== activeItem.name)
@@ -914,12 +936,20 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             submitLabel="名前を変更して再試行"
             loading={isUploading}
             message={conflict.message}
+            messageTone="info"
+            duplicateFiles={conflict.duplicateFiles}
+            onOpenDuplicateLocation={(parentId) => {
+              setDialog(null);
+              void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`);
+            }}
             onChange={setNameValue}
             onSubmit={(name) => {
               setDialog(null);
-              void uploadSingleFile(conflict.file, conflict.parentId, name).then(
+              void uploadSingleFile(conflict.file, conflict.parentId, name, {
+                allowDuplicateContent: conflict.duplicateFiles.length > 0,
+              }).then(
                 async (succeeded) => {
-                  if (succeeded) await invalidateCurrent();
+                  if (succeeded === "done") await invalidateCurrent();
                 },
               );
             }}
@@ -1095,6 +1125,9 @@ function NameForm({
   submitLabel,
   loading,
   message,
+  messageTone = "danger",
+  duplicateFiles = [],
+  onOpenDuplicateLocation,
   onChange,
   onSubmit,
 }: {
@@ -1102,6 +1135,9 @@ function NameForm({
   submitLabel: string;
   loading: boolean;
   message?: string;
+  messageTone?: "info" | "warn" | "danger";
+  duplicateFiles?: DuplicateContentFile[];
+  onOpenDuplicateLocation?: (parentId: number | null) => void;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
 }) {
@@ -1114,7 +1150,33 @@ function NameForm({
         if (trimmed) onSubmit(trimmed);
       }}
     >
-      {message ? <p className="form-message">{message}</p> : null}
+      {message ? <p className={`form-message form-message-${messageTone}`}>{message}</p> : null}
+      {duplicateFiles.length > 0 ? (
+        <div className="duplicate-files" aria-label="同じ内容の既存ファイル">
+          <ul>
+            {duplicateFiles.map((file) => (
+              <li key={file.id}>
+                <div>
+                  <strong>{file.name}</strong>
+                  <span>保存先: {file.deleted ? "ごみ箱" : (file.parent_name ?? "共有ドライブ")}</span>
+                  {file.owner_display_name ? <span>アップロード者: {file.owner_display_name}</span> : null}
+                  {file.created_at ? <span>作成日時: {formatDate(file.created_at)}</span> : null}
+                  <span>サイズ: {formatSize(file.file_size)}</span>
+                </div>
+                {!file.deleted && onOpenDuplicateLocation ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => onOpenDuplicateLocation(file.parent_id)}
+                  >
+                    保存先を開く
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <label className="field">
         <span>名前</span>
         <input
@@ -1273,15 +1335,37 @@ function isNameConflict(error: unknown) {
   return (
     error instanceof ApiError &&
     error.status === 409 &&
-    (error.code === "duplicate_name" || error.code === "name_conflict")
+    (error.code === "duplicate_name" || error.code === "name_conflict" || error.code === "duplicate_content")
   );
 }
 
-function nextAvailableName(filename: string) {
+function suggestedUploadName(
+  error: unknown,
+  file: File,
+  items: DriveItem[],
+  parentId: number | null,
+) {
+  if (error instanceof ApiError && typeof error.safeDetails?.suggested_name === "string") {
+    return error.safeDetails.suggested_name;
+  }
+  const existingFilenames = items
+    .filter((item) => (item.parent_id ?? null) === parentId && item.item_type === "file")
+    .map(displayName);
+  return nextAvailableUploadName(file.name, existingFilenames);
+}
+
+function nextAvailableUploadName(filename: string, existingFilenames: string[]) {
   const match = /^(.*?)(\.[^.]+)?$/.exec(filename);
   const base = match?.[1] || filename;
   const extension = match?.[2] ?? "";
-  return `${base} (2)${extension}`;
+  const existing = new Set(existingFilenames);
+  if (!existing.has(`${base}${extension}`)) return base;
+
+  let index = 1;
+  while (existing.has(`${base}（${index}）${extension}`)) {
+    index += 1;
+  }
+  return `${base}（${index}）`;
 }
 
 function relativePathSegments(file: File) {

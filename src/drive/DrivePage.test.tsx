@@ -11,6 +11,7 @@ type UploadFileInput = {
   file: File;
   name: string;
   parentId: number | null;
+  allowDuplicateContent?: boolean;
   onProgress?: (progress: { loaded: number; total?: number; percent?: number }) => void;
 };
 
@@ -220,6 +221,7 @@ describe("DrivePage drag and drop upload", () => {
         "name",
         "report.pdf",
         "request-upload-409",
+        { suggested_name: "report（1）", suggested_filename: "report（1）.pdf" },
       ),
     );
     const { container } = renderDrivePage("/drive/folder/42");
@@ -231,14 +233,14 @@ describe("DrivePage drag and drop upload", () => {
     });
 
     expect(await screen.findByText("名前の重複")).toBeInTheDocument();
-    expect(screen.getByText("「report.pdf」はすでに存在します。別の名前を入力してください。")).toBeInTheDocument();
-    expect(screen.getAllByDisplayValue("report (2)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("同じ名前のファイルが存在します。").length).toBeGreaterThan(0);
+    expect(screen.getAllByDisplayValue("report（1）").length).toBeGreaterThan(0);
     expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
 
     mocks.uploadFile.mockResolvedValueOnce({
       id: 4,
       parent_id: 42,
-      name: "report (2)",
+      name: "report（1）",
       item_type: "file",
     });
     fireEvent.click(screen.getByText("名前を変更して再試行"));
@@ -246,8 +248,68 @@ describe("DrivePage drag and drop upload", () => {
     await waitFor(() => {
       expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
         file,
-        name: "report (2)",
+        name: "report（1）",
         parentId: 42,
+      });
+    });
+  });
+
+  it("shows duplicate content as an informational rename choice", async () => {
+    mocks.uploadFile.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        "同じ内容のファイルがすでに存在します。",
+        [],
+        "duplicate_content",
+        "/api/v1/drive_items",
+        "name",
+        "report.pdf",
+        "request-content-409",
+        { suggested_name: "report（1）", duplicate_kind: "same_content" },
+        [
+          {
+            id: 9,
+            name: "report.pdf",
+            parent_id: 42,
+            parent_name: "Reports",
+            owner_display_name: "佐藤",
+            created_at: "2026-07-19T10:00:00.000Z",
+            file_size: 4,
+            deleted: false,
+          },
+        ],
+      ),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const file = new File(["same"], "report.pdf", { type: "application/pdf" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+
+    expect(await screen.findByText("名前の重複")).toBeInTheDocument();
+    expect(screen.getAllByText("同じ内容のファイルがすでに存在します。").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("report.pdf").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("保存先: Reports").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("アップロード者: 佐藤").length).toBeGreaterThan(0);
+    expect(screen.getAllByDisplayValue("report（1）").length).toBeGreaterThan(0);
+    expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+
+    mocks.uploadFile.mockResolvedValueOnce({
+      id: 5,
+      parent_id: 42,
+      name: "report（1）",
+      item_type: "file",
+    });
+    fireEvent.click(screen.getByText("名前を変更して再試行"));
+
+    await waitFor(() => {
+      expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
+        file,
+        name: "report（1）",
+        parentId: 42,
+        allowDuplicateContent: true,
       });
     });
   });
@@ -596,8 +658,9 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.drop(target, { dataTransfer });
 
     expect(await screen.findAllByText("同じ名前のファイルが移動先に存在します")).not.toHaveLength(0);
-    expect(screen.getByText("名前を変更すると同じ操作を再実行できます。")).toBeInTheDocument();
+    expect(screen.getByText("別名を指定すると同じ操作を再実行できます。")).toBeInTheDocument();
     expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Request ID:/)).not.toBeInTheDocument();
     expect(writeText).not.toHaveBeenCalled();
   });
 

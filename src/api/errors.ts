@@ -12,6 +12,17 @@ export type RawApiError =
       };
     };
 
+export type DuplicateContentFile = {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  parent_name?: string;
+  owner_display_name?: string;
+  created_at?: string;
+  file_size?: number;
+  deleted?: boolean;
+};
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -21,6 +32,7 @@ export class ApiError extends Error {
   readonly conflictingName?: string;
   readonly requestId?: string;
   readonly safeDetails?: Record<string, string | number | boolean | null>;
+  readonly duplicateFiles: DuplicateContentFile[];
 
   constructor(
     status: number,
@@ -32,6 +44,7 @@ export class ApiError extends Error {
     conflictingName?: string,
     requestId?: string,
     safeDetails?: Record<string, string | number | boolean | null>,
+    duplicateFiles: DuplicateContentFile[] = [],
   ) {
     super(message);
     this.name = "ApiError";
@@ -43,6 +56,7 @@ export class ApiError extends Error {
     this.conflictingName = conflictingName;
     this.requestId = requestId;
     this.safeDetails = safeDetails;
+    this.duplicateFiles = duplicateFiles;
   }
 }
 
@@ -112,6 +126,7 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
         conflictingName,
         requestId,
         safeDetailsFrom(errorDetails),
+        duplicateFilesFrom(errorDetails),
       );
     }
   }
@@ -123,6 +138,27 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
     undefined,
     url,
   );
+}
+
+function duplicateFilesFrom(value: Record<string, unknown>) {
+  const files = value.duplicate_files;
+  if (!Array.isArray(files)) return [];
+  return files.flatMap((entry): DuplicateContentFile[] => {
+    if (!isRecord(entry)) return [];
+    if (typeof entry.id !== "number" || typeof entry.name !== "string") return [];
+    return [
+      {
+        id: entry.id,
+        name: entry.name,
+        parent_id: typeof entry.parent_id === "number" ? entry.parent_id : null,
+        parent_name: typeof entry.parent_name === "string" ? entry.parent_name : undefined,
+        owner_display_name: typeof entry.owner_display_name === "string" ? entry.owner_display_name : undefined,
+        created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
+        file_size: typeof entry.file_size === "number" ? entry.file_size : undefined,
+        deleted: typeof entry.deleted === "boolean" ? entry.deleted : undefined,
+      },
+    ];
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
