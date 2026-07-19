@@ -7,20 +7,20 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { ErrorReportPanel } from "./ErrorReportPanel";
 
 describe("ErrorReportPanel", () => {
-  it("copies a safe error report with request id", async () => {
+  it("copies a safe reportable error with request id and api path", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     const error = normalizeAppError(
       new ApiError(
-        409,
-        "同じ名前のファイルが存在します。 authorization=Bearer secret",
+        500,
+        "アップロード処理に失敗しました。 authorization=Bearer secret",
         [],
-        "duplicate_name",
+        "internal_error",
         "/api/v1/drive_items?token=secret",
-        "name",
-        "DSCN0942.mp4",
+        undefined,
+        undefined,
         "request-1",
-        { field: "name", conflicting_name: "DSCN0942.mp4", token: "secret" },
+        { item_name: "DSCN0942.mp4", token: "secret" },
       ),
       {
         operation: "ファイルアップロード",
@@ -36,9 +36,29 @@ describe("ErrorReportPanel", () => {
     const copied = writeText.mock.calls[0]?.[0] as string;
     expect(copied).toContain("Request ID: request-1");
     expect(copied).toContain("操作: ファイルアップロード");
-    expect(copied).toContain("名前: DSCN0942.mp4");
+    expect(copied).toContain("APIパス: /api/v1/drive_items");
+    expect(copied).toContain("item_name: DSCN0942.mp4");
     expect(copied).not.toMatch(/Bearer secret|token: secret|Authorization|Cookie/i);
     expect(await screen.findByText("コピーしました。")).toBeInTheDocument();
+  });
+
+  it("does not show copy controls for name conflicts", () => {
+    const error = normalizeAppError(
+      new ApiError(
+        409,
+        "同じ名前のファイルが存在します。",
+        [],
+        "duplicate_name",
+        "/api/v1/drive_items",
+      ),
+      { operation: "ファイルアップロード", page: "共有ドライブ" },
+    );
+
+    render(<ErrorReportPanel error={error} />);
+
+    expect(screen.getByText("名前を変更すると同じ操作を再実行できます。")).toBeInTheDocument();
+    expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+    expect(screen.queryByText("詳細を表示")).not.toBeInTheDocument();
   });
 
   it("shows a manual copy field when clipboard fails", async () => {

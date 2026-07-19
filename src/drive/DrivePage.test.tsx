@@ -209,6 +209,49 @@ describe("DrivePage drag and drop upload", () => {
     expect(await screen.findByText(/アップロードに失敗しました/)).toBeInTheDocument();
   });
 
+  it("opens a rename-and-retry dialog without copy controls when upload name conflicts", async () => {
+    mocks.uploadFile.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        "同じ名前のファイルが存在します。",
+        [],
+        "duplicate_name",
+        "/api/v1/drive_items",
+        "name",
+        "report.pdf",
+        "request-upload-409",
+      ),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const file = new File(["content"], "report.pdf", { type: "application/pdf" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+
+    expect(await screen.findByText("名前の重複")).toBeInTheDocument();
+    expect(screen.getByText("「report.pdf」はすでに存在します。別の名前を入力してください。")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("report (2)").length).toBeGreaterThan(0);
+    expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+
+    mocks.uploadFile.mockResolvedValueOnce({
+      id: 4,
+      parent_id: 42,
+      name: "report (2)",
+      item_type: "file",
+    });
+    fireEvent.click(screen.getByText("名前を変更して再試行"));
+
+    await waitFor(() => {
+      expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
+        file,
+        name: "report (2)",
+        parentId: 42,
+      });
+    });
+  });
+
   it("prevents duplicate submissions while an upload is in progress", async () => {
     let resolveUpload: (() => void) | undefined;
     mocks.uploadFile.mockReturnValue(
@@ -282,6 +325,44 @@ describe("DrivePage drag and drop upload", () => {
         name: "clip001",
         parentId: 101,
       });
+    });
+  });
+
+  it("keeps the folder form open without copy controls when the name already exists", async () => {
+    mocks.createDirectory.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        "同じ名前のフォルダが存在します。",
+        [],
+        "duplicate_name",
+        "/api/v1/drive_items",
+        "name",
+        "素材",
+        "request-folder-409",
+      ),
+    );
+    renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.click(screen.getByRole("button", { name: "新しいフォルダ" }));
+    fireEvent.change(screen.getAllByLabelText("名前")[0], { target: { value: "素材" } });
+    fireEvent.click(screen.getByText("作成"));
+
+    expect(await screen.findByText("同じ名前のフォルダが存在します。")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("素材").length).toBeGreaterThan(0);
+    expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+
+    mocks.createDirectory.mockResolvedValueOnce({
+      id: 200,
+      parent_id: 42,
+      name: "素材2",
+      item_type: "directory",
+    });
+    fireEvent.change(screen.getAllByLabelText("名前")[0], { target: { value: "素材2" } });
+    fireEvent.click(screen.getByText("作成"));
+
+    await waitFor(() => {
+      expect(mocks.createDirectory.mock.calls.at(-1)?.[0]).toEqual({ name: "素材2", parentId: 42 });
     });
   });
 
@@ -482,7 +563,7 @@ describe("DrivePage drag and drop upload", () => {
     expect(mocks.bulkMove).not.toHaveBeenCalled();
   });
 
-  it("shows and copies a structured error when drag move fails with 409", async () => {
+  it("shows a resolvable name conflict without copy controls when drag move fails with 409", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     mocks.bulkMove.mockRejectedValueOnce(
@@ -515,13 +596,51 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.drop(target, { dataTransfer });
 
     expect(await screen.findAllByText("同じ名前のファイルが移動先に存在します")).not.toHaveLength(0);
+    expect(screen.getByText("名前を変更すると同じ操作を再実行できます。")).toBeInTheDocument();
+    expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("shows and copies a reportable error when drag move fails unexpectedly", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    mocks.bulkMove.mockRejectedValueOnce(
+      new ApiError(
+        500,
+        "サーバーで処理に失敗しました",
+        [],
+        "internal_error",
+        "/api/v1/drive_items/bulk_move",
+        undefined,
+        undefined,
+        "request-500",
+      ),
+    );
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "sample", item_type: "file", extension: "mp4" },
+      { id: 2, parent_id: null, name: "納品データ", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+
+    const source = (await screen.findByText("sample.mp4")).closest("tr");
+    const target = screen.getByText("納品データ").closest("tr");
+    if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+      throw new Error("rows were not rendered");
+    }
+
+    const dataTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    expect(await screen.findAllByText("サーバーで処理に失敗しました")).not.toHaveLength(0);
     fireEvent.click(screen.getByText("エラー内容をコピー"));
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());
     const copied = writeText.mock.calls[0]?.[0] as string;
-    expect(copied).toContain("操作: 移動");
-    expect(copied).toContain("HTTPステータス: 409");
-    expect(copied).toContain("Request ID: request-409");
+    expect(copied).toContain("操作: ドラッグ移動");
+    expect(copied).toContain("HTTPステータス: 500");
+    expect(copied).toContain("APIパス: /api/v1/drive_items/bulk_move");
+    expect(copied).toContain("Request ID: request-500");
     expect(copied).toContain("移動先: 納品データ");
   });
 

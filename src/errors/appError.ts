@@ -4,6 +4,7 @@ export type AppError = {
   code: string;
   message: string;
   status?: number;
+  apiPath?: string;
   requestId?: string;
   operation?: string;
   occurredAt: string;
@@ -29,6 +30,7 @@ export function normalizeAppError(
       code: error.code ?? codeForStatus(error.status),
       message: sanitizeText(error.message),
       status: error.status,
+      apiPath: safeApiPath(error.url),
       requestId: error.requestId,
       operation: context.operation,
       occurredAt,
@@ -42,6 +44,7 @@ export function normalizeAppError(
     return {
       code: "network_error",
       message: error.message,
+      apiPath: safeApiPath(error.url),
       operation: context.operation,
       occurredAt,
       page: context.page,
@@ -72,6 +75,7 @@ export function formatAppErrorReport(error: AppError, note = "") {
   lines.push("結果: 失敗", "");
   append(lines, "エラーコード", error.code);
   append(lines, "HTTPステータス", error.status);
+  append(lines, "APIパス", error.apiPath);
   append(lines, "メッセージ", error.message);
   append(lines, "Request ID", error.requestId);
 
@@ -98,6 +102,10 @@ export function sanitizeText(value: unknown) {
     .replace(/[?&](token|access_token|refresh_token|signature|csrf)=[^&#\s]+/gi, "?[REDACTED]")
     .replace(/(authorization|cookie|csrf|password|secret|signature|token)\s*[:=]\s*[^\s,;}]+/gi, "[REDACTED]")
     .slice(0, 500);
+}
+
+export function isNameConflictAppError(error: AppError) {
+  return error.code === "duplicate_name" || error.code === "name_conflict";
 }
 
 function sanitizeDetails(details?: Record<string, string | number | boolean | null | undefined>) {
@@ -128,6 +136,15 @@ function codeForStatus(status: number) {
   if (status === 422) return "validation_failed";
   if (status >= 500) return "internal_error";
   return "api_error";
+}
+
+function safeApiPath(value?: string) {
+  if (!value) return undefined;
+  try {
+    return new URL(value, window.location.origin).pathname;
+  } catch {
+    return undefined;
+  }
 }
 
 function detailLabel(key: string) {

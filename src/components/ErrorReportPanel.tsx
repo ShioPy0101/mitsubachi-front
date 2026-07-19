@@ -1,6 +1,10 @@
 import { useMemo, useState } from "react";
 
-import { type AppError, formatAppErrorReport } from "../errors/appError";
+import {
+  type AppError,
+  formatAppErrorReport,
+  isNameConflictAppError,
+} from "../errors/appError";
 import { Button } from "./Button";
 
 export function ErrorReportPanel({
@@ -15,6 +19,7 @@ export function ErrorReportPanel({
   const [expanded, setExpanded] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "manual">("idle");
   const [note, setNote] = useState("");
+  const nameConflict = isNameConflictAppError(error);
   const reportText = useMemo(() => formatAppErrorReport(error, note), [error, note]);
 
   async function copyReport() {
@@ -31,10 +36,13 @@ export function ErrorReportPanel({
     <section className="error-report" role="alert" aria-live="polite">
       <div>
         <strong>{error.message}</strong>
+        {nameConflict ? (
+          <span>名前を変更すると同じ操作を再実行できます。</span>
+        ) : null}
         {error.requestId ? <span>Request ID: {error.requestId}</span> : null}
       </div>
       <div className="error-report-actions">
-        {error.code === "duplicate_name" && onResolveName ? (
+        {nameConflict && onResolveName ? (
           <Button type="button" variant="secondary" onClick={onResolveName}>
             名前を変更
           </Button>
@@ -44,12 +52,16 @@ export function ErrorReportPanel({
             再試行
           </Button>
         ) : null}
-        <Button type="button" variant="ghost" onClick={() => setExpanded((value) => !value)}>
-          詳細を表示
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => void copyReport()}>
-          エラー内容をコピー
-        </Button>
+        {!nameConflict ? (
+          <>
+            <Button type="button" variant="ghost" onClick={() => setExpanded((value) => !value)}>
+              詳細を表示
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => void copyReport()}>
+              エラー内容をコピー
+            </Button>
+          </>
+        ) : null}
       </div>
       {copyState === "copied" ? <p className="form-message">コピーしました。</p> : null}
       {expanded ? (
