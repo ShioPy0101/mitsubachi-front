@@ -2,6 +2,7 @@ import { ApiError, ApiNetworkError } from "../api/errors";
 
 export type AppError = {
   code: string;
+  level: "info" | "warn" | "danger";
   message: string;
   status?: number;
   apiPath?: string;
@@ -28,6 +29,7 @@ export function normalizeAppError(
   if (error instanceof ApiError) {
     return {
       code: error.code ?? codeForStatus(error.status),
+      level: levelFor(error.code ?? codeForStatus(error.status), error.status),
       message: sanitizeText(error.message),
       status: error.status,
       apiPath: safeApiPath(error.url),
@@ -43,6 +45,7 @@ export function normalizeAppError(
   if (error instanceof ApiNetworkError) {
     return {
       code: "network_error",
+      level: "danger",
       message: error.message,
       apiPath: safeApiPath(error.url),
       operation: context.operation,
@@ -55,6 +58,7 @@ export function normalizeAppError(
 
   return {
     code: "frontend_error",
+    level: "danger",
     message: sanitizeText(error instanceof Error ? error.message : "予期しないエラーが発生しました。"),
     operation: context.operation,
     occurredAt,
@@ -105,7 +109,11 @@ export function sanitizeText(value: unknown) {
 }
 
 export function isNameConflictAppError(error: AppError) {
-  return error.code === "duplicate_name" || error.code === "name_conflict";
+  return ["duplicate_name", "name_conflict", "duplicate_content", "auto_rename_required"].includes(error.code);
+}
+
+export function isReportableAppError(error: AppError) {
+  return error.level === "danger";
 }
 
 function sanitizeDetails(details?: Record<string, string | number | boolean | null | undefined>) {
@@ -136,6 +144,14 @@ function codeForStatus(status: number) {
   if (status === 422) return "validation_failed";
   if (status >= 500) return "internal_error";
   return "api_error";
+}
+
+function levelFor(code: string, status: number): AppError["level"] {
+  if (["duplicate_name", "name_conflict", "duplicate_content", "auto_rename_required"].includes(code)) {
+    return "info";
+  }
+  if (status === 409 || status === 413 || status === 422) return "warn";
+  return "danger";
 }
 
 function safeApiPath(value?: string) {

@@ -4,6 +4,7 @@ import {
   type AppError,
   formatAppErrorReport,
   isNameConflictAppError,
+  isReportableAppError,
 } from "../errors/appError";
 import { Button } from "./Button";
 
@@ -20,6 +21,7 @@ export function ErrorReportPanel({
   const [copyState, setCopyState] = useState<"idle" | "copied" | "manual">("idle");
   const [note, setNote] = useState("");
   const nameConflict = isNameConflictAppError(error);
+  const reportable = isReportableAppError(error);
   const reportText = useMemo(() => formatAppErrorReport(error, note), [error, note]);
 
   async function copyReport() {
@@ -33,13 +35,16 @@ export function ErrorReportPanel({
   }
 
   return (
-    <section className="error-report" role="alert" aria-live="polite">
+    <section
+      className={`error-report error-report-${error.level}`}
+      role={reportable ? "alert" : "status"}
+      aria-live="polite"
+    >
       <div>
         <strong>{error.message}</strong>
         {nameConflict ? (
-          <span>名前を変更すると同じ操作を再実行できます。</span>
+          <span>別名を指定すると同じ操作を再実行できます。</span>
         ) : null}
-        {error.requestId ? <span>Request ID: {error.requestId}</span> : null}
       </div>
       <div className="error-report-actions">
         {nameConflict && onResolveName ? (
@@ -52,7 +57,7 @@ export function ErrorReportPanel({
             再試行
           </Button>
         ) : null}
-        {!nameConflict ? (
+        {reportable ? (
           <>
             <Button type="button" variant="ghost" onClick={() => setExpanded((value) => !value)}>
               詳細を表示

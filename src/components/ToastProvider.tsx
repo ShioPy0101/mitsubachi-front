@@ -6,7 +6,7 @@ import { IconButton } from "./IconButton";
 type Toast = {
   id: number;
   message: string;
-  tone: "success" | "danger" | "info";
+  tone: "success" | "danger" | "info" | "warn";
 };
 
 type ToastContextValue = {
