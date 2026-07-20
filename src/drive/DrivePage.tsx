@@ -13,7 +13,15 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError, type DuplicateContentFile } from "../api/errors";
@@ -52,6 +60,9 @@ import {
 
 type DriveMode = "drive" | "trash";
 const DRIVE_ITEM_MIME = "application/x-mitsubachi-drive-items";
+const DRIVE_OPEN_DISTANCE_THRESHOLD = 5;
+const MENU_VIEWPORT_PADDING = 8;
+const MENU_OFFSET = 6;
 
 type UploadTask = {
   id: string;
@@ -1223,14 +1234,56 @@ function FileTable({
   draggingIds: number[];
   dragOverFolderId: number | null;
 }) {
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [openMenu, setOpenMenu] = useState<{
+    id: number;
+    anchor: HTMLButtonElement;
+  } | null>(null);
+  const pointerStartRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    dragged: boolean;
+  } | null>(null);
 
   useEffect(() => {
-    if (openMenuId === null) return;
-    const close = () => setOpenMenuId(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [openMenuId]);
+    if (openMenu === null) return;
+    const close = () => setOpenMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [openMenu]);
+
+  const handleCentralPointerDown = (event: React.PointerEvent, item: DriveItem) => {
+    if (trash || isNoDragTarget(event.target)) return;
+    pointerStartRef.current = {
+      id: item.id,
+      x: event.clientX,
+      y: event.clientY,
+      dragged: false,
+    };
+  };
+
+  const handleCentralPointerUp = (event: React.PointerEvent, item: DriveItem) => {
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+    if (!start || start.id !== item.id || start.dragged) return;
+    const distance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+    if (distance < DRIVE_OPEN_DISTANCE_THRESHOLD) onOpen(item);
+  };
+
+  const handleCentralKeyDown = (event: React.KeyboardEvent, item: DriveItem) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onOpen(item);
+  };
 
   return (
     <div className="file-list">
@@ -1272,8 +1325,6 @@ function FileTable({
                 event.preventDefault();
                 onDropToFolder(event, item);
               }}
-              onDoubleClick={() => onOpen(item)}
-              onKeyDown={(event) => event.key === "Enter" && onOpen(item)}
             >
               <td className="file-select-cell">
                 <input
@@ -1286,20 +1337,30 @@ function FileTable({
               </td>
               <td className="drive-item-drag-cell" colSpan={4}>
                 <div
-                  className="drive-item-drag-area"
+                  className="drive-item-info-action"
+                  role="button"
+                  tabIndex={trash ? -1 : 0}
+                  aria-label={`${displayName(item)}を開く`}
                   draggable={!trash}
-                  onDragStart={(event) => onDragStart(event, item)}
+                  onPointerDown={(event) => handleCentralPointerDown(event, item)}
+                  onPointerUp={(event) => handleCentralPointerUp(event, item)}
+                  onPointerCancel={() => {
+                    pointerStartRef.current = null;
+                  }}
+                  onKeyDown={(event) => handleCentralKeyDown(event, item)}
+                  onDragStart={(event) => {
+                    if (pointerStartRef.current?.id === item.id) {
+                      pointerStartRef.current.dragged = true;
+                    }
+                    onDragStart(event, item);
+                  }}
                   onDragEnd={onDragEnd}
                 >
                   <div className="file-name-cell">
-                    <button
-                      type="button"
-                      className="file-name-button"
-                      onClick={() => onOpen(item)}
-                    >
+                    <span className="file-name-content">
                       <FileTypeIcon item={item} />
                       <span className="file-name">{displayName(item)}</span>
-                    </button>
+                    </span>
                     <span className="mobile-meta">
                       {item.owner_display_name ?? "不明"} ・{" "}
                       {formatDate(item.updated_at)} ・ {formatSize(item.file_size)}
@@ -1340,43 +1401,25 @@ function FileTable({
                         data-no-drag
                         label={`${item.name}の操作メニュー`}
                         aria-haspopup="menu"
-                        aria-expanded={openMenuId === item.id}
+                        aria-expanded={openMenu?.id === item.id}
                         onClick={(event) => {
                           event.stopPropagation();
-                          setOpenMenuId((current) =>
-                            current === item.id ? null : item.id,
+                          const anchor = event.currentTarget;
+                          setOpenMenu((current) =>
+                            current?.id === item.id ? null : { id: item.id, anchor },
                           );
                         }}
                       >
                         <MoreVertical size={16} aria-hidden="true" />
                       </IconButton>
-                      {openMenuId === item.id ? (
-                        <div className="item-menu" role="menu" data-no-drag>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            data-no-drag
-                            onClick={() => {
-                              setOpenMenuId(null);
-                              onMove(item);
-                            }}
-                          >
-                            <Move size={16} aria-hidden="true" />
-                            移動
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            data-no-drag
-                            onClick={() => {
-                              setOpenMenuId(null);
-                              onRename(item);
-                            }}
-                          >
-                            <MoreVertical size={16} aria-hidden="true" />
-                            名前を変更
-                          </button>
-                        </div>
+                      {openMenu?.id === item.id ? (
+                        <ItemActionMenu
+                          anchor={openMenu.anchor}
+                          item={item}
+                          onClose={() => setOpenMenu(null)}
+                          onMove={onMove}
+                          onRename={onRename}
+                        />
                       ) : null}
                     </>
                   ) : null}
@@ -1387,6 +1430,110 @@ function FileTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function ItemActionMenu({
+  anchor,
+  item,
+  onClose,
+  onMove,
+  onRename,
+}: {
+  anchor: HTMLButtonElement;
+  item: DriveItem;
+  onClose: () => void;
+  onMove: (item: DriveItem) => void;
+  onRename: (item: DriveItem) => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{
+    top: number;
+    left: number;
+    placement: "top" | "bottom";
+    ready: boolean;
+  }>({ top: 0, left: 0, placement: "bottom", ready: false });
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const spaceBelow = viewportHeight - anchorRect.bottom - MENU_OFFSET - MENU_VIEWPORT_PADDING;
+    const spaceAbove = anchorRect.top - MENU_OFFSET - MENU_VIEWPORT_PADDING;
+    const opensUp = menuRect.height > spaceBelow && spaceAbove > spaceBelow;
+    const top = opensUp
+      ? Math.max(MENU_VIEWPORT_PADDING, anchorRect.top - menuRect.height - MENU_OFFSET)
+      : Math.min(
+          viewportHeight - menuRect.height - MENU_VIEWPORT_PADDING,
+          anchorRect.bottom + MENU_OFFSET,
+        );
+    const left = Math.min(
+      Math.max(MENU_VIEWPORT_PADDING, anchorRect.right - menuRect.width),
+      viewportWidth - menuRect.width - MENU_VIEWPORT_PADDING,
+    );
+
+    setPosition({
+      top,
+      left,
+      placement: opensUp ? "top" : "bottom",
+      ready: true,
+    });
+  }, [anchor]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target) || anchor.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [anchor, onClose]);
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="item-menu"
+      role="menu"
+      data-no-drag
+      data-placement={position.placement}
+      style={{
+        position: "fixed",
+        top: position.top,
+        left: position.left,
+        visibility: position.ready ? "visible" : "hidden",
+      }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        data-no-drag
+        onClick={() => {
+          onClose();
+          onMove(item);
+        }}
+      >
+        <Move size={16} aria-hidden="true" />
+        移動
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        data-no-drag
+        onClick={() => {
+          onClose();
+          onRename(item);
+        }}
+      >
+        <MoreVertical size={16} aria-hidden="true" />
+        名前を変更
+      </button>
+    </div>,
+    document.body,
   );
 }
 
@@ -1846,11 +1993,13 @@ function isDragMovePayload(value: unknown): value is { itemIds: number[] } {
 
 function isNoDragTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
-  if (target.closest(".file-name-button")) return false;
+  const interactive = target.closest(
+    "button, a, input, select, textarea, [role='button'], [data-no-drag]",
+  );
+  const centralAction = target.closest(".drive-item-info-action");
+  if (centralAction) return Boolean(interactive && interactive !== centralAction);
   return Boolean(
-    target.closest(
-      "button, a, input, select, textarea, [role='button'], [data-no-drag]",
-    ),
+    interactive,
   );
 }
 
