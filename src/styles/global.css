@@ -442,28 +442,53 @@ tr:hover {
   background: var(--color-surface-hover);
 }
 
+.drive-item-drag-area[draggable="true"] {
+  cursor: grab;
+}
+
+.drive-item-drag-area[draggable="true"]:active,
+tr.dragging-row .drive-item-drag-area {
+  cursor: grabbing;
+}
+
 tr.selected {
   background: var(--color-surface-selected);
 }
 
 th:first-child,
-td:first-child {
+.file-select-cell {
   width: 56px;
 }
 
 th:nth-child(3),
-td:nth-child(3) {
+.drive-item-owner {
   width: 180px;
 }
 
 th:nth-child(4),
-td:nth-child(4) {
+th:nth-child(5),
+.drive-item-updated,
+.drive-item-size {
   width: 110px;
 }
 
 th:last-child,
-td:last-child {
+.file-actions-cell {
   width: 112px;
+}
+
+.drive-item-drag-cell {
+  min-width: 0;
+  padding: 0;
+}
+
+.drive-item-drag-area {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 180px 110px 110px;
+  align-items: center;
+  min-width: 0;
+  min-height: 52px;
+  padding: 0 var(--space-3);
 }
 
 .file-name-cell {
@@ -494,6 +519,151 @@ td:last-child {
   display: none;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+.row-actions {
+  position: relative;
+}
+
+.item-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 25;
+  display: grid;
+  min-width: 168px;
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-menu);
+}
+
+.item-menu button,
+.move-breadcrumbs button,
+.move-candidate {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.item-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-2);
+  color: var(--color-text-primary);
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.item-menu button:hover,
+.move-candidate:hover {
+  background: var(--color-surface-hover);
+}
+
+.move-dialog {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.move-dialog-summary {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.move-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  padding: var(--space-2);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.move-breadcrumbs span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.move-breadcrumbs button {
+  max-width: 180px;
+  padding: var(--space-1);
+  overflow: hidden;
+  color: var(--color-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+}
+
+.move-breadcrumbs button:disabled {
+  cursor: default;
+  color: var(--color-text-primary);
+}
+
+.move-dialog-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.move-candidate-list {
+  display: grid;
+  gap: var(--space-1);
+  max-height: min(320px, 42vh);
+  margin: 0;
+  overflow: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  list-style: none;
+}
+
+.move-candidate {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  color: var(--color-text-primary);
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.move-candidate span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.move-candidate small {
+  grid-column: 2;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.move-candidate:disabled {
+  cursor: not-allowed;
+  color: var(--color-disabled-text);
+  background: var(--color-disabled-bg);
+}
+
+.move-empty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--color-text-secondary);
+  text-align: center;
 }
 
 .loading-indicator,
@@ -1218,19 +1388,30 @@ td:last-child {
     border: 0;
   }
 
-  .file-list td:first-child {
+  .file-list .file-select-cell {
     position: absolute;
     top: 12px;
     left: 12px;
     width: auto;
   }
 
-  .file-list td:nth-child(3),
-  .file-list td:nth-child(4) {
+  .drive-item-drag-cell {
+    min-width: 0;
+  }
+
+  .drive-item-drag-area {
+    display: block;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .drive-item-owner,
+  .drive-item-updated,
+  .drive-item-size {
     display: none;
   }
 
-  .file-list td:last-child {
+  .file-list .file-actions-cell {
     position: absolute;
     top: 8px;
     right: 8px;

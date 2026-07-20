@@ -521,10 +521,11 @@ describe("DrivePage drag and drop upload", () => {
     ]);
     const { container } = renderDrivePage("/drive");
 
-    const source = (await screen.findByText("clip.mp4")).closest("tr");
+    await screen.findByText("clip.mp4");
+    const source = driveItemDragAreaByName("clip.mp4");
     const target = screen.getByText("素材").closest("tr");
     if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
-      throw new Error("rows were not rendered");
+      throw new Error("drag area or target row was not rendered");
     }
 
     const dataTransfer = driveItemDataTransfer();
@@ -540,6 +541,61 @@ describe("DrivePage drag and drop upload", () => {
     expect(container.querySelector(".dragging-row")).not.toBeInTheDocument();
   });
 
+  it("starts item drag from the central item information area only", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      {
+        id: 1,
+        parent_id: null,
+        name: "clip",
+        item_type: "file",
+        extension: "mp4",
+        owner_display_name: "佐藤",
+        updated_at: "2026-07-20T02:00:00.000Z",
+        file_size: 2048,
+      },
+      { id: 2, parent_id: null, name: "素材", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+
+    await screen.findByText("clip.mp4");
+    const dragArea = driveItemDragAreaByName("clip.mp4");
+    const dragTargets = [
+      screen.getByText("clip.mp4"),
+      dragArea.querySelector(".drive-item-owner"),
+      dragArea.querySelector(".drive-item-updated"),
+      dragArea.querySelector(".drive-item-size"),
+      dragArea,
+    ];
+
+    for (const target of dragTargets) {
+      if (!(target instanceof HTMLElement)) {
+        throw new Error("drag target was not rendered");
+      }
+      const transfer = driveItemDataTransfer();
+      fireEvent.dragStart(target, { dataTransfer: transfer });
+      expect(transfer.setData).toHaveBeenCalledWith(
+        "application/x-mitsubachi-drive-items",
+        JSON.stringify({ itemIds: [1] }),
+      );
+    }
+
+    const checkboxTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(screen.getByLabelText("clipを選択"), { dataTransfer: checkboxTransfer });
+    expect(checkboxTransfer.setData).not.toHaveBeenCalled();
+
+    const menuTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(screen.getByRole("button", { name: "clipの操作メニュー" }), {
+      dataTransfer: menuTransfer,
+    });
+    expect(menuTransfer.setData).not.toHaveBeenCalled();
+
+    const downloadTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(screen.getByRole("button", { name: "clipをダウンロード" }), {
+      dataTransfer: downloadTransfer,
+    });
+    expect(downloadTransfer.setData).not.toHaveBeenCalled();
+  });
+
   it("moves a folder to another folder by drag and drop", async () => {
     mocks.fetchDriveItems.mockResolvedValue([
       { id: 1, parent_id: null, name: "before", item_type: "directory" },
@@ -547,7 +603,8 @@ describe("DrivePage drag and drop upload", () => {
     ]);
     renderDrivePage("/drive");
 
-    const source = (await screen.findByText("before")).closest("tr");
+    await screen.findByText("before");
+    const source = driveItemDragAreaByName("before");
     const target = screen.getByText("after").closest("tr");
     if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
       throw new Error("rows were not rendered");
@@ -572,7 +629,7 @@ describe("DrivePage drag and drop upload", () => {
 
     fireEvent.click(await screen.findByLabelText("aを選択"));
     fireEvent.click(screen.getByLabelText("bを選択"));
-    const source = screen.getByText("a.txt").closest("tr");
+    const source = driveItemDragAreaByName("a.txt");
     const target = screen.getByText("folder").closest("tr");
     if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
       throw new Error("rows were not rendered");
@@ -596,7 +653,7 @@ describe("DrivePage drag and drop upload", () => {
     renderDrivePage("/drive");
 
     fireEvent.click(await screen.findByLabelText("selectedを選択"));
-    const source = screen.getByText("dragged.txt").closest("tr");
+    const source = driveItemDragAreaByName("dragged.txt");
     const target = screen.getByText("folder").closest("tr");
     if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
       throw new Error("rows were not rendered");
@@ -618,7 +675,8 @@ describe("DrivePage drag and drop upload", () => {
     ]);
     renderDrivePage("/drive");
 
-    const source = (await screen.findByText("folder")).closest("tr");
+    await screen.findByText("folder");
+    const source = driveItemDragAreaByName("folder");
     const fileTarget = screen.getByText("file.txt").closest("tr");
     if (!(source instanceof HTMLElement) || !(fileTarget instanceof HTMLElement)) {
       throw new Error("rows were not rendered");
@@ -671,7 +729,8 @@ describe("DrivePage drag and drop upload", () => {
     ]);
     renderDrivePage("/drive");
 
-    const source = (await screen.findByText("sample.mp4")).closest("tr");
+    await screen.findByText("sample.mp4");
+    const source = driveItemDragAreaByName("sample.mp4");
     const target = screen.getByText("納品データ").closest("tr");
     if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
       throw new Error("rows were not rendered");
@@ -709,7 +768,8 @@ describe("DrivePage drag and drop upload", () => {
     ]);
     renderDrivePage("/drive");
 
-    const source = (await screen.findByText("sample.mp4")).closest("tr");
+    await screen.findByText("sample.mp4");
+    const source = driveItemDragAreaByName("sample.mp4");
     const target = screen.getByText("納品データ").closest("tr");
     if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
       throw new Error("rows were not rendered");
@@ -729,6 +789,80 @@ describe("DrivePage drag and drop upload", () => {
     expect(copied).toContain("APIパス: /api/v1/drive_items/bulk_move");
     expect(copied).toContain("Request ID: request-500");
     expect(copied).toContain("移動先: 納品データ");
+  });
+
+  it("opens the move dialog from the item menu and moves to root", async () => {
+    mocks.fetchDriveItems.mockImplementation((parentId: number | null) => {
+      if (parentId === 10) return Promise.resolve([]);
+      return Promise.resolve([
+        { id: 1, parent_id: 10, name: "clip", item_type: "file", extension: "mp4" },
+      ]);
+    });
+    mocks.fetchDriveItem.mockResolvedValue({
+      id: 10,
+      parent_id: null,
+      name: "素材",
+      item_type: "directory",
+      breadcrumbs: [
+        { id: null, name: "共有ドライブ" },
+        { id: 10, name: "素材" },
+      ],
+    });
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByRole("button", { name: "clipの操作メニュー" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移動" }));
+
+    expect(await screen.findByText("1件の項目を移動")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "共有ドライブへ" }));
+    fireEvent.click(screen.getByRole("button", { name: "ここに移動" }));
+
+    await waitFor(() => {
+      expect(mocks.bulkMove).toHaveBeenCalledWith([1], null);
+    });
+  });
+
+  it("opens the move dialog from the selection toolbar and disables forbidden destinations", async () => {
+    mocks.fetchDriveItems.mockImplementation((parentId: number | null) => {
+      if (parentId === null) {
+        return Promise.resolve([
+          { id: 10, parent_id: null, name: "parent", item_type: "directory" },
+          { id: 20, parent_id: null, name: "destination", item_type: "directory" },
+        ]);
+      }
+      if (parentId === 10) {
+        return Promise.resolve([
+          { id: 1, parent_id: 10, name: "folder", item_type: "directory" },
+          { id: 2, parent_id: 10, name: "file", item_type: "file", extension: "txt" },
+          { id: 3, parent_id: 10, name: "other", item_type: "directory" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    mocks.fetchDriveItem.mockResolvedValue({
+      id: 10,
+      parent_id: null,
+      name: "parent",
+      item_type: "directory",
+      breadcrumbs: [
+        { id: null, name: "共有ドライブ" },
+        { id: 10, name: "parent" },
+      ],
+    });
+    renderDrivePage("/drive/folder/10");
+
+    fireEvent.click(await screen.findByLabelText("folderを選択"));
+    fireEvent.click(screen.getByLabelText("fileを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "移動" }));
+
+    expect(await screen.findByText("2件の項目を移動")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ここに移動" })).toBeDisabled();
+    expect(screen.getByText("現在と同じ場所です。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "共有ドライブへ" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "ここに移動" })).not.toBeDisabled();
+    });
   });
 
   it("permanently deletes a selected trashed file after confirmation", async () => {
@@ -855,6 +989,14 @@ function directoryInput(container: HTMLElement) {
     throw new Error("Directory input was not rendered.");
   }
   return input;
+}
+
+function driveItemDragAreaByName(name: string) {
+  const dragArea = screen.getByText(name).closest(".drive-item-drag-area");
+  if (!(dragArea instanceof HTMLElement)) {
+    throw new Error(`Drag area for ${name} was not rendered.`);
+  }
+  return dragArea;
 }
 
 function dataTransferWithFiles(files: File[]) {
