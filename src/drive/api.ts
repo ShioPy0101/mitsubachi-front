@@ -166,6 +166,12 @@ export function deleteDriveItem(id: number) {
   });
 }
 
+export function purgeDriveItem(id: number) {
+  return apiRequest<{ message?: string }>(`/api/v1/drive_items/${id}/purge`, {
+    method: "DELETE",
+  });
+}
+
 export function restoreDriveItem(id: number) {
   return apiRequest<DriveItem>(`/api/v1/drive_items/${id}/restore`, {
     method: "POST",

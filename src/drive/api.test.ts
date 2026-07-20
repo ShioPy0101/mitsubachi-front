@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { API_BASE_URL } from "../api/client";
 import {
   fetchDriveItems,
+  purgeDriveItem,
   previewUrl,
   streamUrl,
   uploadFile,
@@ -81,6 +82,31 @@ describe("drive api", () => {
     expect(click).toHaveBeenCalled();
     expect(remove).toHaveBeenCalled();
     expect(anchor.href).toBe(`${API_BASE_URL}/api/v1/drive_items/10/download`);
+  });
+
+  it("uses DELETE for irreversible trash purge", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
+          return new Response(JSON.stringify({ csrf_token: "csrf" }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ message: "完全削除しました" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    await expect(purgeDriveItem(20)).resolves.toMatchObject({
+      message: "完全削除しました",
+    });
+
+    expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe(
+      `${API_BASE_URL}/api/v1/drive_items/20/purge`,
+    );
+    expect(vi.mocked(fetch).mock.calls[1]?.[1]?.method).toBe("DELETE");
   });
 
   it("builds preview and stream URLs without internal paths", () => {
