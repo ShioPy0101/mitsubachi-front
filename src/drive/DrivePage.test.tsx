@@ -540,6 +540,40 @@ describe("DrivePage drag and drop upload", () => {
     expect(container.querySelector(".dragging-row")).not.toBeInTheDocument();
   });
 
+  it("starts item drag from row whitespace but not from interactive controls", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "clip", item_type: "file", extension: "mp4" },
+      { id: 2, parent_id: null, name: "素材", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+
+    const source = (await screen.findByText("clip.mp4")).closest("tr");
+    if (!(source instanceof HTMLElement)) throw new Error("row was not rendered");
+
+    const rowTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer: rowTransfer });
+    expect(rowTransfer.setData).toHaveBeenCalledWith(
+      "application/x-mitsubachi-drive-items",
+      JSON.stringify({ itemIds: [1] }),
+    );
+
+    const checkboxTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(screen.getByLabelText("clipを選択"), { dataTransfer: checkboxTransfer });
+    expect(checkboxTransfer.setData).not.toHaveBeenCalled();
+
+    const menuTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(screen.getByRole("button", { name: "clipの操作メニュー" }), {
+      dataTransfer: menuTransfer,
+    });
+    expect(menuTransfer.setData).not.toHaveBeenCalled();
+
+    const downloadTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(screen.getByRole("button", { name: "clipをダウンロード" }), {
+      dataTransfer: downloadTransfer,
+    });
+    expect(downloadTransfer.setData).not.toHaveBeenCalled();
+  });
+
   it("moves a folder to another folder by drag and drop", async () => {
     mocks.fetchDriveItems.mockResolvedValue([
       { id: 1, parent_id: null, name: "before", item_type: "directory" },
@@ -729,6 +763,80 @@ describe("DrivePage drag and drop upload", () => {
     expect(copied).toContain("APIパス: /api/v1/drive_items/bulk_move");
     expect(copied).toContain("Request ID: request-500");
     expect(copied).toContain("移動先: 納品データ");
+  });
+
+  it("opens the move dialog from the item menu and moves to root", async () => {
+    mocks.fetchDriveItems.mockImplementation((parentId: number | null) => {
+      if (parentId === 10) return Promise.resolve([]);
+      return Promise.resolve([
+        { id: 1, parent_id: 10, name: "clip", item_type: "file", extension: "mp4" },
+      ]);
+    });
+    mocks.fetchDriveItem.mockResolvedValue({
+      id: 10,
+      parent_id: null,
+      name: "素材",
+      item_type: "directory",
+      breadcrumbs: [
+        { id: null, name: "共有ドライブ" },
+        { id: 10, name: "素材" },
+      ],
+    });
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByRole("button", { name: "clipの操作メニュー" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移動" }));
+
+    expect(await screen.findByText("1件の項目を移動")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "共有ドライブへ" }));
+    fireEvent.click(screen.getByRole("button", { name: "ここに移動" }));
+
+    await waitFor(() => {
+      expect(mocks.bulkMove).toHaveBeenCalledWith([1], null);
+    });
+  });
+
+  it("opens the move dialog from the selection toolbar and disables forbidden destinations", async () => {
+    mocks.fetchDriveItems.mockImplementation((parentId: number | null) => {
+      if (parentId === null) {
+        return Promise.resolve([
+          { id: 10, parent_id: null, name: "parent", item_type: "directory" },
+          { id: 20, parent_id: null, name: "destination", item_type: "directory" },
+        ]);
+      }
+      if (parentId === 10) {
+        return Promise.resolve([
+          { id: 1, parent_id: 10, name: "folder", item_type: "directory" },
+          { id: 2, parent_id: 10, name: "file", item_type: "file", extension: "txt" },
+          { id: 3, parent_id: 10, name: "other", item_type: "directory" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    mocks.fetchDriveItem.mockResolvedValue({
+      id: 10,
+      parent_id: null,
+      name: "parent",
+      item_type: "directory",
+      breadcrumbs: [
+        { id: null, name: "共有ドライブ" },
+        { id: 10, name: "parent" },
+      ],
+    });
+    renderDrivePage("/drive/folder/10");
+
+    fireEvent.click(await screen.findByLabelText("folderを選択"));
+    fireEvent.click(screen.getByLabelText("fileを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "移動" }));
+
+    expect(await screen.findByText("2件の項目を移動")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ここに移動" })).toBeDisabled();
+    expect(screen.getByText("現在と同じ場所です。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "共有ドライブへ" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "ここに移動" })).not.toBeDisabled();
+    });
   });
 
   it("permanently deletes a selected trashed file after confirmation", async () => {
