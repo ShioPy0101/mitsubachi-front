@@ -800,13 +800,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             );
           })}
         </nav>
-        {draggingIds.length > 0 ? (
-          <p className="drag-status" role="status">
-            {draggingIds.length}件を移動中
-          </p>
-        ) : (
-          <p>(^_-)-☆</p>
-        )}
+        <p className="drag-status" role="status">
+          {draggingIds.length > 0 ? <>{draggingIds.length}件を移動中</> : <>(^_-)-☆</>}
+        </p>
         <h1>
           {mode === "trash" ? "ゴミ箱" : (folderQuery.data?.name ?? "共有ドライブ")}
         </h1>
