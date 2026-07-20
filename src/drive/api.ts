@@ -195,7 +195,7 @@ export function bulkRestore(ids: number[]) {
 export function bulkMove(ids: number[], parentId: number | null) {
   return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_move", {
     method: "POST",
-    body: { drive_item_ids: ids, destination_parent_id: parentId, parent_id: parentId },
+    body: { drive_item_ids: ids, parent_id: parentId },
   });
 }
 
