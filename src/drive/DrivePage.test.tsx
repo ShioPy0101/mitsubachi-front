@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   bulkMove: vi.fn(),
   moveDriveItem: vi.fn(),
   createDirectory: vi.fn<(input: CreateDirectoryInput) => Promise<unknown>>(),
+  purgeDriveItem: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -49,6 +50,7 @@ vi.mock("./api", () => ({
   bulkRestore: vi.fn(),
   createDirectory: mocks.createDirectory,
   deleteDriveItem: vi.fn(),
+  purgeDriveItem: mocks.purgeDriveItem,
   downloadDriveItem: vi.fn(),
   previewUrl: vi.fn((id: number) => `/preview/${id}`),
   renameDriveItem: vi.fn(),
@@ -83,6 +85,7 @@ describe("DrivePage drag and drop upload", () => {
     });
     mocks.bulkMove.mockResolvedValue({ message: "移動しました" });
     mocks.moveDriveItem.mockResolvedValue({ data: { id: 1, parent_id: 2, name: "moved", item_type: "file" } });
+    mocks.purgeDriveItem.mockResolvedValue({ message: "完全削除しました" });
     mocks.createDirectory.mockImplementation(({ name, parentId }) =>
       Promise.resolve({
         id: name === "素材" ? 100 : 101,
@@ -728,6 +731,58 @@ describe("DrivePage drag and drop upload", () => {
     expect(copied).toContain("移動先: 納品データ");
   });
 
+  it("permanently deletes a selected trashed file after confirmation", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      {
+        id: 20,
+        parent_id: null,
+        name: "report",
+        item_type: "file",
+        extension: "pdf",
+      },
+    ]);
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("reportを選択"));
+    fireEvent.click(screen.getAllByRole("button", { name: "完全削除" }).at(-1)!);
+
+    expect(
+      screen.getByText("「report」を完全に削除します。この操作は取り消せません。"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "完全削除" }).at(-1)!);
+
+    await waitFor(() => {
+      expect(mocks.purgeDriveItem).toHaveBeenCalledWith(20);
+    });
+    await waitFor(() => {
+      expect(mocks.fetchTrash.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("permanently deletes multiple selected trashed files", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      { id: 20, parent_id: null, name: "report", item_type: "file", extension: "pdf" },
+      { id: 21, parent_id: null, name: "archive", item_type: "directory" },
+    ]);
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("reportを選択"));
+    fireEvent.click(screen.getByLabelText("archiveを選択"));
+    fireEvent.click(screen.getAllByRole("button", { name: "完全削除" }).at(-1)!);
+
+    expect(
+      screen.getByText("選択した項目を完全に削除します。この操作は取り消せません。"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "完全削除" }).at(-1)!);
+
+    await waitFor(() => {
+      expect(mocks.purgeDriveItem).toHaveBeenCalledWith(20);
+      expect(mocks.purgeDriveItem).toHaveBeenCalledWith(21);
+    });
+  });
+
   it("stops media when preview is closed or unmounted", async () => {
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
@@ -772,6 +827,7 @@ function renderDrivePage(initialEntry: string) {
           <Routes>
             <Route path="/drive" element={<DrivePage />} />
             <Route path="/drive/folder/:folderId" element={<DrivePage />} />
+            <Route path="/trash" element={<DrivePage mode="trash" />} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>

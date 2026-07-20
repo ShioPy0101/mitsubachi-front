@@ -67,6 +67,7 @@ pages:
       - "GET /api/v1/drive_items/trash"
       - "POST /api/v1/drive_items/:id/restore"
       - "POST /api/v1/drive_items/bulk_restore"
+      - "DELETE /api/v1/drive_items/:id/purge"
 
   - id: admin_root_redirect
     path: "/admin"

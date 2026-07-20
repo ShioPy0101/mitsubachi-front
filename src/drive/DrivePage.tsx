@@ -39,6 +39,7 @@ import {
   fetchDriveItem,
   fetchDriveItems,
   fetchTrash,
+  purgeDriveItem,
   searchDriveItems,
   previewUrl,
   renameDriveItem,
@@ -89,7 +90,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [dialog, setDialog] = useState<
-    "folder" | "rename" | "delete" | "preview" | "conflict" | null
+    "folder" | "rename" | "delete" | "purge" | "preview" | "conflict" | null
   >(null);
   const [activeItem, setActiveItem] = useState<DriveItem | null>(null);
   const [nameValue, setNameValue] = useState("");
@@ -282,6 +283,21 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       toast.show({ tone: "success", message: "一括操作が完了しました。" });
     },
     onError: (error) => captureError(error, selectedIds.length > 1 ? "一括復元" : "復元"),
+  });
+  const purgeMutation = useMutation({
+    mutationFn: async () => {
+      await Promise.all(selectedIds.map((id) => purgeDriveItem(id)));
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
+      await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+      setSelectedIds([]);
+      setDialog(null);
+      setLastError(null);
+      toast.show({ tone: "success", message: "完全削除しました。" });
+    },
+    onError: (error) =>
+      captureError(error, selectedIds.length > 1 ? "一括完全削除" : "完全削除"),
   });
   const bulkDownloadMutation = useMutation({
     mutationFn: () => bulkDownload(selectedIds),
@@ -729,14 +745,24 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           <>
             <span>{selectedIds.length}件選択中</span>
             {mode === "trash" ? (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => restoreMutation.mutate()}
-              >
-                <RotateCcw size={16} aria-hidden="true" />
-                復元
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => restoreMutation.mutate()}
+                >
+                  <RotateCcw size={16} aria-hidden="true" />
+                  復元
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => setDialog("purge")}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  完全削除
+                </Button>
+              </>
             ) : (
               <>
                 <Button
@@ -969,6 +995,20 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         danger
         loading={deleteMutation.isPending}
         onConfirm={() => deleteMutation.mutate()}
+        onClose={() => setDialog(null)}
+      />
+      <ConfirmDialog
+        open={dialog === "purge"}
+        title="完全削除"
+        message={
+          selectedItems.length === 1
+            ? `「${selectedItems[0].name}」を完全に削除します。この操作は取り消せません。`
+            : "選択した項目を完全に削除します。この操作は取り消せません。"
+        }
+        confirmLabel="完全削除"
+        danger
+        loading={purgeMutation.isPending}
+        onConfirm={() => purgeMutation.mutate()}
         onClose={() => setDialog(null)}
       />
       <Modal
