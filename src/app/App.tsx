@@ -26,6 +26,7 @@ import { VerifyPage } from "../auth/VerifyPage";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "../drive/DrivePage";
+import { FlowerActivatePage } from "../flower/FlowerActivatePage";
 import { GroupDashboardPage } from "../GroupDashboardPage";
 import { AppLayout } from "./AppLayout";
 
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
+      { path: "/flower/activate", element: <FlowerActivatePage /> },
       {
         element: <AppLayout />,
         children: [
