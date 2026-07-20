@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ChevronUp,
   Download,
   FilePlus,
   FolderPlus,
   MoreVertical,
+  Move,
   RefreshCw,
   RotateCcw,
   Search,
@@ -11,7 +13,15 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError, type DuplicateContentFile } from "../api/errors";
@@ -50,6 +60,9 @@ import {
 
 type DriveMode = "drive" | "trash";
 const DRIVE_ITEM_MIME = "application/x-mitsubachi-drive-items";
+const DRIVE_OPEN_DISTANCE_THRESHOLD = 5;
+const MENU_VIEWPORT_PADDING = 8;
+const MENU_OFFSET = 6;
 
 type UploadTask = {
   id: string;
@@ -75,6 +88,10 @@ type ConflictState = {
 };
 
 type Breadcrumb = NonNullable<DriveItem["breadcrumbs"]>[number];
+type MoveDialogState = {
+  items: DriveItem[];
+  destinationId: number | null;
+};
 
 export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const params = useParams();
@@ -90,9 +107,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [dialog, setDialog] = useState<
-    "folder" | "rename" | "delete" | "purge" | "preview" | "conflict" | null
+    "folder" | "rename" | "delete" | "purge" | "preview" | "conflict" | "move" | null
   >(null);
   const [activeItem, setActiveItem] = useState<DriveItem | null>(null);
+  const [moveDialog, setMoveDialog] = useState<MoveDialogState | null>(null);
   const [nameValue, setNameValue] = useState("");
   const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
   const searchScope =
@@ -126,6 +144,21 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       }),
     enabled: mode === "drive" && searchTerm.length > 0,
   });
+  const moveDestinationQuery = useQuery({
+    queryKey: moveDialog?.destinationId
+      ? driveKeys.detail(moveDialog.destinationId)
+      : ["drive-items", "move-root"],
+    queryFn: () =>
+      moveDialog?.destinationId
+        ? fetchDriveItem(moveDialog.destinationId)
+        : Promise.resolve<DriveItem | null>(null),
+    enabled: dialog === "move" && Boolean(moveDialog?.destinationId),
+  });
+  const moveDestinationItemsQuery = useQuery({
+    queryKey: ["drive-items", "move-candidates", moveDialog?.destinationId ?? null],
+    queryFn: () => fetchDriveItems(moveDialog?.destinationId ?? null),
+    enabled: dialog === "move" && moveDialog !== null,
+  });
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -157,12 +190,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     [folderQuery.data?.breadcrumbs],
   );
   const pageLabel = breadcrumbs.map((crumb) => crumb.name).join(" / ");
-  const visibleError = lastError ?? (visibleQuery.isError
-    ? normalizeAppError(visibleQuery.error, {
-        operation: searchTerm ? "検索" : "一覧取得",
-        page: pageLabel,
-      })
-    : null);
+  const visibleError =
+    lastError ??
+    (visibleQuery.isError
+      ? normalizeAppError(visibleQuery.error, {
+          operation: searchTerm ? "検索" : "一覧取得",
+          page: pageLabel,
+        })
+      : null);
 
   const invalidateCurrent = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -182,13 +217,24 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         safeDetails,
       });
       setLastError(appError);
-      toast.show({ tone: appError.level === "warn" ? "warn" : appError.level, message: appError.message });
+      toast.show({
+        tone: appError.level === "warn" ? "warn" : appError.level,
+        message: appError.message,
+      });
       if (appError.status === 401) void navigate("/login");
       if (appError.status === 404) void invalidateCurrent();
       return appError;
     },
     [invalidateCurrent, navigate, pageLabel, toast],
   );
+  const openMoveDialog = useCallback((movingItems: DriveItem[]) => {
+    if (movingItems.length === 0) return;
+    setMoveDialog({
+      items: movingItems,
+      destinationId: movingItems[0]?.parent_id ?? null,
+    });
+    setDialog("move");
+  }, []);
 
   const createMutation = useMutation({
     mutationFn: createDirectory,
@@ -216,7 +262,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         setDialog("folder");
         return;
       }
-      captureError(error, "フォルダー作成", { itemType: "directory", itemName: nameValue });
+      captureError(error, "フォルダー作成", {
+        itemType: "directory",
+        itemName: nameValue,
+      });
     },
   });
   const renameMutation = useMutation({
@@ -268,7 +317,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         message: response.message ?? "一括操作が完了しました。",
       });
     },
-    onError: (error) => captureError(error, selectedIds.length > 1 ? "一括削除" : "削除"),
+    onError: (error) =>
+      captureError(error, selectedIds.length > 1 ? "一括削除" : "削除"),
   });
   const restoreMutation = useMutation({
     mutationFn: async () =>
@@ -282,7 +332,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       setLastError(null);
       toast.show({ tone: "success", message: "一括操作が完了しました。" });
     },
-    onError: (error) => captureError(error, selectedIds.length > 1 ? "一括復元" : "復元"),
+    onError: (error) =>
+      captureError(error, selectedIds.length > 1 ? "一括復元" : "復元"),
   });
   const purgeMutation = useMutation({
     mutationFn: async () => {
@@ -304,22 +355,40 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     onError: (error) => captureError(error, "一括ダウンロード"),
   });
   const moveMutation = useMutation({
-    mutationFn: async ({ ids, parentId }: { ids: number[]; parentId: number | null; targetName: string }) =>
-      bulkMove(ids, parentId),
+    mutationFn: async ({
+      ids,
+      parentId,
+    }: {
+      ids: number[];
+      parentId: number | null;
+      targetName: string;
+      source: "drag" | "dialog";
+    }) => bulkMove(ids, parentId),
     onSuccess: async () => {
       await invalidateCurrent();
       await queryClient.invalidateQueries({ queryKey: driveKeys.all });
       setSelectedIds([]);
+      setDialog(null);
+      setMoveDialog(null);
       setDraggingIds([]);
       setDragOverFolderId(null);
       setDragOverBreadcrumbId(null);
       setLastError(null);
       toast.show({ tone: "success", message: "移動しました。" });
     },
-    onError: (error, variables) =>
-      captureError(error, variables.ids.length > 1 ? "一括ドラッグ移動" : "ドラッグ移動", {
+    onError: (error, variables) => {
+      const operation =
+        variables.source === "drag"
+          ? variables.ids.length > 1
+            ? "一括ドラッグ移動"
+            : "ドラッグ移動"
+          : variables.ids.length > 1
+            ? "一括移動"
+            : "移動";
+      return captureError(error, operation, {
         targetFolder: variables.targetName,
-      }),
+      });
+    },
     onSettled: () => {
       setDraggingIds([]);
       setDragOverFolderId(null);
@@ -369,7 +438,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           fileName: file.name,
           file,
           parentId,
-      uploadName,
+          uploadName,
           loaded: 0,
           total: file.size,
           percent: 0,
@@ -392,7 +461,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         return "done";
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
-          updateUploadTask(taskId, { status: "canceled", message: "キャンセルしました" });
+          updateUploadTask(taskId, {
+            status: "canceled",
+            message: "キャンセルしました",
+          });
           return "failed";
         }
         const appError = normalizeAppError(error, {
@@ -458,7 +530,12 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         if (succeeded > 0) await invalidateCurrent();
 
         toast.show({
-          tone: succeeded === files.length ? "success" : succeeded > 0 || conflicted > 0 ? "info" : "danger",
+          tone:
+            succeeded === files.length
+              ? "success"
+              : succeeded > 0 || conflicted > 0
+                ? "info"
+                : "danger",
           message:
             succeeded === files.length
               ? `${succeeded}件アップロードしました。`
@@ -466,7 +543,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                 ? `${succeeded}件アップロードしました。${files.length - succeeded}件失敗しました。`
                 : conflicted > 0
                   ? "同名または同一内容のファイルがあります。名前を確認してください。"
-                : "アップロードに失敗しました。",
+                  : "アップロードに失敗しました。",
         });
       } finally {
         uploadInProgressRef.current = false;
@@ -500,11 +577,17 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     async (files: File[]) => {
       const safeFiles = files.filter((file) => safeRelativePath(file));
       if (safeFiles.length !== files.length) {
-        toast.show({ tone: "danger", message: "安全でないパスを含むファイルは除外しました。" });
+        toast.show({
+          tone: "danger",
+          message: "安全でないパスを含むファイルは除外しました。",
+        });
       }
       if (safeFiles.length === 0) return;
       if (uploadInProgressRef.current) {
-        toast.show({ tone: "info", message: "アップロード中です。完了してから再度実行してください。" });
+        toast.show({
+          tone: "info",
+          message: "アップロード中です。完了してから再度実行してください。",
+        });
         return;
       }
 
@@ -522,7 +605,12 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         }
         if (succeeded > 0) await invalidateCurrent();
         toast.show({
-          tone: succeeded === safeFiles.length ? "success" : succeeded > 0 || conflicted > 0 ? "info" : "danger",
+          tone:
+            succeeded === safeFiles.length
+              ? "success"
+              : succeeded > 0 || conflicted > 0
+                ? "info"
+                : "danger",
           message:
             conflicted > 0 && succeeded === 0
               ? "同名または同一内容のファイルがあります。名前を確認してください。"
@@ -581,7 +669,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         return;
       }
 
-      if (files.some((file) => (file as File & { webkitRelativePath?: string }).webkitRelativePath)) {
+      if (
+        files.some(
+          (file) => (file as File & { webkitRelativePath?: string }).webkitRelativePath,
+        )
+      ) {
         void uploadDirectory(files);
       } else {
         void uploadFiles(files);
@@ -602,14 +694,45 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         setLastError(appError);
         return;
       }
-      moveMutation.mutate({ ids: itemIds, parentId: targetParentId, targetName });
+      moveMutation.mutate({
+        ids: itemIds,
+        parentId: targetParentId,
+        targetName,
+        source: "drag",
+      });
     },
     [items, moveMutation, pageLabel],
+  );
+
+  const moveItems = useCallback(
+    (movingItems: DriveItem[], targetParentId: number | null, targetName: string) => {
+      if (movingItems.length === 0 || moveMutation.isPending) return;
+      if (movingItems.every((item) => (item.parent_id ?? null) === targetParentId)) {
+        const appError = normalizeAppError(new Error("同じ場所へは移動できません。"), {
+          operation: movingItems.length > 1 ? "一括移動" : "移動",
+          page: pageLabel,
+          safeDetails: { targetFolder: targetName },
+        });
+        setLastError(appError);
+        return;
+      }
+      moveMutation.mutate({
+        ids: movingItems.map((item) => item.id),
+        parentId: targetParentId,
+        targetName,
+        source: "dialog",
+      });
+    },
+    [moveMutation, pageLabel],
   );
 
   const startItemDrag = useCallback(
     (event: React.DragEvent, item: DriveItem) => {
       if (mode === "trash") return;
+      if (isNoDragTarget(event.target)) {
+        event.preventDefault();
+        return;
+      }
       const ids = selectedIds.includes(item.id) ? selectedIds : [item.id];
       setDraggingIds(ids);
       event.dataTransfer.effectAllowed = "move";
@@ -688,9 +811,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             );
           })}
         </nav>
-        {draggingIds.length > 0 ? (
-          <p className="drag-status" role="status">{draggingIds.length}件を移動中</p>
-        ) : null}
+        <p className="drag-status" role="status">
+          {draggingIds.length > 0 ? <>{draggingIds.length}件を移動中</> : <>(^_-)-☆</>}
+        </p>
         <h1>
           {mode === "trash" ? "ゴミ箱" : (folderQuery.data?.name ?? "共有ドライブ")}
         </h1>
@@ -765,6 +888,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
               </>
             ) : (
               <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => openMoveDialog(selectedItems)}
+                >
+                  <Move size={16} aria-hidden="true" />
+                  移動
+                </Button>
                 <Button
                   type="button"
                   variant="secondary"
@@ -853,7 +984,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         <UploadProgressPanel
           tasks={uploadTasks}
           onCancel={(task) => task.abortController?.abort()}
-          onRetry={(task) => void uploadSingleFile(task.file, task.parentId, task.uploadName)}
+          onRetry={(task) =>
+            void uploadSingleFile(task.file, task.parentId, task.uploadName)
+          }
         />
       ) : null}
       {visibleError ? (
@@ -865,7 +998,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }}
         />
       ) : null}
-      {visibleQuery.isLoading ? <LoadingIndicator label="一覧を読み込んでいます" /> : null}
+      {visibleQuery.isLoading ? (
+        <LoadingIndicator label="一覧を読み込んでいます" />
+      ) : null}
       {visibleQuery.isError ? (
         <ErrorState
           message={errorMessage(visibleQuery.error)}
@@ -877,7 +1012,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       ) : null}
       {!visibleQuery.isLoading && !visibleQuery.isError && items.length === 0 ? (
         <EmptyState
-          title={searchTerm ? "検索結果はありません。" : mode === "trash" ? "ゴミ箱は空です。" : "このフォルダは空です。"}
+          title={
+            searchTerm
+              ? "検索結果はありません。"
+              : mode === "trash"
+                ? "ゴミ箱は空です。"
+                : "このフォルダは空です。"
+          }
           description={
             mode === "drive"
               ? "フォルダ作成またはアップロードから始められます。"
@@ -897,6 +1038,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             setNameConflictMessage(null);
             setDialog("rename");
           }}
+          onMove={(item) => openMoveDialog([item])}
           onDownload={downloadDriveItem}
           onDragStart={startItemDrag}
           onDragEnd={endItemDrag}
@@ -906,7 +1048,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             moveDraggedItems(payload.itemIds, item.id, item.name);
           }}
           onDragOverFolder={setDragOverFolderId}
-          onOpenParent={(parentId) => void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`)}
+          onOpenParent={(parentId) =>
+            void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`)
+          }
           draggingIds={draggingIds}
           dragOverFolderId={dragOverFolderId}
           trash={mode === "trash"}
@@ -974,11 +1118,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
               setDialog(null);
               void uploadSingleFile(conflict.file, conflict.parentId, name, {
                 allowDuplicateContent: conflict.duplicateFiles.length > 0,
-              }).then(
-                async (succeeded) => {
-                  if (succeeded === "done") await invalidateCurrent();
-                },
-              );
+              }).then(async (succeeded) => {
+                if (succeeded === "done") await invalidateCurrent();
+              });
             }}
           />
         ) : null}
@@ -1018,6 +1160,41 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       >
         {dialog === "preview" && activeItem ? <Preview item={activeItem} /> : null}
       </Modal>
+      <Modal
+        open={dialog === "move"}
+        title="移動先を選択"
+        onClose={() => {
+          setDialog(null);
+          setMoveDialog(null);
+        }}
+      >
+        {moveDialog ? (
+          <MoveDestinationDialog
+            movingItems={moveDialog.items}
+            destinationId={moveDialog.destinationId}
+            destination={moveDestinationQuery.data ?? null}
+            candidates={(moveDestinationItemsQuery.data ?? []).filter(
+              (item) => item.item_type === "directory" && !item.deleted_at,
+            )}
+            loading={
+              moveDestinationItemsQuery.isLoading || moveDestinationQuery.isLoading
+            }
+            error={moveDestinationItemsQuery.error ?? moveDestinationQuery.error}
+            moving={moveMutation.isPending}
+            onRetry={() => {
+              void moveDestinationItemsQuery.refetch();
+              if (moveDialog.destinationId !== null)
+                void moveDestinationQuery.refetch();
+            }}
+            onDestinationChange={(destinationId) =>
+              setMoveDialog((current) => current && { ...current, destinationId })
+            }
+            onMove={(destinationId, destinationName) =>
+              moveItems(moveDialog.items, destinationId, destinationName)
+            }
+          />
+        ) : null}
+      </Modal>
     </section>
   );
 }
@@ -1030,6 +1207,7 @@ function FileTable({
   onToggle,
   onOpen,
   onRename,
+  onMove,
   onDownload,
   onDragStart,
   onDragEnd,
@@ -1046,6 +1224,7 @@ function FileTable({
   onToggle: (id: number) => void;
   onOpen: (item: DriveItem) => void;
   onRename: (item: DriveItem) => void;
+  onMove: (item: DriveItem) => void;
   onDownload: (id: number) => void;
   onDragStart: (event: React.DragEvent, item: DriveItem) => void;
   onDragEnd: () => void;
@@ -1055,6 +1234,57 @@ function FileTable({
   draggingIds: number[];
   dragOverFolderId: number | null;
 }) {
+  const [openMenu, setOpenMenu] = useState<{
+    id: number;
+    anchor: HTMLButtonElement;
+  } | null>(null);
+  const pointerStartRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    dragged: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (openMenu === null) return;
+    const close = () => setOpenMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [openMenu]);
+
+  const handleCentralPointerDown = (event: React.PointerEvent, item: DriveItem) => {
+    if (trash || isNoDragTarget(event.target)) return;
+    pointerStartRef.current = {
+      id: item.id,
+      x: event.clientX,
+      y: event.clientY,
+      dragged: false,
+    };
+  };
+
+  const handleCentralPointerUp = (event: React.PointerEvent, item: DriveItem) => {
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+    if (!start || start.id !== item.id || start.dragged) return;
+    const distance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+    if (distance < DRIVE_OPEN_DISTANCE_THRESHOLD) onOpen(item);
+  };
+
+  const handleCentralKeyDown = (event: React.KeyboardEvent, item: DriveItem) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onOpen(item);
+  };
+
   return (
     <div className="file-list">
       <table>
@@ -1077,11 +1307,10 @@ function FileTable({
                 item.item_type === "directory" ? "directory-row" : "",
                 draggingIds.includes(item.id) ? "dragging-row" : "",
                 dragOverFolderId === item.id ? "drop-target" : "",
-              ].filter(Boolean).join(" ")}
+              ]
+                .filter(Boolean)
+                .join(" ")}
               tabIndex={0}
-              draggable={!trash}
-              onDragStart={(event) => onDragStart(event, item)}
-              onDragEnd={onDragEnd}
               onDragOver={(event) => {
                 if (item.item_type !== "directory" || draggingIds.length === 0) return;
                 if (draggingIds.includes(item.id)) return;
@@ -1096,59 +1325,102 @@ function FileTable({
                 event.preventDefault();
                 onDropToFolder(event, item);
               }}
-              onDoubleClick={() => onOpen(item)}
-              onKeyDown={(event) => event.key === "Enter" && onOpen(item)}
             >
-              <td>
+              <td className="file-select-cell">
                 <input
+                  data-no-drag
                   type="checkbox"
                   aria-label={`${item.name}を選択`}
                   checked={selectedIds.includes(item.id)}
                   onChange={() => onToggle(item.id)}
                 />
               </td>
-              <td className="file-name-cell">
-                <button
-                  type="button"
-                  className="file-name-button"
-                  onClick={() => onOpen(item)}
+              <td className="drive-item-drag-cell" colSpan={4}>
+                <div
+                  className="drive-item-info-action"
+                  role="button"
+                  tabIndex={trash ? -1 : 0}
+                  aria-label={`${displayName(item)}を開く`}
+                  draggable={!trash}
+                  onPointerDown={(event) => handleCentralPointerDown(event, item)}
+                  onPointerUp={(event) => handleCentralPointerUp(event, item)}
+                  onPointerCancel={() => {
+                    pointerStartRef.current = null;
+                  }}
+                  onKeyDown={(event) => handleCentralKeyDown(event, item)}
+                  onDragStart={(event) => {
+                    if (pointerStartRef.current?.id === item.id) {
+                      pointerStartRef.current.dragged = true;
+                    }
+                    onDragStart(event, item);
+                  }}
+                  onDragEnd={onDragEnd}
                 >
-                  <FileTypeIcon item={item} />
-                  <span className="file-name">{displayName(item)}</span>
-                </button>
-                <span className="mobile-meta">
-                  {item.owner_display_name ?? "不明"} ・ {formatDate(item.updated_at)} ・ {formatSize(item.file_size)}
-                  {searchMode && item.parent_name ? ` ・ ${item.parent_name}` : ""}
-                </span>
-                {searchMode && item.parent_name ? (
-                  <button
-                    type="button"
-                    className="file-location"
-                    onClick={() => onOpenParent(item.parent_id ?? null)}
-                  >
-                    場所: {item.parent_name}
-                  </button>
-                ) : null}
+                  <div className="file-name-cell">
+                    <span className="file-name-content">
+                      <FileTypeIcon item={item} />
+                      <span className="file-name">{displayName(item)}</span>
+                    </span>
+                    <span className="mobile-meta">
+                      {item.owner_display_name ?? "不明"} ・{" "}
+                      {formatDate(item.updated_at)} ・ {formatSize(item.file_size)}
+                      {searchMode && item.parent_name ? ` ・ ${item.parent_name}` : ""}
+                    </span>
+                    {searchMode && item.parent_name ? (
+                      <button
+                        data-no-drag
+                        type="button"
+                        className="file-location"
+                        onClick={() => onOpenParent(item.parent_id ?? null)}
+                      >
+                        場所: {item.parent_name}
+                      </button>
+                    ) : null}
+                  </div>
+                  <span className="drive-item-owner">
+                    {item.owner_display_name ?? "不明"}
+                  </span>
+                  <span className="drive-item-updated">
+                    {formatDate(item.updated_at)}
+                  </span>
+                  <span className="drive-item-size">{formatSize(item.file_size)}</span>
+                </div>
               </td>
-              <td>{item.owner_display_name ?? "不明"}</td>
-              <td>{formatDate(item.updated_at)}</td>
-              <td>{formatSize(item.file_size)}</td>
-              <td>
+              <td className="file-actions-cell">
                 <div className="row-actions">
                   {!trash ? (
                     <>
                       <IconButton
+                        data-no-drag
                         label={`${item.name}をダウンロード`}
                         onClick={() => onDownload(item.id)}
                       >
                         <Download size={16} aria-hidden="true" />
                       </IconButton>
                       <IconButton
-                        label={`${item.name}の名前を変更`}
-                        onClick={() => onRename(item)}
+                        data-no-drag
+                        label={`${item.name}の操作メニュー`}
+                        aria-haspopup="menu"
+                        aria-expanded={openMenu?.id === item.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const anchor = event.currentTarget;
+                          setOpenMenu((current) =>
+                            current?.id === item.id ? null : { id: item.id, anchor },
+                          );
+                        }}
                       >
                         <MoreVertical size={16} aria-hidden="true" />
                       </IconButton>
+                      {openMenu?.id === item.id ? (
+                        <ItemActionMenu
+                          anchor={openMenu.anchor}
+                          item={item}
+                          onClose={() => setOpenMenu(null)}
+                          onMove={onMove}
+                          onRename={onRename}
+                        />
+                      ) : null}
                     </>
                   ) : null}
                 </div>
@@ -1157,6 +1429,240 @@ function FileTable({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ItemActionMenu({
+  anchor,
+  item,
+  onClose,
+  onMove,
+  onRename,
+}: {
+  anchor: HTMLButtonElement;
+  item: DriveItem;
+  onClose: () => void;
+  onMove: (item: DriveItem) => void;
+  onRename: (item: DriveItem) => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{
+    top: number;
+    left: number;
+    placement: "top" | "bottom";
+    ready: boolean;
+  }>({ top: 0, left: 0, placement: "bottom", ready: false });
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const spaceBelow = viewportHeight - anchorRect.bottom - MENU_OFFSET - MENU_VIEWPORT_PADDING;
+    const spaceAbove = anchorRect.top - MENU_OFFSET - MENU_VIEWPORT_PADDING;
+    const opensUp = menuRect.height > spaceBelow && spaceAbove > spaceBelow;
+    const top = opensUp
+      ? Math.max(MENU_VIEWPORT_PADDING, anchorRect.top - menuRect.height - MENU_OFFSET)
+      : Math.min(
+          viewportHeight - menuRect.height - MENU_VIEWPORT_PADDING,
+          anchorRect.bottom + MENU_OFFSET,
+        );
+    const left = Math.min(
+      Math.max(MENU_VIEWPORT_PADDING, anchorRect.right - menuRect.width),
+      viewportWidth - menuRect.width - MENU_VIEWPORT_PADDING,
+    );
+
+    setPosition({
+      top,
+      left,
+      placement: opensUp ? "top" : "bottom",
+      ready: true,
+    });
+  }, [anchor]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target) || anchor.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [anchor, onClose]);
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="item-menu"
+      role="menu"
+      data-no-drag
+      data-placement={position.placement}
+      style={{
+        position: "fixed",
+        top: position.top,
+        left: position.left,
+        visibility: position.ready ? "visible" : "hidden",
+      }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        data-no-drag
+        onClick={() => {
+          onClose();
+          onMove(item);
+        }}
+      >
+        <Move size={16} aria-hidden="true" />
+        移動
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        data-no-drag
+        onClick={() => {
+          onClose();
+          onRename(item);
+        }}
+      >
+        <MoreVertical size={16} aria-hidden="true" />
+        名前を変更
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+function MoveDestinationDialog({
+  movingItems,
+  destinationId,
+  destination,
+  candidates,
+  loading,
+  error,
+  moving,
+  onRetry,
+  onDestinationChange,
+  onMove,
+}: {
+  movingItems: DriveItem[];
+  destinationId: number | null;
+  destination: DriveItem | null;
+  candidates: DriveItem[];
+  loading: boolean;
+  error: unknown;
+  moving: boolean;
+  onRetry: () => void;
+  onDestinationChange: (id: number | null) => void;
+  onMove: (id: number | null, name: string) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const breadcrumbs = destination?.breadcrumbs ?? [{ id: null, name: "共有ドライブ" }];
+  const disabledReason = moveDestinationDisabledReason(
+    movingItems,
+    destinationId,
+    breadcrumbs,
+  );
+  const filteredCandidates = candidates.filter((candidate) =>
+    candidate.name.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()),
+  );
+  const parentCrumb = breadcrumbs.at(-2);
+  const destinationName = destination?.name ?? "共有ドライブ";
+
+  return (
+    <div className="move-dialog" data-no-drag>
+      <p className="move-dialog-summary">{movingItems.length}件の項目を移動</p>
+      <nav className="move-breadcrumbs" aria-label="移動先">
+        {breadcrumbs.map((crumb, index) => {
+          const current = index === breadcrumbs.length - 1;
+          return (
+            <span key={crumb.id ?? "root"}>
+              {index > 0 ? <span aria-hidden="true">/</span> : null}
+              <button
+                type="button"
+                data-no-drag
+                disabled={current}
+                aria-current={current ? "page" : undefined}
+                onClick={() => onDestinationChange(crumb.id)}
+              >
+                {crumb.name}
+              </button>
+            </span>
+          );
+        })}
+      </nav>
+      <div className="move-dialog-controls">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={destinationId === null}
+          onClick={() => onDestinationChange(parentCrumb?.id ?? null)}
+        >
+          <ChevronUp size={16} aria-hidden="true" />
+          一つ上へ
+        </Button>
+        <Button type="button" variant="ghost" onClick={() => onDestinationChange(null)}>
+          共有ドライブへ
+        </Button>
+      </div>
+      <label className="field">
+        <span>ディレクトリ名検索</span>
+        <input
+          data-no-drag
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="移動先フォルダを絞り込み"
+        />
+      </label>
+      {error ? (
+        <ErrorState message={errorMessage(error)} onRetry={onRetry} />
+      ) : (
+        <ul className="move-candidate-list" aria-busy={loading}>
+          {loading ? <LoadingIndicator label="移動先を読み込んでいます" /> : null}
+          {!loading && filteredCandidates.length === 0 ? (
+            <p className="move-empty">直下に移動先候補のフォルダはありません。</p>
+          ) : null}
+          {filteredCandidates.map((candidate) => {
+            const reason = moveDestinationDisabledReason(movingItems, candidate.id, [
+              ...breadcrumbs,
+              { id: candidate.id, name: candidate.name },
+            ]);
+            return (
+              <li key={candidate.id}>
+                <button
+                  type="button"
+                  className="move-candidate"
+                  data-no-drag
+                  disabled={Boolean(reason)}
+                  title={reason ?? `${candidate.name}を開く`}
+                  onClick={() => onDestinationChange(candidate.id)}
+                >
+                  <FileTypeIcon item={candidate} />
+                  <span>{candidate.name}</span>
+                  {reason ? <small>{reason}</small> : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {disabledReason ? (
+        <p className="form-message form-message-warn">{disabledReason}</p>
+      ) : null}
+      <div className="modal-actions">
+        <Button
+          type="button"
+          loading={moving}
+          disabled={Boolean(disabledReason)}
+          onClick={() => onMove(destinationId, destinationName)}
+        >
+          ここに移動
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1191,7 +1697,9 @@ function NameForm({
         if (trimmed) onSubmit(trimmed);
       }}
     >
-      {message ? <p className={`form-message form-message-${messageTone}`}>{message}</p> : null}
+      {message ? (
+        <p className={`form-message form-message-${messageTone}`}>{message}</p>
+      ) : null}
       {duplicateFiles.length > 0 ? (
         <div className="duplicate-files" aria-label="同じ内容の既存ファイル">
           <ul>
@@ -1199,9 +1707,16 @@ function NameForm({
               <li key={file.id}>
                 <div>
                   <strong>{file.name}</strong>
-                  <span>保存先: {file.deleted ? "ごみ箱" : (file.parent_name ?? "共有ドライブ")}</span>
-                  {file.owner_display_name ? <span>アップロード者: {file.owner_display_name}</span> : null}
-                  {file.created_at ? <span>作成日時: {formatDate(file.created_at)}</span> : null}
+                  <span>
+                    保存先:{" "}
+                    {file.deleted ? "ごみ箱" : (file.parent_name ?? "共有ドライブ")}
+                  </span>
+                  {file.owner_display_name ? (
+                    <span>アップロード者: {file.owner_display_name}</span>
+                  ) : null}
+                  {file.created_at ? (
+                    <span>作成日時: {formatDate(file.created_at)}</span>
+                  ) : null}
                   <span>サイズ: {formatSize(file.file_size)}</span>
                 </div>
                 {!file.deleted && onOpenDuplicateLocation ? (
@@ -1252,7 +1767,8 @@ function UploadProgressPanel({
       <div className="upload-progress-header">
         <h2>アップロード状況</h2>
         <span>
-          {tasks.filter((task) => task.status === "done").length} / {tasks.length} 件完了
+          {tasks.filter((task) => task.status === "done").length} / {tasks.length}{" "}
+          件完了
         </span>
       </div>
       <ProgressBar percent={percent} />
@@ -1278,7 +1794,9 @@ function UploadProgressPanel({
               </Button>
             ) : null}
             <ProgressBar percent={task.percent} />
-            {task.error ? <ErrorReportPanel error={task.error} onRetry={() => onRetry(task)} /> : null}
+            {task.error ? (
+              <ErrorReportPanel error={task.error} onRetry={() => onRetry(task)} />
+            ) : null}
           </li>
         ))}
       </ul>
@@ -1288,7 +1806,13 @@ function UploadProgressPanel({
 
 function ProgressBar({ percent }: { percent?: number }) {
   return (
-    <div className="progress-bar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} role="progressbar">
+    <div
+      className="progress-bar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={percent}
+      role="progressbar"
+    >
       <span style={{ width: `${percent ?? 100}%` }} />
     </div>
   );
@@ -1365,7 +1889,8 @@ function formatSize(value?: number | null) {
 }
 
 function uploadStatusText(task: UploadTask) {
-  if (task.status === "processing") return "アップロード完了。サーバーで処理しています。";
+  if (task.status === "processing")
+    return "アップロード完了。サーバーで処理しています。";
   if (task.status === "done") return "完了";
   if (task.status === "failed") return task.message ?? "失敗";
   if (task.status === "canceled") return "キャンセルしました";
@@ -1376,7 +1901,9 @@ function isNameConflict(error: unknown) {
   return (
     error instanceof ApiError &&
     error.status === 409 &&
-    (error.code === "duplicate_name" || error.code === "name_conflict" || error.code === "duplicate_content")
+    (error.code === "duplicate_name" ||
+      error.code === "name_conflict" ||
+      error.code === "duplicate_content")
   );
 }
 
@@ -1386,11 +1913,16 @@ function suggestedUploadName(
   items: DriveItem[],
   parentId: number | null,
 ) {
-  if (error instanceof ApiError && typeof error.safeDetails?.suggested_name === "string") {
+  if (
+    error instanceof ApiError &&
+    typeof error.safeDetails?.suggested_name === "string"
+  ) {
     return error.safeDetails.suggested_name;
   }
   const existingFilenames = items
-    .filter((item) => (item.parent_id ?? null) === parentId && item.item_type === "file")
+    .filter(
+      (item) => (item.parent_id ?? null) === parentId && item.item_type === "file",
+    )
     .map(displayName);
   return nextAvailableUploadName(file.name, existingFilenames);
 }
@@ -1410,7 +1942,8 @@ function nextAvailableUploadName(filename: string, existingFilenames: string[]) 
 }
 
 function relativePathSegments(file: File) {
-  const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
+  const relativePath = (file as File & { webkitRelativePath?: string })
+    .webkitRelativePath;
   return (relativePath || file.name).split(/[\\/]+/).filter(Boolean);
 }
 
@@ -1456,6 +1989,45 @@ function isDragMovePayload(value: unknown): value is { itemIds: number[] } {
   }
   const itemIds = value.itemIds;
   return Array.isArray(itemIds) && itemIds.every((id) => Number.isInteger(id));
+}
+
+function isNoDragTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  const interactive = target.closest(
+    "button, a, input, select, textarea, [role='button'], [data-no-drag]",
+  );
+  const centralAction = target.closest(".drive-item-info-action");
+  if (centralAction) return Boolean(interactive && interactive !== centralAction);
+  return Boolean(
+    interactive,
+  );
+}
+
+function moveDestinationDisabledReason(
+  movingItems: DriveItem[],
+  destinationId: number | null,
+  destinationBreadcrumbs: Breadcrumb[],
+) {
+  if (movingItems.some((item) => item.id === destinationId)) {
+    return "移動対象自身へは移動できません。";
+  }
+  if (movingItems.every((item) => (item.parent_id ?? null) === destinationId)) {
+    return "現在と同じ場所です。";
+  }
+
+  const movingDirectoryIds = new Set(
+    movingItems.filter((item) => item.item_type === "directory").map((item) => item.id),
+  );
+  if (
+    destinationId !== null &&
+    destinationBreadcrumbs.some(
+      (crumb) => crumb.id !== null && movingDirectoryIds.has(crumb.id),
+    )
+  ) {
+    return "フォルダーを自身の配下へは移動できません。";
+  }
+
+  return null;
 }
 
 async function filesFromDataTransfer(dataTransfer: DataTransfer) {
@@ -1512,13 +2084,19 @@ type BrowserFileSystemDirectoryEntry = BrowserFileSystemEntry & {
   };
 };
 
-async function filesFromEntry(entry: BrowserFileSystemEntry, parentPath: string): Promise<File[]> {
+async function filesFromEntry(
+  entry: BrowserFileSystemEntry,
+  parentPath: string,
+): Promise<File[]> {
   const path = parentPath ? `${parentPath}/${entry.name}` : entry.name;
   if (entry.isFile) {
     const file = await new Promise<File>((resolve, reject) => {
       (entry as BrowserFileSystemFileEntry).file(resolve, reject);
     });
-    Object.defineProperty(file, "webkitRelativePath", { value: path, configurable: true });
+    Object.defineProperty(file, "webkitRelativePath", {
+      value: path,
+      configurable: true,
+    });
     return [file];
   }
 
