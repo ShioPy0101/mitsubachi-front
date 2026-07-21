@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronUp,
+  Copy,
   Download,
+  ExternalLink,
   FilePlus,
   FolderPlus,
   MoreVertical,
@@ -9,6 +11,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Share2,
   Trash2,
   UploadCloud,
   X,
@@ -36,6 +39,7 @@ import { IconButton } from "../components/IconButton";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { Modal } from "../components/Modal";
 import { useToast } from "../components/ToastProvider";
+import { createExternalShare, type ExternalShare } from "../externalShares/api";
 import { normalizeAppError, type AppError } from "../errors/appError";
 import {
   bulkMove,
@@ -107,10 +111,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [dialog, setDialog] = useState<
-    "folder" | "rename" | "delete" | "purge" | "preview" | "conflict" | "move" | null
+    "folder" | "rename" | "delete" | "purge" | "preview" | "conflict" | "move" | "externalShare" | null
   >(null);
   const [activeItem, setActiveItem] = useState<DriveItem | null>(null);
   const [moveDialog, setMoveDialog] = useState<MoveDialogState | null>(null);
+  const [createdShare, setCreatedShare] = useState<ExternalShare | null>(null);
   const [nameValue, setNameValue] = useState("");
   const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
   const searchScope =
@@ -227,6 +232,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     },
     [invalidateCurrent, navigate, pageLabel, toast],
   );
+  const openExternalShareDialog = useCallback((sharingItems: DriveItem[]) => {
+    if (sharingItems.length === 0) return;
+    setSelectedIds(sharingItems.map((item) => item.id));
+    setCreatedShare(null);
+    setDialog("externalShare");
+  }, []);
+
   const openMoveDialog = useCallback((movingItems: DriveItem[]) => {
     if (movingItems.length === 0) return;
     setMoveDialog({
@@ -353,6 +365,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const bulkDownloadMutation = useMutation({
     mutationFn: () => bulkDownload(selectedIds),
     onError: (error) => captureError(error, "一括ダウンロード"),
+  });
+  const externalShareMutation = useMutation({
+    mutationFn: createExternalShare,
+    onSuccess: (share) => {
+      setCreatedShare(share);
+      setLastError(null);
+      toast.show({ tone: "success", message: "公開リンクを作成しました。" });
+    },
+    onError: (error) => captureError(error, "外部公開"),
   });
   const moveMutation = useMutation({
     mutationFn: async ({
@@ -906,6 +927,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                 </Button>
                 <Button
                   type="button"
+                  variant="secondary"
+                  onClick={() => openExternalShareDialog(selectedItems)}
+                >
+                  <Share2 size={16} aria-hidden="true" />
+                  外部公開
+                </Button>
+                <Button
+                  type="button"
                   variant="danger"
                   onClick={() => setDialog("delete")}
                 >
@@ -1039,6 +1068,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             setDialog("rename");
           }}
           onMove={(item) => openMoveDialog([item])}
+          onExternalShare={(item) => openExternalShareDialog([item])}
           onDownload={downloadDriveItem}
           onDragStart={startItemDrag}
           onDragEnd={endItemDrag}
@@ -1154,6 +1184,21 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         onClose={() => setDialog(null)}
       />
       <Modal
+        open={dialog === "externalShare"}
+        title={createdShare?.share_url ? "公開リンクを作成しました" : "外部公開リンクを作成"}
+        onClose={() => {
+          setDialog(null);
+          setCreatedShare(null);
+        }}
+      >
+        <ExternalShareDialog
+          items={selectedItems}
+          createdShare={createdShare}
+          loading={externalShareMutation.isPending}
+          onSubmit={(input) => externalShareMutation.mutate(input)}
+        />
+      </Modal>
+      <Modal
         open={dialog === "preview"}
         title={activeItem?.name ?? "プレビュー"}
         onClose={() => setDialog(null)}
@@ -1208,6 +1253,7 @@ function FileTable({
   onOpen,
   onRename,
   onMove,
+  onExternalShare,
   onDownload,
   onDragStart,
   onDragEnd,
@@ -1225,6 +1271,7 @@ function FileTable({
   onOpen: (item: DriveItem) => void;
   onRename: (item: DriveItem) => void;
   onMove: (item: DriveItem) => void;
+  onExternalShare: (item: DriveItem) => void;
   onDownload: (id: number) => void;
   onDragStart: (event: React.DragEvent, item: DriveItem) => void;
   onDragEnd: () => void;
@@ -1419,6 +1466,7 @@ function FileTable({
                           onClose={() => setOpenMenu(null)}
                           onMove={onMove}
                           onRename={onRename}
+                          onExternalShare={onExternalShare}
                         />
                       ) : null}
                     </>
@@ -1439,12 +1487,14 @@ function ItemActionMenu({
   onClose,
   onMove,
   onRename,
+  onExternalShare,
 }: {
   anchor: HTMLButtonElement;
   item: DriveItem;
   onClose: () => void;
   onMove: (item: DriveItem) => void;
   onRename: (item: DriveItem) => void;
+  onExternalShare: (item: DriveItem) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{
@@ -1526,6 +1576,18 @@ function ItemActionMenu({
         data-no-drag
         onClick={() => {
           onClose();
+          onExternalShare(item);
+        }}
+      >
+        <Share2 size={16} aria-hidden="true" />
+        外部公開
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        data-no-drag
+        onClick={() => {
+          onClose();
           onRename(item);
         }}
       >
@@ -1535,6 +1597,140 @@ function ItemActionMenu({
     </div>,
     document.body,
   );
+}
+
+
+function ExternalShareDialog({
+  items,
+  createdShare,
+  loading,
+  onSubmit,
+}: {
+  items: DriveItem[];
+  createdShare: ExternalShare | null;
+  loading: boolean;
+  onSubmit: (input: {
+    name: string;
+    driveItemIds: number[];
+    expiresAt: string | null;
+    allowDownload: boolean;
+    allowBulkDownload: boolean;
+    password: string | null;
+    folderShareMode: "snapshot" | "dynamic";
+  }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [allowDownload, setAllowDownload] = useState(true);
+  const [allowBulkDownload, setAllowBulkDownload] = useState(true);
+  const [password, setPassword] = useState("");
+  const [followFolders, setFollowFolders] = useState(false);
+  const hasFolder = items.some((item) => item.item_type === "directory");
+  const effectiveName = name || defaultExternalShareName(items);
+
+  if (createdShare?.share_url) {
+    return (
+      <div className="external-share-result">
+        <input readOnly value={createdShare.share_url} aria-label="公開URL" />
+        <div className="modal-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void navigator.clipboard?.writeText(createdShare.share_url ?? "")}
+          >
+            <Copy size={16} aria-hidden="true" />
+            コピー
+          </Button>
+          <Button
+            type="button"
+            onClick={() => window.open(createdShare.share_url, "_blank", "noopener,noreferrer")}
+          >
+            <ExternalLink size={16} aria-hidden="true" />
+            リンクを開く
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="form-stack external-share-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const expiresAt = expiresInDays
+          ? new Date(Date.now() + Number(expiresInDays) * 24 * 60 * 60 * 1000).toISOString()
+          : null;
+        onSubmit({
+          name: effectiveName.trim(),
+          driveItemIds: items.map((item) => item.id),
+          expiresAt,
+          allowDownload,
+          allowBulkDownload: allowDownload && allowBulkDownload,
+          password: password.trim() || null,
+          folderShareMode: hasFolder && followFolders ? "dynamic" : "snapshot",
+        });
+      }}
+    >
+      <div className="external-share-targets">
+        <span>公開対象</span>
+        <ul>
+          {items.slice(0, 6).map((item) => (
+            <li key={item.id}>{displayName(item)}</li>
+          ))}
+        </ul>
+        <strong>合計 {items.length}件</strong>
+      </div>
+      <label className="field">
+        <span>公開名</span>
+        <input value={effectiveName} onChange={(event) => setName(event.target.value)} />
+      </label>
+      <label className="field">
+        <span>有効期限</span>
+        <select value={expiresInDays} onChange={(event) => setExpiresInDays(event.target.value)}>
+          <option value="1">1日間</option>
+          <option value="7">7日間</option>
+          <option value="30">30日間</option>
+          <option value="">無期限</option>
+        </select>
+      </label>
+      <fieldset className="check-stack">
+        <legend>ダウンロード</legend>
+        <label>
+          <input type="checkbox" checked={allowDownload} onChange={(event) => setAllowDownload(event.target.checked)} />
+          個別ダウンロードを許可
+        </label>
+        <label>
+          <input type="checkbox" checked={allowBulkDownload} disabled={!allowDownload} onChange={(event) => setAllowBulkDownload(event.target.checked)} />
+          一括ダウンロードを許可
+        </label>
+      </fieldset>
+      <label className="field">
+        <span>パスワード</span>
+        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="任意" />
+      </label>
+      {hasFolder ? (
+        <fieldset className="check-stack">
+          <legend>フォルダ内の今後の変更を共有に反映する</legend>
+          <label>
+            <input type="checkbox" checked={followFolders} onChange={(event) => setFollowFolders(event.target.checked)} />
+            反映する
+          </label>
+          <p>{followFolders ? "今後追加されるファイルも公開対象になります。" : "共有作成時点のファイルだけを公開します。"}</p>
+        </fieldset>
+      ) : null}
+      <div className="modal-actions">
+        <Button type="submit" loading={loading} disabled={!effectiveName.trim() || items.length === 0}>
+          公開リンクを作成
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function defaultExternalShareName(items: DriveItem[]) {
+  if (items.length === 1) return displayName(items[0]);
+  return `${new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long" })} 共有データ`;
 }
 
 function MoveDestinationDialog({
