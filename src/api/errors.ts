@@ -113,9 +113,7 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
             ? body.error.conflicting_name
             : undefined;
       const requestId =
-        typeof body.error.request_id === "string"
-          ? body.error.request_id
-          : undefined;
+        typeof body.error.request_id === "string" ? body.error.request_id : undefined;
       return new ApiError(
         status,
         message,
@@ -151,8 +149,12 @@ function duplicateFilesFrom(value: Record<string, unknown>) {
         id: entry.id,
         name: entry.name,
         parent_id: typeof entry.parent_id === "number" ? entry.parent_id : null,
-        parent_name: typeof entry.parent_name === "string" ? entry.parent_name : undefined,
-        owner_display_name: typeof entry.owner_display_name === "string" ? entry.owner_display_name : undefined,
+        parent_name:
+          typeof entry.parent_name === "string" ? entry.parent_name : undefined,
+        owner_display_name:
+          typeof entry.owner_display_name === "string"
+            ? entry.owner_display_name
+            : undefined,
         created_at: typeof entry.created_at === "string" ? entry.created_at : undefined,
         file_size: typeof entry.file_size === "number" ? entry.file_size : undefined,
         deleted: typeof entry.deleted === "boolean" ? entry.deleted : undefined,

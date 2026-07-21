@@ -10,11 +10,14 @@ export function GroupDashboardPage() {
     queryFn: fetchGroup,
   });
 
-  if (groupQuery.isLoading) return <LoadingIndicator label="グループを読み込んでいます" />;
+  if (groupQuery.isLoading)
+    return <LoadingIndicator label="グループを読み込んでいます" />;
   if (groupQuery.isError) {
     return (
       <ErrorState
-        message={groupQuery.error instanceof Error ? groupQuery.error.message : undefined}
+        message={
+          groupQuery.error instanceof Error ? groupQuery.error.message : undefined
+        }
         onRetry={() => void groupQuery.refetch()}
       />
     );

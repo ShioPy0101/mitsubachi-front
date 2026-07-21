@@ -111,7 +111,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [dialog, setDialog] = useState<
-    "folder" | "rename" | "delete" | "purge" | "preview" | "conflict" | "move" | "externalShare" | null
+    | "folder"
+    | "rename"
+    | "delete"
+    | "purge"
+    | "preview"
+    | "conflict"
+    | "move"
+    | "externalShare"
+    | null
   >(null);
   const [activeItem, setActiveItem] = useState<DriveItem | null>(null);
   const [moveDialog, setMoveDialog] = useState<MoveDialogState | null>(null);
@@ -1185,7 +1193,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       />
       <Modal
         open={dialog === "externalShare"}
-        title={createdShare?.share_url ? "公開リンクを作成しました" : "外部公開リンクを作成"}
+        title={
+          createdShare?.share_url ? "公開リンクを作成しました" : "外部公開リンクを作成"
+        }
         onClose={() => {
           setDialog(null);
           setCreatedShare(null);
@@ -1511,7 +1521,8 @@ function ItemActionMenu({
     const menuRect = menu.getBoundingClientRect();
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    const spaceBelow = viewportHeight - anchorRect.bottom - MENU_OFFSET - MENU_VIEWPORT_PADDING;
+    const spaceBelow =
+      viewportHeight - anchorRect.bottom - MENU_OFFSET - MENU_VIEWPORT_PADDING;
     const spaceAbove = anchorRect.top - MENU_OFFSET - MENU_VIEWPORT_PADDING;
     const opensUp = menuRect.height > spaceBelow && spaceAbove > spaceBelow;
     const top = opensUp
@@ -1599,7 +1610,6 @@ function ItemActionMenu({
   );
 }
 
-
 function ExternalShareDialog({
   items,
   createdShare,
@@ -1636,14 +1646,18 @@ function ExternalShareDialog({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => void navigator.clipboard?.writeText(createdShare.share_url ?? "")}
+            onClick={() =>
+              void navigator.clipboard?.writeText(createdShare.share_url ?? "")
+            }
           >
             <Copy size={16} aria-hidden="true" />
             コピー
           </Button>
           <Button
             type="button"
-            onClick={() => window.open(createdShare.share_url, "_blank", "noopener,noreferrer")}
+            onClick={() =>
+              window.open(createdShare.share_url, "_blank", "noopener,noreferrer")
+            }
           >
             <ExternalLink size={16} aria-hidden="true" />
             リンクを開く
@@ -1659,7 +1673,9 @@ function ExternalShareDialog({
       onSubmit={(event) => {
         event.preventDefault();
         const expiresAt = expiresInDays
-          ? new Date(Date.now() + Number(expiresInDays) * 24 * 60 * 60 * 1000).toISOString()
+          ? new Date(
+              Date.now() + Number(expiresInDays) * 24 * 60 * 60 * 1000,
+            ).toISOString()
           : null;
         onSubmit({
           name: effectiveName.trim(),
@@ -1683,11 +1699,17 @@ function ExternalShareDialog({
       </div>
       <label className="field">
         <span>公開名</span>
-        <input value={effectiveName} onChange={(event) => setName(event.target.value)} />
+        <input
+          value={effectiveName}
+          onChange={(event) => setName(event.target.value)}
+        />
       </label>
       <label className="field">
         <span>有効期限</span>
-        <select value={expiresInDays} onChange={(event) => setExpiresInDays(event.target.value)}>
+        <select
+          value={expiresInDays}
+          onChange={(event) => setExpiresInDays(event.target.value)}
+        >
           <option value="1">1日間</option>
           <option value="7">7日間</option>
           <option value="30">30日間</option>
@@ -1697,30 +1719,56 @@ function ExternalShareDialog({
       <fieldset className="check-stack">
         <legend>ダウンロード</legend>
         <label>
-          <input type="checkbox" checked={allowDownload} onChange={(event) => setAllowDownload(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={allowDownload}
+            onChange={(event) => setAllowDownload(event.target.checked)}
+          />
           個別ダウンロードを許可
         </label>
         <label>
-          <input type="checkbox" checked={allowBulkDownload} disabled={!allowDownload} onChange={(event) => setAllowBulkDownload(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={allowBulkDownload}
+            disabled={!allowDownload}
+            onChange={(event) => setAllowBulkDownload(event.target.checked)}
+          />
           一括ダウンロードを許可
         </label>
       </fieldset>
       <label className="field">
         <span>パスワード</span>
-        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="任意" />
+        <input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="任意"
+        />
       </label>
       {hasFolder ? (
         <fieldset className="check-stack">
           <legend>フォルダ内の今後の変更を共有に反映する</legend>
           <label>
-            <input type="checkbox" checked={followFolders} onChange={(event) => setFollowFolders(event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={followFolders}
+              onChange={(event) => setFollowFolders(event.target.checked)}
+            />
             反映する
           </label>
-          <p>{followFolders ? "今後追加されるファイルも公開対象になります。" : "共有作成時点のファイルだけを公開します。"}</p>
+          <p>
+            {followFolders
+              ? "今後追加されるファイルも公開対象になります。"
+              : "共有作成時点のファイルだけを公開します。"}
+          </p>
         </fieldset>
       ) : null}
       <div className="modal-actions">
-        <Button type="submit" loading={loading} disabled={!effectiveName.trim() || items.length === 0}>
+        <Button
+          type="submit"
+          loading={loading}
+          disabled={!effectiveName.trim() || items.length === 0}
+        >
           公開リンクを作成
         </Button>
       </div>
@@ -2194,9 +2242,7 @@ function isNoDragTarget(target: EventTarget | null) {
   );
   const centralAction = target.closest(".drive-item-info-action");
   if (centralAction) return Boolean(interactive && interactive !== centralAction);
-  return Boolean(
-    interactive,
-  );
+  return Boolean(interactive);
 }
 
 function moveDestinationDisabledReason(

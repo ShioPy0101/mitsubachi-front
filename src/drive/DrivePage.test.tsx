@@ -71,7 +71,11 @@ describe("DrivePage drag and drop upload", () => {
     });
     mocks.fetchTrash.mockResolvedValue([]);
     mocks.uploadFile.mockImplementation((input) => {
-      input.onProgress?.({ loaded: input.file.size, total: input.file.size, percent: 100 });
+      input.onProgress?.({
+        loaded: input.file.size,
+        total: input.file.size,
+        percent: 100,
+      });
       return Promise.resolve({
         id: 1,
         parent_id: 42,
@@ -84,7 +88,9 @@ describe("DrivePage drag and drop upload", () => {
       meta: { current_page: 1, per_page: 50, total_pages: 0, total_count: 0 },
     });
     mocks.bulkMove.mockResolvedValue({ message: "移動しました" });
-    mocks.moveDriveItem.mockResolvedValue({ data: { id: 1, parent_id: 2, name: "moved", item_type: "file" } });
+    mocks.moveDriveItem.mockResolvedValue({
+      data: { id: 1, parent_id: 2, name: "moved", item_type: "file" },
+    });
     mocks.purgeDriveItem.mockResolvedValue({ message: "完全削除しました" });
     mocks.createDirectory.mockImplementation(({ name, parentId }) =>
       Promise.resolve({
@@ -94,7 +100,9 @@ describe("DrivePage drag and drop upload", () => {
         item_type: "directory",
       }),
     );
-    HTMLDialogElement.prototype.showModal = vi.fn(function showModal(this: HTMLDialogElement) {
+    HTMLDialogElement.prototype.showModal = vi.fn(function showModal(
+      this: HTMLDialogElement,
+    ) {
       this.open = true;
     });
     HTMLDialogElement.prototype.close = vi.fn(function close(this: HTMLDialogElement) {
@@ -236,7 +244,9 @@ describe("DrivePage drag and drop upload", () => {
     });
 
     expect(await screen.findByText("名前の重複")).toBeInTheDocument();
-    expect(screen.getAllByText("同じ名前のファイルが存在します。").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("同じ名前のファイルが存在します。").length,
+    ).toBeGreaterThan(0);
     expect(screen.getAllByDisplayValue("report（1）").length).toBeGreaterThan(0);
     expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
 
@@ -292,7 +302,9 @@ describe("DrivePage drag and drop upload", () => {
     });
 
     expect(await screen.findByText("名前の重複")).toBeInTheDocument();
-    expect(screen.getAllByText("同じ内容のファイルがすでに存在します。").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("同じ内容のファイルがすでに存在します。").length,
+    ).toBeGreaterThan(0);
     expect(screen.getAllByText("report.pdf").length).toBeGreaterThan(0);
     expect(screen.getAllByText("保存先: Reports").length).toBeGreaterThan(0);
     expect(screen.getAllByText("アップロード者: 佐藤").length).toBeGreaterThan(0);
@@ -383,8 +395,14 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.change(directoryInput(container), { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(mocks.createDirectory).toHaveBeenCalledWith({ name: "素材", parentId: 42 });
-      expect(mocks.createDirectory).toHaveBeenCalledWith({ name: "camera-a", parentId: 100 });
+      expect(mocks.createDirectory).toHaveBeenCalledWith({
+        name: "素材",
+        parentId: 42,
+      });
+      expect(mocks.createDirectory).toHaveBeenCalledWith({
+        name: "camera-a",
+        parentId: 100,
+      });
       expect(mocks.uploadFile.mock.calls[0]?.[0]).toMatchObject({
         file,
         name: "clip001",
@@ -410,10 +428,14 @@ describe("DrivePage drag and drop upload", () => {
     await screen.findByText("Reports");
 
     fireEvent.click(screen.getByRole("button", { name: "新しいフォルダ" }));
-    fireEvent.change(screen.getAllByLabelText("名前")[0], { target: { value: "素材" } });
+    fireEvent.change(screen.getAllByLabelText("名前")[0], {
+      target: { value: "素材" },
+    });
     fireEvent.click(screen.getByText("作成"));
 
-    expect(await screen.findByText("同じ名前のフォルダが存在します。")).toBeInTheDocument();
+    expect(
+      await screen.findByText("同じ名前のフォルダが存在します。"),
+    ).toBeInTheDocument();
     expect(screen.getAllByDisplayValue("素材").length).toBeGreaterThan(0);
     expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
 
@@ -423,11 +445,16 @@ describe("DrivePage drag and drop upload", () => {
       name: "素材2",
       item_type: "directory",
     });
-    fireEvent.change(screen.getAllByLabelText("名前")[0], { target: { value: "素材2" } });
+    fireEvent.change(screen.getAllByLabelText("名前")[0], {
+      target: { value: "素材2" },
+    });
     fireEvent.click(screen.getByText("作成"));
 
     await waitFor(() => {
-      expect(mocks.createDirectory.mock.calls.at(-1)?.[0]).toEqual({ name: "素材2", parentId: 42 });
+      expect(mocks.createDirectory.mock.calls.at(-1)?.[0]).toEqual({
+        name: "素材2",
+        parentId: 42,
+      });
     });
   });
 
@@ -498,7 +525,9 @@ describe("DrivePage drag and drop upload", () => {
     expect(await screen.findByText("h1")).toBeInTheDocument();
     expect(screen.getByText("h2")).toBeInTheDocument();
     expect(screen.getByText("h3")).toBeInTheDocument();
-    expect(screen.getByText("world", { selector: "[aria-current='page']" })).toBeInTheDocument();
+    expect(
+      screen.getByText("world", { selector: "[aria-current='page']" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("h2"));
 
@@ -580,7 +609,9 @@ describe("DrivePage drag and drop upload", () => {
     }
 
     const checkboxTransfer = driveItemDataTransfer();
-    fireEvent.dragStart(screen.getByLabelText("clipを選択"), { dataTransfer: checkboxTransfer });
+    fireEvent.dragStart(screen.getByLabelText("clipを選択"), {
+      dataTransfer: checkboxTransfer,
+    });
     expect(checkboxTransfer.setData).not.toHaveBeenCalled();
 
     const menuTransfer = driveItemDataTransfer();
@@ -855,8 +886,12 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.dragStart(source, { dataTransfer });
     fireEvent.drop(target, { dataTransfer });
 
-    expect(await screen.findAllByText("同じ名前のファイルが移動先に存在します")).not.toHaveLength(0);
-    expect(screen.getByText("別名を指定すると同じ操作を再実行できます。")).toBeInTheDocument();
+    expect(
+      await screen.findAllByText("同じ名前のファイルが移動先に存在します"),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getByText("別名を指定すると同じ操作を再実行できます。"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
     expect(screen.queryByText(/Request ID:/)).not.toBeInTheDocument();
     expect(writeText).not.toHaveBeenCalled();
@@ -894,7 +929,9 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.dragStart(source, { dataTransfer });
     fireEvent.drop(target, { dataTransfer });
 
-    expect(await screen.findAllByText("サーバーで処理に失敗しました")).not.toHaveLength(0);
+    expect(await screen.findAllByText("サーバーで処理に失敗しました")).not.toHaveLength(
+      0,
+    );
     fireEvent.click(screen.getByText("エラー内容をコピー"));
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());
@@ -1100,8 +1137,12 @@ describe("DrivePage drag and drop upload", () => {
   });
 
   it("stops media when preview is closed or unmounted", async () => {
-    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const pause = vi
+      .spyOn(HTMLMediaElement.prototype, "pause")
+      .mockImplementation(() => undefined);
+    const load = vi
+      .spyOn(HTMLMediaElement.prototype, "load")
+      .mockImplementation(() => undefined);
     mocks.fetchDriveItems.mockResolvedValue([
       {
         id: 7,
@@ -1127,7 +1168,6 @@ describe("DrivePage drag and drop upload", () => {
 
     expect(pause).toHaveBeenCalledTimes(2);
   });
-
 });
 
 function renderDrivePage(initialEntry: string) {
@@ -1186,7 +1226,10 @@ function driveItemDragAreaByName(name: string) {
   return dragArea;
 }
 
-function clickCentralArea(name: string, target: HTMLElement = driveItemDragAreaByName(name)) {
+function clickCentralArea(
+  name: string,
+  target: HTMLElement = driveItemDragAreaByName(name),
+) {
   fireEvent.pointerDown(target, { clientX: 10, clientY: 10 });
   fireEvent.pointerUp(target, { clientX: 12, clientY: 12 });
 }
@@ -1202,24 +1245,31 @@ function mockMenuRects({
 }) {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 800 });
   Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function rect(
-    this: HTMLElement,
-  ) {
-    if (this.classList.contains("item-menu")) {
-      return domRect({ top: 0, left: 0, right: 168, bottom: 88, width: 168, height: 88 });
-    }
-    if (this.getAttribute("aria-label")?.endsWith("の操作メニュー")) {
-      return domRect({
-        top: anchorTop,
-        left: anchorRight - 40,
-        right: anchorRight,
-        bottom: anchorBottom,
-        width: 40,
-        height: anchorBottom - anchorTop,
-      });
-    }
-    return domRect({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 });
-  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function rect(this: HTMLElement) {
+      if (this.classList.contains("item-menu")) {
+        return domRect({
+          top: 0,
+          left: 0,
+          right: 168,
+          bottom: 88,
+          width: 168,
+          height: 88,
+        });
+      }
+      if (this.getAttribute("aria-label")?.endsWith("の操作メニュー")) {
+        return domRect({
+          top: anchorTop,
+          left: anchorRight - 40,
+          right: anchorRight,
+          bottom: anchorBottom,
+          width: 40,
+          height: anchorBottom - anchorTop,
+        });
+      }
+      return domRect({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 });
+    },
+  );
 }
 
 function domRect(input: {
@@ -1261,7 +1311,6 @@ function driveItemDataTransfer() {
     getData: vi.fn((type: string) => store.get(type) ?? ""),
   };
 }
-
 
 function openDialogCloseButton(title: string) {
   const dialog = Array.from(document.querySelectorAll("dialog")).find((element) =>

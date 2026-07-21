@@ -42,9 +42,7 @@ export function ErrorReportPanel({
     >
       <div>
         <strong>{error.message}</strong>
-        {nameConflict ? (
-          <span>別名を指定すると同じ操作を再実行できます。</span>
-        ) : null}
+        {nameConflict ? <span>別名を指定すると同じ操作を再実行できます。</span> : null}
       </div>
       <div className="error-report-actions">
         {nameConflict && onResolveName ? (
@@ -59,7 +57,11 @@ export function ErrorReportPanel({
         ) : null}
         {reportable ? (
           <>
-            <Button type="button" variant="ghost" onClick={() => setExpanded((value) => !value)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setExpanded((value) => !value)}
+            >
               詳細を表示
             </Button>
             <Button type="button" variant="ghost" onClick={() => void copyReport()}>
@@ -80,7 +82,9 @@ export function ErrorReportPanel({
             <textarea readOnly value={reportText} />
           </label>
           {copyState === "manual" ? (
-            <p className="form-message">コピーできませんでした。上の内容を手動で選択してください。</p>
+            <p className="form-message">
+              コピーできませんでした。上の内容を手動で選択してください。
+            </p>
           ) : null}
         </div>
       ) : null}

@@ -35,7 +35,11 @@ export function LoginPage() {
     mutationFn: (values: AuthFormValues) =>
       mode === "login"
         ? login(values.email)
-        : registerByInvite(values.email, values.inviteCode ?? "", values.displayName ?? ""),
+        : registerByInvite(
+            values.email,
+            values.inviteCode ?? "",
+            values.displayName ?? "",
+          ),
     onSuccess: () => {
       toast.show({
         tone: "success",
@@ -93,32 +97,32 @@ export function LoginPage() {
           </label>
           {mode === "register" ? (
             <>
-            <label className="field">
-              <span>表示名</span>
-              <input
-                type="text"
-                autoComplete="name"
-                aria-invalid={Boolean(form.formState.errors.displayName)}
-                {...form.register("displayName")}
-              />
-              <FieldError error={form.formState.errors.displayName?.message} />
-            </label>
-            <label className="field">
-              <span>招待コード</span>
-              <input
-                type="text"
-                autoComplete="one-time-code"
-                aria-invalid={Boolean(form.formState.errors.inviteCode)}
-                {...form.register("inviteCode")}
-              />
-              <FieldError
-                error={
-                  typeof form.formState.errors.inviteCode?.message === "string"
-                    ? form.formState.errors.inviteCode.message
-                    : undefined
-                }
-              />
-            </label>
+              <label className="field">
+                <span>表示名</span>
+                <input
+                  type="text"
+                  autoComplete="name"
+                  aria-invalid={Boolean(form.formState.errors.displayName)}
+                  {...form.register("displayName")}
+                />
+                <FieldError error={form.formState.errors.displayName?.message} />
+              </label>
+              <label className="field">
+                <span>招待コード</span>
+                <input
+                  type="text"
+                  autoComplete="one-time-code"
+                  aria-invalid={Boolean(form.formState.errors.inviteCode)}
+                  {...form.register("inviteCode")}
+                />
+                <FieldError
+                  error={
+                    typeof form.formState.errors.inviteCode?.message === "string"
+                      ? form.formState.errors.inviteCode.message
+                      : undefined
+                  }
+                />
+              </label>
             </>
           ) : null}
           <Button type="submit" loading={mutation.isPending}>

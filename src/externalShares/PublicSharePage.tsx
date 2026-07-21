@@ -34,11 +34,13 @@ export function PublicSharePage() {
       setPassword("");
       await queryClient.invalidateQueries({ queryKey: ["public-share", token] });
     },
-    onError: () => toast.show({ tone: "warn", message: "共有リンクを確認できません。" }),
+    onError: () =>
+      toast.show({ tone: "warn", message: "共有リンクを確認できません。" }),
   });
   const bulkDownloadMutation = useMutation({
     mutationFn: () => bulkDownloadPublicShare(token),
-    onError: () => toast.show({ tone: "warn", message: "一括ダウンロードできません。" }),
+    onError: () =>
+      toast.show({ tone: "warn", message: "一括ダウンロードできません。" }),
   });
 
   if (query.isLoading) return <LoadingIndicator label="共有リンクを読み込んでいます" />;
@@ -169,7 +171,11 @@ function PublicShareItemRow({
         {item.item_type === "file" ? (
           <div className="public-share-actions">
             {safePreview(item) ? (
-              <a href={publicPreviewUrl(token, item.id)} target="_blank" rel="noreferrer">
+              <a
+                href={publicPreviewUrl(token, item.id)}
+                target="_blank"
+                rel="noreferrer"
+              >
                 プレビュー
               </a>
             ) : null}
@@ -213,7 +219,20 @@ function safePreview(item: PublicShareItem) {
       "application/pdf",
       "text/plain",
     ].includes(contentType) &&
-    ["png", "jpg", "jpeg", "gif", "webp", "mp4", "webm", "mp3", "m4a", "ogg", "pdf", "txt"].includes(extension)
+    [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      "mp4",
+      "webm",
+      "mp3",
+      "m4a",
+      "ogg",
+      "pdf",
+      "txt",
+    ].includes(extension)
   );
 }
 
