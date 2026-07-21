@@ -25,7 +25,11 @@ describe("PublicSharePage password unlock", () => {
     expect(screen.queryByText("パスワードが必要です")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       `${API_BASE_URL}/api/v1/public/shares/raw-token/unlock`,
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        body: JSON.stringify({ password: "correct-password" }),
+        credentials: "include",
+        method: "POST",
+      }),
     );
   });
 
@@ -48,6 +52,30 @@ describe("PublicSharePage password unlock", () => {
 
     expect(await screen.findByText("パスワードが正しくありません")).toBeInTheDocument();
     await waitFor(() => expect(input).toHaveFocus());
+    expect(screen.getByText("パスワードが必要です")).toBeInTheDocument();
+  });
+
+  it("shows an inline error for the public share password error code", async () => {
+    clearCsrfToken();
+    mockPasswordFlow({
+      unlockResponse: jsonResponse(
+        {
+          error: {
+            code: "invalid_share_password",
+            message: "パスワードが正しくありません",
+          },
+        },
+        401,
+      ),
+    });
+
+    renderPublicSharePage();
+
+    const input = await screen.findByLabelText("パスワード");
+    await userEvent.type(input, "wrong-password");
+    await userEvent.click(screen.getByRole("button", { name: "表示" }));
+
+    expect(await screen.findByText("パスワードが正しくありません")).toBeInTheDocument();
     expect(screen.getByText("パスワードが必要です")).toBeInTheDocument();
   });
 
@@ -110,6 +138,33 @@ describe("PublicSharePage password unlock", () => {
     expect(screen.queryByRole("button", { name: "確認中..." })).not.toBeInTheDocument();
   });
 
+  it("prevents duplicate submits while unlock is pending", async () => {
+    clearCsrfToken();
+    let resolveUnlock: (response: Response) => void = () => undefined;
+    const fetchMock = mockPasswordFlow({
+      unlockResponse: new Promise<Response>((resolve) => {
+        resolveUnlock = resolve;
+      }),
+    });
+
+    renderPublicSharePage();
+
+    const input = await screen.findByLabelText("パスワード");
+    await userEvent.type(input, "correct-password");
+    const submitButton = screen.getByRole("button", { name: "表示" });
+    await userEvent.click(submitButton);
+    await userEvent.click(screen.getByRole("button", { name: "確認中..." }));
+
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url]) => url === `${API_BASE_URL}/api/v1/public/shares/raw-token/unlock`,
+      ),
+    ).toHaveLength(1);
+
+    resolveUnlock(jsonResponse({ unlocked: true }));
+    expect(await screen.findByText("公開ファイル.pdf")).toBeInTheDocument();
+  });
+
   it("submits with the Enter key", async () => {
     clearCsrfToken();
     const fetchMock = mockPasswordFlow({
@@ -124,7 +179,11 @@ describe("PublicSharePage password unlock", () => {
     expect(await screen.findByText("公開ファイル.pdf")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       `${API_BASE_URL}/api/v1/public/shares/raw-token/unlock`,
-      expect.any(Object),
+      expect.objectContaining({
+        body: JSON.stringify({ password: "correct-password" }),
+        credentials: "include",
+        method: "POST",
+      }),
     );
   });
 });
@@ -153,12 +212,14 @@ function mockPasswordFlow({
   unlockResponse: Response | Promise<Response>;
 }) {
   let shareRequests = 0;
-  const fetchMock = vi.fn((url: string) => {
+  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
     if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
+      expect(init).toEqual(expect.objectContaining({ credentials: "include" }));
       return Promise.resolve(jsonResponse({ csrf_token: "csrf" }));
     }
 
     if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token`) {
+      expect(init).toEqual(expect.objectContaining({ credentials: "include" }));
       shareRequests += 1;
       return Promise.resolve(
         shareRequests === 1
@@ -168,6 +229,7 @@ function mockPasswordFlow({
     }
 
     if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token/unlock`) {
+      expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
       return Promise.resolve(unlockResponse);
     }
 
