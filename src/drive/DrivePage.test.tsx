@@ -1176,7 +1176,10 @@ function directoryInput(container: HTMLElement) {
 }
 
 function driveItemDragAreaByName(name: string) {
-  const dragArea = screen.getByText(name).closest(".drive-item-info-action");
+  const dragArea = screen
+    .getAllByText(name)
+    .map((element) => element.closest(".drive-item-info-action"))
+    .find((element): element is HTMLElement => element instanceof HTMLElement);
   if (!(dragArea instanceof HTMLElement)) {
     throw new Error(`Drag area for ${name} was not rendered.`);
   }
