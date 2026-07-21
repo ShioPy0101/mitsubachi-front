@@ -1683,7 +1683,7 @@ function ExternalShareDialog({
               このパスワードは再表示できません。安全な方法で共有してください。
             </p>
           </>
-          ) : null}
+        ) : null}
         <div className="modal-actions">
           <Button
             type="button"

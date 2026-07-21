@@ -96,7 +96,9 @@ export function PublicSharePage() {
               }}
               autoComplete="current-password"
               aria-invalid={passwordError ? "true" : undefined}
-              aria-describedby={passwordError ? "public-share-password-error" : undefined}
+              aria-describedby={
+                passwordError ? "public-share-password-error" : undefined
+              }
               aria-busy={unlockMutation.isPending ? "true" : undefined}
             />
             {passwordError ? (
@@ -155,7 +157,8 @@ function unlockErrorMessage(error: unknown) {
     if (error.code === "password_required") return "パスワードを入力してください";
     if (error.code === "share_expired") return "この共有リンクは有効期限が切れています";
     if (error.code === "share_revoked") return "この共有リンクは停止されています";
-    if (error.status === 429) return "試行回数が上限を超えました。時間をおいて再度お試しください";
+    if (error.status === 429)
+      return "試行回数が上限を超えました。時間をおいて再度お試しください";
     if (error.status >= 500) {
       return "認証処理に失敗しました。時間をおいて再度お試しください";
     }

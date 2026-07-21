@@ -33,7 +33,9 @@ describe("PublicSharePage password unlock", () => {
     clearCsrfToken();
     mockPasswordFlow({
       unlockResponse: jsonResponse(
-        { error: { code: "invalid_password", message: "パスワードが正しくありません" } },
+        {
+          error: { code: "invalid_password", message: "パスワードが正しくありません" },
+        },
         401,
       ),
     });
@@ -80,9 +82,7 @@ describe("PublicSharePage password unlock", () => {
     await userEvent.click(screen.getByRole("button", { name: "表示" }));
 
     expect(
-      await screen.findByText(
-        "認証処理に失敗しました。時間をおいて再度お試しください",
-      ),
+      await screen.findByText("認証処理に失敗しました。時間をおいて再度お試しください"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "表示" })).toBeEnabled();
   });
