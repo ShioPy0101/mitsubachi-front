@@ -87,6 +87,9 @@ type UploadTask = {
   abortController?: AbortController;
 };
 
+type UploadPanelState = "expanded" | "completed" | "dismissed";
+type UploadPanelPreference = "auto" | "expanded" | "dismissed";
+
 type ConflictState = {
   file: File;
   parentId: number | null;
@@ -134,6 +137,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     searchParams.get("scope") === "organization" ? "organization" : "current";
   const searchTerm = searchParams.get("q")?.trim() ?? "";
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  const [uploadPanelPreference, setUploadPanelPreference] =
+    useState<UploadPanelPreference>("auto");
   const [isUploading, setIsUploading] = useState(false);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [nameConflictMessage, setNameConflictMessage] = useState<string | null>(null);
@@ -215,6 +220,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           page: pageLabel,
         })
       : null);
+
+  const uploadPanelState = useMemo<UploadPanelState>(() => {
+    if (uploadPanelPreference === "dismissed") return "dismissed";
+    if (uploadPanelPreference === "expanded") return "expanded";
+    if (uploadTasks.length > 0 && uploadTasks.every((task) => task.status === "done")) {
+      return "completed";
+    }
+    return "expanded";
+  }, [uploadPanelPreference, uploadTasks]);
 
   const invalidateCurrent = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -473,6 +487,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       const taskId = `${Date.now()}-${Math.random()}`;
       const abortController = new AbortController();
       const uploadName = nameOverride ?? file.name.replace(/\.[^.]+$/, "");
+      setUploadPanelPreference("auto");
       setUploadTasks((current) => [
         ...current,
         {
@@ -1033,9 +1048,25 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       {uploadTasks.length > 0 ? (
         <UploadProgressPanel
           tasks={uploadTasks}
+          state={uploadPanelState}
           onCancel={(task) => task.abortController?.abort()}
           onRetry={(task) =>
             void uploadSingleFile(task.file, task.parentId, task.uploadName)
+          }
+          onShowDetails={() => setUploadPanelPreference("expanded")}
+          onDismiss={() => {
+            setUploadTasks([]);
+            setUploadPanelPreference("dismissed");
+          }}
+          onRemoveTask={(task) =>
+            setUploadTasks((current) =>
+              current.filter((candidate) => candidate.id !== task.id),
+            )
+          }
+          onClearCompleted={() =>
+            setUploadTasks((current) =>
+              current.filter((task) => task.status !== "done"),
+            )
           }
         />
       ) : null}
@@ -2079,24 +2110,64 @@ function NameForm({
 
 function UploadProgressPanel({
   tasks,
+  state,
   onCancel,
   onRetry,
+  onShowDetails,
+  onDismiss,
+  onRemoveTask,
+  onClearCompleted,
 }: {
   tasks: UploadTask[];
+  state: UploadPanelState;
   onCancel: (task: UploadTask) => void;
   onRetry: (task: UploadTask) => void;
+  onShowDetails: () => void;
+  onDismiss: () => void;
+  onRemoveTask: (task: UploadTask) => void;
+  onClearCompleted: () => void;
 }) {
   const total = tasks.reduce((sum, task) => sum + (task.total ?? 0), 0);
   const loaded = tasks.reduce((sum, task) => sum + task.loaded, 0);
   const percent = total ? Math.round((loaded / total) * 100) : undefined;
+  const completedCount = tasks.filter((task) => task.status === "done").length;
+  const hasCompleted = completedCount > 0;
+  if (state === "dismissed") return null;
+  if (state === "completed") {
+    return (
+      <section
+        className="upload-progress upload-progress-compact"
+        aria-label="アップロード進捗"
+      >
+        <div>
+          <h2>{completedCount}件のアップロードが完了しました</h2>
+          <span>すべてのファイルをアップロードしました。</span>
+        </div>
+        <div className="upload-progress-actions">
+          <Button type="button" variant="secondary" onClick={onShowDetails}>
+            詳細を表示
+          </Button>
+          <Button type="button" variant="ghost" onClick={onDismiss}>
+            閉じる
+          </Button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="upload-progress" aria-label="アップロード進捗">
       <div className="upload-progress-header">
-        <h2>アップロード状況</h2>
-        <span>
-          {tasks.filter((task) => task.status === "done").length} / {tasks.length}{" "}
-          件完了
-        </span>
+        <div>
+          <h2>アップロード状況</h2>
+          <span>
+            {completedCount} / {tasks.length} 件完了
+          </span>
+        </div>
+        {hasCompleted ? (
+          <Button type="button" variant="ghost" onClick={onClearCompleted}>
+            完了済みを削除
+          </Button>
+        ) : null}
       </div>
       <ProgressBar percent={percent} />
       <ul>
@@ -2115,9 +2186,14 @@ function UploadProgressPanel({
                 キャンセル
               </Button>
             ) : null}
-            {task.status === "failed" ? (
+            {task.status === "failed" || task.status === "canceled" ? (
               <Button type="button" variant="secondary" onClick={() => onRetry(task)}>
                 再試行
+              </Button>
+            ) : null}
+            {task.status === "done" ? (
+              <Button type="button" variant="ghost" onClick={() => onRemoveTask(task)}>
+                削除
               </Button>
             ) : null}
             <ProgressBar percent={task.percent} />

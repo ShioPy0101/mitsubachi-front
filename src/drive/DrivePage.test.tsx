@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -407,6 +407,104 @@ describe("DrivePage drag and drop upload", () => {
     expect(await screen.findByText("アップロード状況")).toBeInTheDocument();
     expect(await screen.findByText(/50%/)).toBeInTheDocument();
     resolveUpload?.();
+  });
+
+  it("collapses completed uploads into a dismissible summary", async () => {
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.change(fileInput(container), {
+      target: { files: [new File(["content"], "summary.txt", { type: "text/plain" })] },
+    });
+
+    expect(
+      await screen.findByText("1件のアップロードが完了しました"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("summary.txt")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "詳細を表示" }));
+    const panel = screen.getByRole("region", { name: "アップロード進捗" });
+    expect(within(panel).getByText("summary.txt")).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "削除" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("region", { name: "アップロード進捗" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("reopens the upload details when a new upload starts after dismissal", async () => {
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.change(fileInput(container), {
+      target: { files: [new File(["done"], "done.txt", { type: "text/plain" })] },
+    });
+    expect(
+      await screen.findByText("1件のアップロードが完了しました"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+    expect(
+      screen.queryByRole("region", { name: "アップロード進捗" }),
+    ).not.toBeInTheDocument();
+
+    let resolveUpload: (() => void) | undefined;
+    mocks.uploadFile.mockImplementationOnce(
+      (input) =>
+        new Promise((resolve) => {
+          input.onProgress?.({ loaded: 1, total: 2, percent: 50 });
+          resolveUpload = () =>
+            resolve({
+              id: 2,
+              parent_id: 42,
+              name: "next",
+              item_type: "file",
+            });
+        }),
+    );
+
+    fireEvent.change(fileInput(container), {
+      target: { files: [new File(["next"], "next.txt", { type: "text/plain" })] },
+    });
+
+    expect(await screen.findByText("アップロード状況")).toBeInTheDocument();
+    expect(screen.getByText("next.txt")).toBeInTheDocument();
+    resolveUpload?.();
+  });
+
+  it("keeps failed uploads expanded with error details and retry action", async () => {
+    mocks.uploadFile.mockRejectedValueOnce(new Error("通信が中断されました。"));
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.change(fileInput(container), {
+      target: {
+        files: [new File(["broken"], "broken.zip", { type: "application/zip" })],
+      },
+    });
+
+    const panel = await screen.findByRole("region", { name: "アップロード進捗" });
+    expect(within(panel).getByText("broken.zip")).toBeInTheDocument();
+    expect(within(panel).getAllByText("通信が中断されました。").length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      screen.queryByText("1件のアップロードが完了しました"),
+    ).not.toBeInTheDocument();
+
+    mocks.uploadFile.mockResolvedValueOnce({
+      id: 3,
+      parent_id: 42,
+      name: "broken",
+      item_type: "file",
+    });
+    fireEvent.click(within(panel).getAllByRole("button", { name: "再試行" })[0]);
+
+    await waitFor(() => {
+      expect(mocks.uploadFile).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("uploads a selected folder with its relative path hierarchy", async () => {

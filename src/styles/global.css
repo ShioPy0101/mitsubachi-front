@@ -1558,6 +1558,25 @@ th:last-child,
   font-size: var(--font-size-lg);
 }
 
+.upload-progress-header > div,
+.upload-progress-compact > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.upload-progress-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.upload-progress-compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
 .upload-progress ul {
   display: grid;
   gap: var(--space-2);
@@ -1582,6 +1601,20 @@ th:last-child,
 .upload-progress li span {
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
+}
+
+@media (max-width: 520px) {
+  .upload-progress-compact {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-progress-actions {
+    justify-content: stretch;
+  }
+
+  .upload-progress-actions .button {
+    flex: 1 1 140px;
+  }
 }
 
 .progress-bar {
