@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "prepare": "git config core.hooksPath .githooks || true",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
