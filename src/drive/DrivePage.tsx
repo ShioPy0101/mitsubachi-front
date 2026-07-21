@@ -39,7 +39,11 @@ import { IconButton } from "../components/IconButton";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { Modal } from "../components/Modal";
 import { useToast } from "../components/ToastProvider";
-import { createExternalShare, type ExternalShare } from "../externalShares/api";
+import {
+  createExternalShare,
+  regenerateExternalSharePassword,
+  type ExternalShare,
+} from "../externalShares/api";
 import { normalizeAppError, type AppError } from "../errors/appError";
 import {
   bulkMove,
@@ -382,6 +386,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       toast.show({ tone: "success", message: "公開リンクを作成しました。" });
     },
     onError: (error) => captureError(error, "外部公開"),
+  });
+  const regenerateExternalSharePasswordMutation = useMutation({
+    mutationFn: regenerateExternalSharePassword,
+    onSuccess: (share) => {
+      setCreatedShare((current) => (current ? { ...current, ...share } : share));
+      setLastError(null);
+      toast.show({ tone: "success", message: "パスワードを再発行しました。" });
+    },
+    onError: (error) => captureError(error, "パスワード再発行"),
   });
   const moveMutation = useMutation({
     mutationFn: async ({
@@ -1205,6 +1218,16 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           items={selectedItems}
           createdShare={createdShare}
           loading={externalShareMutation.isPending}
+          regeneratingPassword={regenerateExternalSharePasswordMutation.isPending}
+          onRegeneratePassword={(id) => {
+            if (
+              window.confirm(
+                "現在のパスワードは無効になります。新しいパスワードを再発行しますか？",
+              )
+            ) {
+              regenerateExternalSharePasswordMutation.mutate(id);
+            }
+          }}
           onSubmit={(input) => externalShareMutation.mutate(input)}
         />
       </Modal>
@@ -1614,18 +1637,22 @@ function ExternalShareDialog({
   items,
   createdShare,
   loading,
+  regeneratingPassword,
+  onRegeneratePassword,
   onSubmit,
 }: {
   items: DriveItem[];
   createdShare: ExternalShare | null;
   loading: boolean;
+  regeneratingPassword: boolean;
+  onRegeneratePassword: (id: number) => void;
   onSubmit: (input: {
     name: string;
     driveItemIds: number[];
     expiresAt: string | null;
     allowDownload: boolean;
     allowBulkDownload: boolean;
-    password: string | null;
+    passwordProtected: boolean;
     folderShareMode: "snapshot" | "dynamic";
   }) => void;
 }) {
@@ -1633,7 +1660,7 @@ function ExternalShareDialog({
   const [expiresInDays, setExpiresInDays] = useState("7");
   const [allowDownload, setAllowDownload] = useState(true);
   const [allowBulkDownload, setAllowBulkDownload] = useState(true);
-  const [password, setPassword] = useState("");
+  const [passwordProtected, setPasswordProtected] = useState(false);
   const [followFolders, setFollowFolders] = useState(false);
   const hasFolder = items.some((item) => item.item_type === "directory");
   const effectiveName = name || defaultExternalShareName(items);
@@ -1642,6 +1669,21 @@ function ExternalShareDialog({
     return (
       <div className="external-share-result">
         <input readOnly value={createdShare.share_url} aria-label="公開URL" />
+        {createdShare.generated_password ? (
+          <>
+            <label className="field">
+              <span>パスワード</span>
+              <input
+                readOnly
+                value={createdShare.generated_password}
+                aria-label="生成されたパスワード"
+              />
+            </label>
+            <p className="external-share-once-note">
+              このパスワードは再表示できません。安全な方法で共有してください。
+            </p>
+          </>
+          ) : null}
         <div className="modal-actions">
           <Button
             type="button"
@@ -1651,8 +1693,36 @@ function ExternalShareDialog({
             }
           >
             <Copy size={16} aria-hidden="true" />
-            コピー
+            URLをコピー
           </Button>
+          {createdShare.generated_password ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  void navigator.clipboard?.writeText(
+                    createdShare.generated_password ?? "",
+                  )
+                }
+              >
+                <Copy size={16} aria-hidden="true" />
+                パスワードをコピー
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  void navigator.clipboard?.writeText(
+                    `公開URL: ${createdShare.share_url}\nパスワード: ${createdShare.generated_password}`,
+                  )
+                }
+              >
+                <Copy size={16} aria-hidden="true" />
+                まとめてコピー
+              </Button>
+            </>
+          ) : null}
           <Button
             type="button"
             onClick={() =>
@@ -1662,6 +1732,17 @@ function ExternalShareDialog({
             <ExternalLink size={16} aria-hidden="true" />
             リンクを開く
           </Button>
+          {createdShare.password_required ? (
+            <Button
+              type="button"
+              variant="secondary"
+              loading={regeneratingPassword}
+              onClick={() => onRegeneratePassword(createdShare.id)}
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              パスワードを再発行
+            </Button>
+          ) : null}
         </div>
       </div>
     );
@@ -1683,7 +1764,7 @@ function ExternalShareDialog({
           expiresAt,
           allowDownload,
           allowBulkDownload: allowDownload && allowBulkDownload,
-          password: password.trim() || null,
+          passwordProtected,
           folderShareMode: hasFolder && followFolders ? "dynamic" : "snapshot",
         });
       }}
@@ -1736,15 +1817,17 @@ function ExternalShareDialog({
           一括ダウンロードを許可
         </label>
       </fieldset>
-      <label className="field">
-        <span>パスワード</span>
-        <input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="任意"
-        />
-      </label>
+      <fieldset className="check-stack">
+        <legend>パスワード保護</legend>
+        <label>
+          <input
+            type="checkbox"
+            checked={passwordProtected}
+            onChange={(event) => setPasswordProtected(event.target.checked)}
+          />
+          パスワード保護を有効にする
+        </label>
+      </fieldset>
       {hasFolder ? (
         <fieldset className="check-stack">
           <legend>フォルダ内の今後の変更を共有に反映する</legend>

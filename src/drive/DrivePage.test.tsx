@@ -28,6 +28,8 @@ const mocks = vi.hoisted(() => ({
   searchDriveItems: vi.fn(),
   bulkMove: vi.fn(),
   moveDriveItem: vi.fn(),
+  createExternalShare: vi.fn(),
+  regenerateExternalSharePassword: vi.fn(),
   createDirectory: vi.fn<(input: CreateDirectoryInput) => Promise<unknown>>(),
   purgeDriveItem: vi.fn(),
 }));
@@ -57,6 +59,11 @@ vi.mock("./api", () => ({
   moveDriveItem: mocks.moveDriveItem,
   restoreDriveItem: vi.fn(),
   streamUrl: vi.fn((id: number) => `/stream/${id}`),
+}));
+
+vi.mock("../externalShares/api", () => ({
+  createExternalShare: mocks.createExternalShare,
+  regenerateExternalSharePassword: mocks.regenerateExternalSharePassword,
 }));
 
 describe("DrivePage drag and drop upload", () => {
@@ -90,6 +97,24 @@ describe("DrivePage drag and drop upload", () => {
     mocks.bulkMove.mockResolvedValue({ message: "移動しました" });
     mocks.moveDriveItem.mockResolvedValue({
       data: { id: 1, parent_id: 2, name: "moved", item_type: "file" },
+    });
+    mocks.createExternalShare.mockResolvedValue({
+      id: 12,
+      name: "公開",
+      share_url: "https://front.example/share/raw-token",
+      folder_share_mode: "snapshot",
+      allow_download: true,
+      allow_bulk_download: true,
+      password_required: false,
+    });
+    mocks.regenerateExternalSharePassword.mockResolvedValue({
+      id: 12,
+      name: "公開",
+      folder_share_mode: "snapshot",
+      allow_download: true,
+      allow_bulk_download: true,
+      password_required: true,
+      generated_password: "N3wPassw0rdValue",
     });
     mocks.purgeDriveItem.mockResolvedValue({ message: "完全削除しました" });
     mocks.createDirectory.mockImplementation(({ name, parentId }) =>
@@ -1134,6 +1159,74 @@ describe("DrivePage drag and drop upload", () => {
       expect(mocks.purgeDriveItem).toHaveBeenCalledWith(20);
       expect(mocks.purgeDriveItem).toHaveBeenCalledWith(21);
     });
+  });
+
+  it("creates a password-protected external share with server-generated password", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 20, parent_id: null, name: "report", item_type: "file", extension: "pdf" },
+    ]);
+    mocks.createExternalShare.mockResolvedValue({
+      id: 12,
+      name: "公開",
+      share_url: "https://front.example/share/raw-token",
+      folder_share_mode: "snapshot",
+      allow_download: true,
+      allow_bulk_download: true,
+      password_required: true,
+      generated_password: "G7mK9xT4pQ2wN8rC",
+    });
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByLabelText("reportを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "外部公開" }));
+    fireEvent.click(screen.getByLabelText("パスワード保護を有効にする"));
+    fireEvent.click(screen.getByRole("button", { name: "公開リンクを作成" }));
+
+    await waitFor(() => {
+      expect(mocks.createExternalShare.mock.calls[0]?.[0]).toMatchObject({
+        driveItemIds: [20],
+        passwordProtected: true,
+      });
+    });
+    expect(await screen.findByLabelText("生成されたパスワード")).toHaveValue(
+      "G7mK9xT4pQ2wN8rC",
+    );
+    expect(
+      screen.getByText(
+        "このパスワードは再表示できません。安全な方法で共有してください。",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("regenerates an external share password after confirmation", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 20, parent_id: null, name: "report", item_type: "file", extension: "pdf" },
+    ]);
+    mocks.createExternalShare.mockResolvedValue({
+      id: 12,
+      name: "公開",
+      share_url: "https://front.example/share/raw-token",
+      folder_share_mode: "snapshot",
+      allow_download: true,
+      allow_bulk_download: true,
+      password_required: true,
+      generated_password: "G7mK9xT4pQ2wN8rC",
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByLabelText("reportを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "外部公開" }));
+    fireEvent.click(screen.getByLabelText("パスワード保護を有効にする"));
+    fireEvent.click(screen.getByRole("button", { name: "公開リンクを作成" }));
+    await screen.findByDisplayValue("G7mK9xT4pQ2wN8rC");
+
+    fireEvent.click(screen.getByRole("button", { name: "パスワードを再発行" }));
+
+    await waitFor(() => {
+      expect(mocks.regenerateExternalSharePassword.mock.calls[0]?.[0]).toBe(12);
+    });
+    expect(await screen.findByDisplayValue("N3wPassw0rdValue")).toBeInTheDocument();
   });
 
   it("stops media when preview is closed or unmounted", async () => {

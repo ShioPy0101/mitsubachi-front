@@ -25,10 +25,10 @@ const externalShareSchema = z.object({
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
   share_url: z.string().optional(),
+  generated_password: z.string().optional(),
 });
 
 const publicShareSchema = z.union([
-  z.object({ password_required: z.literal(true) }),
   z.object({
     id: z.number(),
     name: z.string(),
@@ -38,6 +38,7 @@ const publicShareSchema = z.union([
     password_required: z.boolean().optional(),
     items: z.array(publicShareItemSchema),
   }),
+  z.object({ password_required: z.literal(true) }),
 ]);
 
 export type ExternalShare = z.infer<typeof externalShareSchema>;
@@ -50,7 +51,7 @@ export type CreateExternalShareInput = {
   expiresAt: string | null;
   allowDownload: boolean;
   allowBulkDownload: boolean;
-  password: string | null;
+  passwordProtected: boolean;
   folderShareMode: "snapshot" | "dynamic";
 };
 
@@ -64,10 +65,16 @@ export function createExternalShare(input: CreateExternalShareInput) {
         expires_at: input.expiresAt,
         allow_download: input.allowDownload,
         allow_bulk_download: input.allowBulkDownload,
-        password: input.password,
+        password_protected: input.passwordProtected,
         folder_share_mode: input.folderShareMode,
       },
     },
+  }).then((body) => externalShareSchema.parse(body));
+}
+
+export function regenerateExternalSharePassword(id: number) {
+  return apiRequest<unknown>(`/api/v1/external_shares/${id}/regenerate_password`, {
+    method: "POST",
   }).then((body) => externalShareSchema.parse(body));
 }
 
