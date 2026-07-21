@@ -26,6 +26,7 @@ import { VerifyPage } from "../auth/VerifyPage";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "../drive/DrivePage";
+import { PublicSharePage } from "../externalShares/PublicSharePage";
 import { GroupDashboardPage } from "../GroupDashboardPage";
 import { AppLayout } from "./AppLayout";
 
@@ -34,6 +35,7 @@ const queryClient = createAppQueryClient();
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/auth/verify", element: <VerifyPage /> },
+  { path: "/share/:token", element: <PublicSharePage /> },
   {
     element: <RequireAuth />,
     children: [
