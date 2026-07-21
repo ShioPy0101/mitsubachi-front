@@ -777,6 +777,14 @@ th:last-child,
   font-size: var(--font-size-sm);
 }
 
+.field-error-warn {
+  color: var(--color-warning);
+}
+
+.field-error-danger {
+  color: var(--color-danger);
+}
+
 .auth-page {
   display: grid;
   min-height: 100vh;
@@ -1746,6 +1754,12 @@ th:last-child,
 .external-share-result {
   display: grid;
   gap: var(--space-3);
+}
+
+.external-share-once-note {
+  margin: 0;
+  color: var(--color-warning);
+  font-size: var(--font-size-sm);
 }
 
 .public-share-page {
