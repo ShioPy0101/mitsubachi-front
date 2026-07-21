@@ -153,7 +153,8 @@ export function PublicSharePage() {
 
 function unlockErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
-    if (error.code === "invalid_password") return "パスワードが正しくありません";
+    if (error.code === "invalid_share_password" || error.code === "invalid_password")
+      return "パスワードが正しくありません";
     if (error.code === "password_required") return "パスワードを入力してください";
     if (error.code === "share_expired") return "この共有リンクは有効期限が切れています";
     if (error.code === "share_revoked") return "この共有リンクは停止されています";
