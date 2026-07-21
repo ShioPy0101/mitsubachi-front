@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { API_BASE_URL, clearCsrfToken } from "../api/client";
-import { createExternalShare, publicDownloadUrl, publicPreviewUrl, type ExternalShare } from "./api";
+import {
+  createExternalShare,
+  publicDownloadUrl,
+  publicPreviewUrl,
+  type ExternalShare,
+} from "./api";
 
 describe("external share api", () => {
   it("creates one external share for selected DriveItems", async () => {

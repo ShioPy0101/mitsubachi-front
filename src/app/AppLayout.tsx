@@ -50,7 +50,9 @@ export function AppLayout() {
           <span className="org-name">
             {auth.user?.organization?.name ?? "Organization"}
           </span>
-          <span className="user-chip">{auth.user?.display_name ?? auth.user?.name ?? "未設定ユーザー"}</span>
+          <span className="user-chip">
+            {auth.user?.display_name ?? auth.user?.name ?? "未設定ユーザー"}
+          </span>
           <span className="role-chip">{auth.user?.role}</span>
           <IconButton
             label="ログアウト"

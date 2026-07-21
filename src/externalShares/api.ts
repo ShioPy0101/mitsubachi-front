@@ -56,19 +56,19 @@ export type CreateExternalShareInput = {
 
 export function createExternalShare(input: CreateExternalShareInput) {
   return apiRequest<unknown>("/api/v1/external_shares", {
-      method: "POST",
-      body: {
-        external_share: {
-          name: input.name,
-          drive_item_ids: input.driveItemIds,
-          expires_at: input.expiresAt,
-          allow_download: input.allowDownload,
-          allow_bulk_download: input.allowBulkDownload,
-          password: input.password,
-          folder_share_mode: input.folderShareMode,
-        },
+    method: "POST",
+    body: {
+      external_share: {
+        name: input.name,
+        drive_item_ids: input.driveItemIds,
+        expires_at: input.expiresAt,
+        allow_download: input.allowDownload,
+        allow_bulk_download: input.allowBulkDownload,
+        password: input.password,
+        folder_share_mode: input.folderShareMode,
       },
-    }).then((body) => externalShareSchema.parse(body));
+    },
+  }).then((body) => externalShareSchema.parse(body));
 }
 
 export function fetchPublicShare(token: string): Promise<PublicShare> {

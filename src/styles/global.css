@@ -1467,7 +1467,6 @@ th:last-child,
   }
 }
 
-
 .drive-search {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
@@ -1708,7 +1707,6 @@ th:last-child,
     grid-template-columns: 1fr;
   }
 }
-
 
 .external-share-targets {
   display: grid;

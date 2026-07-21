@@ -1,6 +1,11 @@
 import { apiFetch, apiRequest, apiUrl, getCsrfToken } from "../api/client";
 import { parseApiError } from "../api/errors";
-import { driveItemSchema, driveItemsSchema, driveSearchResponseSchema, type DriveItem } from "../api/schemas";
+import {
+  driveItemSchema,
+  driveItemsSchema,
+  driveSearchResponseSchema,
+  type DriveItem,
+} from "../api/schemas";
 
 export const driveKeys = {
   all: ["drive-items"] as const,
@@ -154,8 +159,8 @@ export function moveDriveItem(input: { id: number; parentId: number | null }) {
   return apiRequest<{ data: DriveItem; request_id?: string }>(
     `/api/v1/drive_items/${input.id}/move`,
     {
-    method: "PATCH",
-    body: { parent_id: input.parentId },
+      method: "PATCH",
+      body: { parent_id: input.parentId },
     },
   );
 }
@@ -216,7 +221,11 @@ export async function bulkDownload(ids: number[], signal?: AbortSignal) {
     response.headers.get("Content-Type")?.includes("application/json")
   ) {
     const body: unknown = await response.json().catch(() => null);
-    throw parseApiError(response.status, body, apiUrl("/api/v1/drive_items/bulk_download"));
+    throw parseApiError(
+      response.status,
+      body,
+      apiUrl("/api/v1/drive_items/bulk_download"),
+    );
   }
 
   if (!response.headers.get("Content-Type")?.includes("application/zip")) {

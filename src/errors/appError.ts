@@ -59,7 +59,9 @@ export function normalizeAppError(
   return {
     code: "frontend_error",
     level: "danger",
-    message: sanitizeText(error instanceof Error ? error.message : "予期しないエラーが発生しました。"),
+    message: sanitizeText(
+      error instanceof Error ? error.message : "予期しないエラーが発生しました。",
+    ),
     operation: context.operation,
     occurredAt,
     page: context.page,
@@ -103,34 +105,50 @@ export function sanitizeText(value: unknown) {
         ? String(value)
         : "";
   return text
-    .replace(/[?&](token|access_token|refresh_token|signature|csrf)=[^&#\s]+/gi, "?[REDACTED]")
-    .replace(/(authorization|cookie|csrf|password|secret|signature|token)\s*[:=]\s*[^\s,;}]+/gi, "[REDACTED]")
+    .replace(
+      /[?&](token|access_token|refresh_token|signature|csrf)=[^&#\s]+/gi,
+      "?[REDACTED]",
+    )
+    .replace(
+      /(authorization|cookie|csrf|password|secret|signature|token)\s*[:=]\s*[^\s,;}]+/gi,
+      "[REDACTED]",
+    )
     .slice(0, 500);
 }
 
 export function isNameConflictAppError(error: AppError) {
-  return ["duplicate_name", "name_conflict", "duplicate_content", "auto_rename_required"].includes(error.code);
+  return [
+    "duplicate_name",
+    "name_conflict",
+    "duplicate_content",
+    "auto_rename_required",
+  ].includes(error.code);
 }
 
 export function isReportableAppError(error: AppError) {
   return error.level === "danger";
 }
 
-function sanitizeDetails(details?: Record<string, string | number | boolean | null | undefined>) {
+function sanitizeDetails(
+  details?: Record<string, string | number | boolean | null | undefined>,
+) {
   if (!details) return undefined;
-  return Object.entries(details).reduce<Record<string, string | number | boolean | null>>(
-    (safe, [key, value]) => {
-      if (value === undefined || secretKeyPattern.test(key)) return safe;
-      safe[key] = typeof value === "string" ? sanitizeText(value) : value;
-      return safe;
-    },
-    {},
-  );
+  return Object.entries(details).reduce<
+    Record<string, string | number | boolean | null>
+  >((safe, [key, value]) => {
+    if (value === undefined || secretKeyPattern.test(key)) return safe;
+    safe[key] = typeof value === "string" ? sanitizeText(value) : value;
+    return safe;
+  }, {});
 }
 
 function append(lines: string[], label: string, value: unknown) {
   if (value === undefined || value === null || value === "") return;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
     lines.push(`${label}: ${value}`);
   }
 }
@@ -147,7 +165,14 @@ function codeForStatus(status: number) {
 }
 
 function levelFor(code: string, status: number): AppError["level"] {
-  if (["duplicate_name", "name_conflict", "duplicate_content", "auto_rename_required"].includes(code)) {
+  if (
+    [
+      "duplicate_name",
+      "name_conflict",
+      "duplicate_content",
+      "auto_rename_required",
+    ].includes(code)
+  ) {
     return "info";
   }
   if (status === 409 || status === 413 || status === 422) return "warn";
@@ -164,11 +189,13 @@ function safeApiPath(value?: string) {
 }
 
 function detailLabel(key: string) {
-  return {
-    itemType: "種類",
-    itemName: "名前",
-    targetFolder: "移動先",
-  }[key] ?? key;
+  return (
+    {
+      itemType: "種類",
+      itemName: "名前",
+      targetFolder: "移動先",
+    }[key] ?? key
+  );
 }
 
 function formatDateTime(value: string) {

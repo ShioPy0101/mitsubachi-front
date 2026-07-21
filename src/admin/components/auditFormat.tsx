@@ -65,6 +65,7 @@ export function formatDateTime(value?: string | null) {
   return new Intl.DateTimeFormat("ja-JP", {
     dateStyle: "long",
     timeStyle: "medium",
+    timeZone: "Asia/Tokyo",
   }).format(date);
 }
 
@@ -80,6 +81,7 @@ export function formatCompactDateTime(value?: string | null) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
+    timeZone: "Asia/Tokyo",
   }).formatToParts(date);
   const get = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? "";

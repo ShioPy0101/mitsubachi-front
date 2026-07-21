@@ -57,7 +57,9 @@ describe("ErrorReportPanel", () => {
 
     render(<ErrorReportPanel error={error} />);
 
-    expect(screen.getByText("別名を指定すると同じ操作を再実行できます。")).toBeInTheDocument();
+    expect(
+      screen.getByText("別名を指定すると同じ操作を再実行できます。"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
     expect(screen.queryByText("詳細を表示")).not.toBeInTheDocument();
     expect(screen.queryByText(/Request ID:/)).not.toBeInTheDocument();
