@@ -6,11 +6,12 @@ import { IconButton } from "./IconButton";
 type ModalProps = {
   open: boolean;
   title: string;
+  className?: string;
   children: React.ReactNode;
   onClose: () => void;
 };
 
-export function Modal({ open, title, children, onClose }: ModalProps) {
+export function Modal({ open, title, className = "", children, onClose }: ModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
 
@@ -45,7 +46,7 @@ export function Modal({ open, title, children, onClose }: ModalProps) {
   return (
     <dialog
       ref={dialogRef}
-      className="modal"
+      className={`modal ${className}`.trim()}
       aria-labelledby="modal-title"
       onCancel={(event) => {
         event.preventDefault();

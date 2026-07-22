@@ -1240,6 +1240,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         title={
           createdShare?.share_url ? "公開リンクを作成しました" : "外部公開リンクを作成"
         }
+        className="external-share-modal"
         onClose={() => {
           setDialog(null);
           setCreatedShare(null);
@@ -1715,9 +1716,10 @@ function ExternalShareDialog({
             </p>
           </>
         ) : null}
-        <div className="modal-actions">
+        <div className="external-share-actions">
           <Button
             type="button"
+            className="external-share-action-copy-url"
             variant="secondary"
             onClick={() =>
               void navigator.clipboard?.writeText(createdShare.share_url ?? "")
@@ -1730,6 +1732,7 @@ function ExternalShareDialog({
             <>
               <Button
                 type="button"
+                className="external-share-action-copy-password"
                 variant="secondary"
                 onClick={() =>
                   void navigator.clipboard?.writeText(
@@ -1740,22 +1743,11 @@ function ExternalShareDialog({
                 <Copy size={16} aria-hidden="true" />
                 パスワードをコピー
               </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() =>
-                  void navigator.clipboard?.writeText(
-                    `公開URL: ${createdShare.share_url}\nパスワード: ${createdShare.generated_password}`,
-                  )
-                }
-              >
-                <Copy size={16} aria-hidden="true" />
-                まとめてコピー
-              </Button>
             </>
           ) : null}
           <Button
             type="button"
+            className="external-share-action-open"
             onClick={() =>
               window.open(createdShare.share_url, "_blank", "noopener,noreferrer")
             }
@@ -1763,9 +1755,25 @@ function ExternalShareDialog({
             <ExternalLink size={16} aria-hidden="true" />
             リンクを開く
           </Button>
+          {createdShare.generated_password ? (
+            <Button
+              type="button"
+              className="external-share-action-copy-all"
+              variant="secondary"
+              onClick={() =>
+                void navigator.clipboard?.writeText(
+                  `公開URL: ${createdShare.share_url}\nパスワード: ${createdShare.generated_password}`,
+                )
+              }
+            >
+              <Copy size={16} aria-hidden="true" />
+              まとめてコピー
+            </Button>
+          ) : null}
           {createdShare.password_required ? (
             <Button
               type="button"
+              className="external-share-action-regenerate"
               variant="secondary"
               loading={regeneratingPassword}
               onClick={() => onRegeneratePassword(createdShare.id)}

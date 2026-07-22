@@ -1787,12 +1787,66 @@ th:last-child,
 .external-share-result {
   display: grid;
   gap: var(--space-3);
+  min-width: 0;
+}
+
+.external-share-modal {
+  width: min(640px, calc(100% - 32px));
+}
+
+.external-share-result input {
+  min-width: 0;
+  width: 100%;
 }
 
 .external-share-once-note {
   margin: 0;
   color: var(--color-warning);
   font-size: var(--font-size-sm);
+}
+
+.external-share-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.external-share-actions .button {
+  width: 100%;
+  min-width: max-content;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  white-space: nowrap;
+}
+
+.external-share-action-copy-all {
+  grid-column: 1 / 2;
+}
+
+.external-share-action-regenerate {
+  grid-column: 3 / 4;
+}
+
+@media (max-width: 520px) {
+  .external-share-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .external-share-action-copy-all,
+  .external-share-action-regenerate {
+    grid-column: auto;
+  }
+
+  .external-share-actions .button {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .external-share-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .public-share-page {

@@ -1294,6 +1294,25 @@ describe("DrivePage drag and drop upload", () => {
         "このパスワードは再表示できません。安全な方法で共有してください。",
       ),
     ).toBeInTheDocument();
+    const actions = screen
+      .getByRole("button", { name: "URLをコピー" })
+      .closest(".external-share-actions");
+    if (!(actions instanceof HTMLElement)) {
+      throw new Error("External share action layout was not rendered.");
+    }
+    const buttons = within(actions).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "URLをコピー",
+      "パスワードをコピー",
+      "リンクを開く",
+      "まとめてコピー",
+      "パスワードを再発行",
+    ]);
+    expect(buttons[0]).toHaveClass("external-share-action-copy-url");
+    expect(buttons[1]).toHaveClass("external-share-action-copy-password");
+    expect(buttons[2]).toHaveClass("button-primary");
+    expect(buttons[3]).toHaveClass("external-share-action-copy-all");
+    expect(buttons[4]).toHaveClass("external-share-action-regenerate");
   });
 
   it("regenerates an external share password after confirmation", async () => {
