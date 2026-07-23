@@ -101,6 +101,44 @@ describe("drive api", () => {
     expect(form.get("parent_id")).toBe("42");
   });
 
+  it("sends explicit duplicate content and name conflict actions", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
+          return new Response(JSON.stringify({ csrf_token: "csrf" }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            id: 1,
+            parent_id: null,
+            name: "report",
+            item_type: "file",
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+
+    await uploadFile({
+      file: new File(["content"], "report.txt", { type: "text/plain" }),
+      name: "report",
+      parentId: 42,
+      allowDuplicateContent: true,
+      duplicateContentAction: "upload_anyway",
+      nameConflictAction: "auto_rename",
+      operationId: "operation-123",
+    });
+
+    const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
+    expect(form.get("allow_duplicate_content")).toBe("true");
+    expect(form.get("duplicate_content_action")).toBe("upload_anyway");
+    expect(form.get("name_conflict_action")).toBe("auto_rename");
+    expect(form.get("operation_id")).toBe("operation-123");
+  });
+
   it("uses native browser download for single downloads", () => {
     const append = vi.spyOn(document.body, "append");
     const click = vi.fn();

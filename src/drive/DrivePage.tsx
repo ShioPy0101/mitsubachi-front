@@ -100,10 +100,12 @@ type UploadTask = {
     | "restored"
     | "conflict"
     | "failed"
-    | "canceled";
+    | "canceled"
+    | "retried";
   message?: string;
   error?: AppError;
   abortController?: AbortController;
+  sourceTaskId?: string;
 };
 
 type UploadPanelState = "expanded" | "completed" | "dismissed";
@@ -175,6 +177,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     | "restorePreview"
     | "move"
     | "externalShare"
+    | "duplicateBulkUpload"
     | null
   >(null);
   const [activeItem, setActiveItem] = useState<DriveItem | null>(null);
@@ -189,6 +192,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [uploadPanelPreference, setUploadPanelPreference] =
     useState<UploadPanelPreference>("auto");
   const [isUploading, setIsUploading] = useState(false);
+  const [isBulkDuplicateProcessing, setIsBulkDuplicateProcessing] = useState(false);
+  const [bulkDuplicateSummary, setBulkDuplicateSummary] = useState<{
+    completed: number;
+    failed: number;
+  } | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [trashDuplicateResolution, setTrashDuplicateResolution] =
     useState<TrashDuplicateResolutionState>("choice");
@@ -279,14 +287,25 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const uploadPanelState = useMemo<UploadPanelState>(() => {
     if (uploadPanelPreference === "dismissed") return "dismissed";
     if (uploadPanelPreference === "expanded") return "expanded";
+    const visibleTasks = uploadTasks.filter((task) => task.status !== "retried");
     if (
-      uploadTasks.length > 0 &&
-      uploadTasks.every((task) => task.status === "done" || task.status === "restored")
+      visibleTasks.length > 0 &&
+      visibleTasks.every((task) => task.status === "done" || task.status === "restored")
     ) {
       return "completed";
     }
     return "expanded";
   }, [uploadPanelPreference, uploadTasks]);
+  const unresolvedDuplicateContentTasks = useMemo(
+    () =>
+      uploadTasks.filter(
+        (task) =>
+          task.status === "conflict" &&
+          task.error !== undefined &&
+          isDuplicateContentError(task.error),
+      ),
+    [uploadTasks],
+  );
 
   const invalidateCurrent = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -639,9 +658,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       nameOverride?: string,
       options: {
         allowDuplicateContent?: boolean;
+        duplicateContentAction?: "upload_anyway";
+        nameConflictAction?: "auto_rename";
+        operationId?: string;
         allowTrashDuplicate?: boolean;
         replaceTrashedDriveItemId?: number;
         taskId?: string;
+        sourceTaskId?: string;
       } = {},
     ) => {
       const taskId = options.taskId ?? `${Date.now()}-${Math.random()}`;
@@ -681,6 +704,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             percent: 0,
             status: "uploading",
             abortController,
+            sourceTaskId: options.sourceTaskId,
           },
         ];
       });
@@ -691,6 +715,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           name: uploadName,
           parentId,
           allowDuplicateContent: options.allowDuplicateContent,
+          duplicateContentAction: options.duplicateContentAction,
+          nameConflictAction: options.nameConflictAction,
+          operationId: options.operationId,
           allowTrashDuplicate: options.allowTrashDuplicate,
           replaceTrashedDriveItemId: options.replaceTrashedDriveItemId,
           signal: abortController.signal,
@@ -938,6 +965,94 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       });
     },
     [toast, updateUploadTask],
+  );
+
+  const excludeDuplicateContentTasks = useCallback(
+    (tasks: UploadTask[]) => {
+      if (tasks.length === 0 || isBulkDuplicateProcessing) return;
+      setUploadTasks((current) =>
+        current.map((task) =>
+          tasks.some((candidate) => candidate.id === task.id)
+            ? {
+                ...task,
+                status: "canceled",
+                message: "同じ内容のため除外しました",
+                abortController: undefined,
+              }
+            : task,
+        ),
+      );
+      if (conflict && tasks.some((task) => task.id === conflict.taskId)) {
+        setDialog(null);
+        setConflict(null);
+      }
+      setBulkDuplicateSummary(null);
+      toast.show({
+        tone: "info",
+        message: `同じ内容の${tasks.length}件をアップロード対象から除外しました。`,
+      });
+    },
+    [conflict, isBulkDuplicateProcessing, toast],
+  );
+
+  const uploadDuplicateContentTasks = useCallback(
+    async (tasks: UploadTask[]) => {
+      if (tasks.length === 0 || isBulkDuplicateProcessing) return;
+      const operationId = createUploadOperationId("duplicate-content-bulk");
+      uploadInProgressRef.current = true;
+      setIsBulkDuplicateProcessing(true);
+      setIsUploading(true);
+      setDialog(null);
+      setConflict(null);
+      setBulkDuplicateSummary(null);
+      setUploadTasks((current) =>
+        current.map((task) =>
+          tasks.some((candidate) => candidate.id === task.id)
+            ? {
+                ...task,
+                status: "retried",
+                message: "一括再試行済み",
+                abortController: undefined,
+              }
+            : task,
+        ),
+      );
+
+      let completed = 0;
+      let failed = 0;
+      try {
+        for (const task of tasks) {
+          const result = await uploadSingleFile(
+            task.file,
+            task.parentId,
+            task.uploadName,
+            {
+              allowDuplicateContent: true,
+              duplicateContentAction: "upload_anyway",
+              nameConflictAction: "auto_rename",
+              operationId,
+              sourceTaskId: task.id,
+            },
+          );
+          if (result === "done") completed += 1;
+          else failed += 1;
+        }
+        if (completed > 0) await invalidateCurrent();
+        setBulkDuplicateSummary({ completed, failed });
+        toast.show({
+          tone: failed > 0 ? "warn" : "success",
+          message:
+            failed > 0
+              ? `一括アップロードが完了しました。完了: ${completed}件、失敗: ${failed}件。`
+              : `${completed}件をアップロードしました。`,
+        });
+      } finally {
+        setIsBulkDuplicateProcessing(false);
+        setIsUploading(false);
+        uploadInProgressRef.current = false;
+      }
+    },
+    [invalidateCurrent, isBulkDuplicateProcessing, toast, uploadSingleFile],
   );
 
   const ensureDirectoryPath = useCallback(
@@ -1380,6 +1495,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         <UploadProgressPanel
           tasks={uploadTasks}
           state={uploadPanelState}
+          duplicateContentTasks={unresolvedDuplicateContentTasks}
+          duplicateContentSummary={bulkDuplicateSummary}
+          bulkDuplicateProcessing={isBulkDuplicateProcessing}
+          onBulkUploadDuplicateContent={() => setDialog("duplicateBulkUpload")}
+          onExcludeDuplicateContent={() =>
+            excludeDuplicateContentTasks(unresolvedDuplicateContentTasks)
+          }
           onCancel={(task) => task.abortController?.abort()}
           onRetry={(task) =>
             void uploadSingleFile(task.file, task.parentId, task.uploadName)
@@ -1559,6 +1681,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                 {
                   taskId: conflict.taskId,
                   allowDuplicateContent: true,
+                  duplicateContentAction: "upload_anyway",
+                  nameConflictAction: "auto_rename",
+                  operationId: createUploadOperationId("duplicate-content-single"),
                 },
               ).then(async (succeeded) => {
                 if (succeeded === "done") await invalidateCurrent();
@@ -1584,6 +1709,22 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             onCancel={() => cancelUploadConflict(conflict)}
           />
         ) : null}
+      </Modal>
+      <Modal
+        open={dialog === "duplicateBulkUpload"}
+        title="同じ内容でもすべてアップロード"
+        onClose={() => {
+          if (!isBulkDuplicateProcessing) setDialog(null);
+        }}
+      >
+        <DuplicateContentBulkConfirm
+          count={unresolvedDuplicateContentTasks.length}
+          loading={isBulkDuplicateProcessing}
+          onCancel={() => setDialog(null)}
+          onConfirm={() =>
+            void uploadDuplicateContentTasks(unresolvedDuplicateContentTasks)
+          }
+        />
       </Modal>
       <Modal
         open={dialog === "restorePreview"}
@@ -2949,9 +3090,53 @@ function TrashContentConflictDialog({
   );
 }
 
+function DuplicateContentBulkConfirm({
+  count,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  count: number;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="form-stack">
+      <p>
+        同じ内容のファイルがすでに存在する{count}
+        件を、新しいファイルとしてアップロードします。
+        <br />
+        ファイル名も重複する場合は自動的に名前を変更します。
+      </p>
+      <p className="form-message form-message-info">
+        既存ファイルは上書きまたは削除されません。
+      </p>
+      <div className="modal-actions">
+        <Button type="button" variant="ghost" disabled={loading} onClick={onCancel}>
+          キャンセル
+        </Button>
+        <Button
+          type="button"
+          loading={loading}
+          disabled={count === 0}
+          onClick={onConfirm}
+        >
+          {count}件をアップロード
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function UploadProgressPanel({
   tasks,
   state,
+  duplicateContentTasks,
+  duplicateContentSummary,
+  bulkDuplicateProcessing,
+  onBulkUploadDuplicateContent,
+  onExcludeDuplicateContent,
   onCancel,
   onRetry,
   onShowDetails,
@@ -2961,6 +3146,11 @@ function UploadProgressPanel({
 }: {
   tasks: UploadTask[];
   state: UploadPanelState;
+  duplicateContentTasks: UploadTask[];
+  duplicateContentSummary: { completed: number; failed: number } | null;
+  bulkDuplicateProcessing: boolean;
+  onBulkUploadDuplicateContent: () => void;
+  onExcludeDuplicateContent: () => void;
   onCancel: (task: UploadTask) => void;
   onRetry: (task: UploadTask) => void;
   onShowDetails: () => void;
@@ -2968,13 +3158,15 @@ function UploadProgressPanel({
   onRemoveTask: (task: UploadTask) => void;
   onClearCompleted: () => void;
 }) {
-  const total = tasks.reduce((sum, task) => sum + (task.total ?? 0), 0);
-  const loaded = tasks.reduce((sum, task) => sum + task.loaded, 0);
+  const visibleTasks = tasks.filter((task) => task.status !== "retried");
+  const total = visibleTasks.reduce((sum, task) => sum + (task.total ?? 0), 0);
+  const loaded = visibleTasks.reduce((sum, task) => sum + task.loaded, 0);
   const percent = total ? Math.round((loaded / total) * 100) : undefined;
-  const completedCount = tasks.filter(
+  const completedCount = visibleTasks.filter(
     (task) => task.status === "done" || task.status === "restored",
   ).length;
   const hasCompleted = completedCount > 0;
+  const duplicateContentCount = duplicateContentTasks.length;
   if (state === "dismissed") return null;
   if (state === "completed") {
     return (
@@ -3003,7 +3195,7 @@ function UploadProgressPanel({
         <div>
           <h2>アップロード状況</h2>
           <span>
-            {completedCount} / {tasks.length} 件完了
+            {completedCount} / {visibleTasks.length} 件完了
           </span>
         </div>
         {hasCompleted ? (
@@ -3012,9 +3204,39 @@ function UploadProgressPanel({
           </Button>
         ) : null}
       </div>
+      {duplicateContentCount > 0 || duplicateContentSummary ? (
+        <div className="upload-bulk-actions" aria-label="同じ内容の一括操作">
+          {duplicateContentSummary ? (
+            <p>
+              一括処理結果: 完了: {duplicateContentSummary.completed}件 / 失敗:{" "}
+              {duplicateContentSummary.failed}件
+            </p>
+          ) : null}
+          {duplicateContentCount > 0 ? (
+            <div>
+              <Button
+                type="button"
+                disabled={bulkDuplicateProcessing}
+                loading={bulkDuplicateProcessing}
+                onClick={onBulkUploadDuplicateContent}
+              >
+                同じ内容でもすべてアップロード（{duplicateContentCount}件）
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={bulkDuplicateProcessing}
+                onClick={onExcludeDuplicateContent}
+              >
+                同じ内容の項目をすべて除外（{duplicateContentCount}件）
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <ProgressBar percent={percent} />
       <ul>
-        {tasks.map((task) => (
+        {visibleTasks.map((task) => (
           <li key={task.id}>
             <div>
               <strong>{task.fileName}</strong>
@@ -3143,7 +3365,7 @@ function uploadStatusText(task: UploadTask) {
   if (task.status === "restored") return "ゴミ箱から復元済み";
   if (task.status === "conflict") return task.message ?? "確認が必要です";
   if (task.status === "failed") return task.message ?? "失敗";
-  if (task.status === "canceled") return "キャンセルしました";
+  if (task.status === "canceled") return task.message ?? "キャンセルしました";
   return "アップロード中";
 }
 
@@ -3215,6 +3437,12 @@ function isActiveContentConflict(error: unknown) {
   );
 }
 
+function isDuplicateContentError(error: AppError) {
+  return (
+    error.code === "duplicate_content" || error.code === "active_content_duplicate"
+  );
+}
+
 function isTrashContentConflict(error: unknown) {
   return (
     error instanceof ApiError &&
@@ -3259,6 +3487,14 @@ function nextAvailableUploadName(filename: string, existingFilenames: string[]) 
     index += 1;
   }
   return `${base}（${index}）`;
+}
+
+function createUploadOperationId(prefix: string) {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${random}`;
 }
 
 function relativePathSegments(file: File) {

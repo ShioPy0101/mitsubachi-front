@@ -148,6 +148,9 @@ export function uploadFile(input: {
   name: string;
   parentId: number | null;
   allowDuplicateContent?: boolean;
+  duplicateContentAction?: "upload_anyway";
+  nameConflictAction?: "auto_rename";
+  operationId?: string;
   allowTrashDuplicate?: boolean;
   replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
@@ -159,6 +162,7 @@ export function uploadFile(input: {
     form.append("item_type", "file");
     if (input.parentId !== null) form.append("parent_id", String(input.parentId));
     if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
+    appendUploadResolutionFields(form, input);
     if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
     if (input.replaceTrashedDriveItemId !== undefined) {
       form.append(
@@ -182,6 +186,9 @@ async function uploadFileWithProgress(input: {
   name: string;
   parentId: number | null;
   allowDuplicateContent?: boolean;
+  duplicateContentAction?: "upload_anyway";
+  nameConflictAction?: "auto_rename";
+  operationId?: string;
   allowTrashDuplicate?: boolean;
   replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
@@ -192,6 +199,7 @@ async function uploadFileWithProgress(input: {
   form.append("item_type", "file");
   if (input.parentId !== null) form.append("parent_id", String(input.parentId));
   if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
+  appendUploadResolutionFields(form, input);
   if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
   if (input.replaceTrashedDriveItemId !== undefined) {
     form.append(
@@ -240,6 +248,23 @@ async function uploadFileWithProgress(input: {
     xhr.setRequestHeader("X-CSRF-Token", csrfToken);
     xhr.send(form);
   });
+}
+
+function appendUploadResolutionFields(
+  form: FormData,
+  input: {
+    duplicateContentAction?: "upload_anyway";
+    nameConflictAction?: "auto_rename";
+    operationId?: string;
+  },
+) {
+  if (input.duplicateContentAction) {
+    form.append("duplicate_content_action", input.duplicateContentAction);
+  }
+  if (input.nameConflictAction) {
+    form.append("name_conflict_action", input.nameConflictAction);
+  }
+  if (input.operationId) form.append("operation_id", input.operationId);
 }
 
 export function renameDriveItem(input: { id: number; name: string }) {

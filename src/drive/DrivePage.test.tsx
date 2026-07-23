@@ -12,6 +12,9 @@ type UploadFileInput = {
   name: string;
   parentId: number | null;
   allowDuplicateContent?: boolean;
+  duplicateContentAction?: "upload_anyway";
+  nameConflictAction?: "auto_rename";
+  operationId?: string;
   allowTrashDuplicate?: boolean;
   replaceTrashedDriveItemId?: number;
   onProgress?: (progress: { loaded: number; total?: number; percent?: number }) => void;
@@ -366,9 +369,111 @@ describe("DrivePage drag and drop upload", () => {
     await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
     expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
       allowDuplicateContent: true,
+      duplicateContentAction: "upload_anyway",
       file,
+      nameConflictAction: "auto_rename",
       parentId: 42,
     });
+    expect(mocks.uploadFile.mock.calls[1]?.[0].operationId).toMatch(
+      /^duplicate-content-single-/,
+    );
+  });
+
+  it("bulk uploads unresolved duplicate content items with auto rename", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockResolvedValueOnce({
+        id: 11,
+        parent_id: 42,
+        name: "first",
+        item_type: "file",
+      })
+      .mockRejectedValueOnce(new Error("容量が不足しています。"));
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const first = new File(["same-a"], "first.txt", { type: "text/plain" });
+    const second = new File(["same-b"], "second.txt", { type: "text/plain" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([first, second]),
+    });
+
+    expect(
+      await screen.findByRole("button", {
+        name: "同じ内容でもすべてアップロード（2件）",
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "同じ内容でもすべてアップロード（2件）",
+      }),
+    );
+
+    const confirm = within(openDialog("同じ内容でもすべてアップロード"));
+    expect(
+      confirm.getByText(
+        /同じ内容のファイルがすでに存在する2件を、新しいファイルとしてアップロードします/,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(confirm.getByRole("button", { name: "2件をアップロード" }));
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(4));
+    const firstRetry = mocks.uploadFile.mock.calls[2]?.[0];
+    const secondRetry = mocks.uploadFile.mock.calls[3]?.[0];
+    expect(firstRetry).toMatchObject({
+      file: first,
+      allowDuplicateContent: true,
+      duplicateContentAction: "upload_anyway",
+      nameConflictAction: "auto_rename",
+    });
+    expect(secondRetry).toMatchObject({
+      file: second,
+      allowDuplicateContent: true,
+      duplicateContentAction: "upload_anyway",
+      nameConflictAction: "auto_rename",
+    });
+    expect(firstRetry?.operationId).toMatch(/^duplicate-content-bulk-/);
+    expect(secondRetry?.operationId).toBe(firstRetry?.operationId);
+    expect(
+      await screen.findByText(/一括処理結果: 完了: 1件 \/ 失敗: 1件/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("容量が不足しています。").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", {
+        name: "同じ内容でもすべてアップロード（2件）",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("excludes all unresolved duplicate content items without retrying other errors", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(new Error("容量が不足しています。"));
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([
+        new File(["same"], "same.txt", { type: "text/plain" }),
+        new File(["large"], "large.zip", { type: "application/zip" }),
+      ]),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "同じ内容の項目をすべて除外（1件）",
+      }),
+    );
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("同じ内容のため除外しました")).toBeInTheDocument();
+    expect(screen.getAllByText("容量が不足しています。").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", {
+        name: "同じ内容でもすべてアップロード（1件）",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("resolves trash duplicate content by restoring the duplicate item", async () => {
@@ -2014,6 +2119,32 @@ function trashDuplicateError() {
       restoreTarget: { id: 199, type: "file", displayName: "report.txt" },
     },
     ["restore", "upload_anyway", "cancel"],
+  );
+}
+
+function duplicateContentError(message: string) {
+  return new ApiError(
+    409,
+    message,
+    [],
+    "duplicate_content",
+    "/api/v1/drive_items",
+    "name",
+    "same.txt",
+    "request-content-409",
+    { duplicate_kind: "same_content" },
+    [
+      {
+        id: 9,
+        name: "same.txt",
+        parent_id: 42,
+        parent_name: "Reports",
+        owner_display_name: "佐藤",
+        created_at: "2026-07-19T10:00:00.000Z",
+        file_size: 4,
+        deleted: false,
+      },
+    ],
   );
 }
 
