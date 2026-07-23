@@ -313,7 +313,7 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
-  it("shows active duplicate content without rename retry controls", async () => {
+  it("allows an intentional upload of active duplicate content", async () => {
     mocks.uploadFile.mockRejectedValueOnce(
       new ApiError(
         409,
@@ -360,6 +360,15 @@ describe("DrivePage drag and drop upload", () => {
     expect(dialog.queryByLabelText("名前")).not.toBeInTheDocument();
     expect(dialog.queryByText("名前を変更して再試行")).not.toBeInTheDocument();
     expect(dialog.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+
+    fireEvent.click(dialog.getByRole("button", { name: "同じ内容でもアップロード" }));
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
+    expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
+      allowDuplicateContent: true,
+      file,
+      parentId: 42,
+    });
   });
 
   it("resolves trash duplicate content by restoring the duplicate item", async () => {

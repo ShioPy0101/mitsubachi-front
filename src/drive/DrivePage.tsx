@@ -1550,6 +1550,20 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
               setConflict(null);
               void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`);
             }}
+            onUploadAnyway={() => {
+              setDialog(null);
+              void uploadSingleFile(
+                conflict.file,
+                conflict.parentId,
+                conflict.uploadName,
+                {
+                  taskId: conflict.taskId,
+                  allowDuplicateContent: true,
+                },
+              ).then(async (succeeded) => {
+                if (succeeded === "done") await invalidateCurrent();
+              });
+            }}
             onCancel={() => cancelUploadConflict(conflict)}
           />
         ) : null}
@@ -2739,11 +2753,13 @@ function ActiveContentConflictDialog({
   conflict,
   loading,
   onOpenDuplicateLocation,
+  onUploadAnyway,
   onCancel,
 }: {
   conflict: ActiveContentConflictState;
   loading: boolean;
   onOpenDuplicateLocation: (parentId: number | null) => void;
+  onUploadAnyway: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -2777,6 +2793,9 @@ function ActiveContentConflictDialog({
         </div>
       ) : null}
       <div className="modal-actions">
+        <Button type="button" disabled={loading} onClick={onUploadAnyway}>
+          同じ内容でもアップロード
+        </Button>
         <Button type="button" variant="ghost" disabled={loading} onClick={onCancel}>
           キャンセル
         </Button>
