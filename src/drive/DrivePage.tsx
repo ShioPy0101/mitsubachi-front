@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronUp,
   Copy,
@@ -81,6 +82,7 @@ import {
 type DriveMode = "drive" | "trash";
 const DRIVE_ITEM_MIME = "application/x-mitsubachi-drive-items";
 const DRIVE_OPEN_DISTANCE_THRESHOLD = 5;
+const FILE_LIST_INITIAL_VIEWPORT_HEIGHT = 640;
 const MENU_VIEWPORT_PADDING = 8;
 const MENU_OFFSET = 6;
 
@@ -1902,6 +1904,7 @@ function FileTable({
   draggingIds: number[];
   dragOverFolderId: number | null;
 }) {
+  const listViewportRef = useRef<HTMLDivElement>(null);
   const [openMenu, setOpenMenu] = useState<{
     id: number;
     anchor: HTMLButtonElement;
@@ -1912,6 +1915,35 @@ function FileTable({
     y: number;
     dragged: boolean;
   } | null>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: items.length,
+    getItemKey: (index) => items[index]?.id ?? index,
+    getScrollElement: () => listViewportRef.current,
+    estimateSize: () => 64,
+    overscan: 8,
+    initialRect: { width: 0, height: FILE_LIST_INITIAL_VIEWPORT_HEIGHT },
+    observeElementRect: (instance, callback) => {
+      const element = instance.scrollElement;
+      if (!element) return undefined;
+
+      const measure = () => {
+        const rect = element.getBoundingClientRect();
+        // 初回レイアウトが未確定でも空描画を避け、実ブラウザではResizeObserverの値へ更新する。
+        callback({
+          width: rect.width || element.clientWidth,
+          height:
+            rect.height || element.clientHeight || FILE_LIST_INITIAL_VIEWPORT_HEIGHT,
+        });
+      };
+      measure();
+
+      if (typeof ResizeObserver === "undefined") return undefined;
+      const observer = new ResizeObserver(measure);
+      observer.observe(element);
+      return () => observer.disconnect();
+    },
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
 
   useEffect(() => {
     if (openMenu === null) return;
@@ -1955,149 +1987,172 @@ function FileTable({
 
   return (
     <div className="file-list">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">選択</th>
-            <th scope="col">名前</th>
-            <th scope="col">作成者</th>
-            <th scope="col">更新日時</th>
-            <th scope="col">サイズ</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr
-              key={item.id}
-              className={[
-                selectedIds.includes(item.id) ? "selected" : "",
-                item.item_type === "directory" ? "directory-row" : "",
-                draggingIds.includes(item.id) ? "dragging-row" : "",
-                dragOverFolderId === item.id ? "drop-target" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              tabIndex={0}
-              onDragOver={(event) => {
-                if (item.item_type !== "directory" || draggingIds.length === 0) return;
-                if (draggingIds.includes(item.id)) return;
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                onDragOverFolder(item.id);
-              }}
-              onDragLeave={() => onDragOverFolder(null)}
-              onDrop={(event) => {
-                if (item.item_type !== "directory" || draggingIds.length === 0) return;
-                if (!dragMovePayload(event.dataTransfer)) return;
-                event.preventDefault();
-                onDropToFolder(event, item);
-              }}
-            >
-              <td className="file-select-cell">
-                <input
-                  data-no-drag
-                  type="checkbox"
-                  aria-label={`${item.name}を選択`}
-                  checked={selectedIds.includes(item.id)}
-                  onChange={() => onToggle(item.id)}
-                />
-              </td>
-              <td className="drive-item-drag-cell" colSpan={4}>
-                <div
-                  className="drive-item-info-action"
-                  role="button"
-                  tabIndex={trash ? -1 : 0}
-                  aria-label={`${displayName(item)}を開く`}
-                  draggable={!trash}
-                  onPointerDown={(event) => handleCentralPointerDown(event, item)}
-                  onPointerUp={(event) => handleCentralPointerUp(event, item)}
-                  onPointerCancel={() => {
-                    pointerStartRef.current = null;
-                  }}
-                  onKeyDown={(event) => handleCentralKeyDown(event, item)}
-                  onDragStart={(event) => {
-                    if (pointerStartRef.current?.id === item.id) {
-                      pointerStartRef.current.dragged = true;
-                    }
-                    onDragStart(event, item);
-                  }}
-                  onDragEnd={onDragEnd}
-                >
-                  <div className="file-name-cell">
-                    <span className="file-name-content">
-                      <FileTypeIcon item={item} />
-                      <span className="file-name">{displayName(item)}</span>
-                    </span>
-                    <span className="mobile-meta">
-                      {item.owner_display_name ?? "不明"} ・{" "}
-                      {formatDate(item.updated_at)} ・ {formatSize(item.file_size)}
-                      {searchMode && item.parent_name ? ` ・ ${item.parent_name}` : ""}
-                    </span>
-                    {searchMode && item.parent_name ? (
-                      <button
-                        data-no-drag
-                        type="button"
-                        className="file-location"
-                        onClick={() => onOpenParent(item.parent_id ?? null)}
-                      >
-                        場所: {item.parent_name}
-                      </button>
-                    ) : null}
-                  </div>
-                  <span className="drive-item-owner">
-                    {item.owner_display_name ?? "不明"}
-                  </span>
-                  <span className="drive-item-updated">
-                    {formatDate(item.updated_at)}
-                  </span>
-                  <span className="drive-item-size">{formatSize(item.file_size)}</span>
-                </div>
-              </td>
-              <td className="file-actions-cell">
-                <div className="row-actions">
-                  {!trash ? (
-                    <>
-                      <IconButton
-                        data-no-drag
-                        label={`${item.name}をダウンロード`}
-                        onClick={() => onDownload(item.id)}
-                      >
-                        <Download size={16} aria-hidden="true" />
-                      </IconButton>
-                      <IconButton
-                        data-no-drag
-                        label={`${item.name}の操作メニュー`}
-                        aria-haspopup="menu"
-                        aria-expanded={openMenu?.id === item.id}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          const anchor = event.currentTarget;
-                          setOpenMenu((current) =>
-                            current?.id === item.id ? null : { id: item.id, anchor },
-                          );
-                        }}
-                      >
-                        <MoreVertical size={16} aria-hidden="true" />
-                      </IconButton>
-                      {openMenu?.id === item.id ? (
-                        <ItemActionMenu
-                          anchor={openMenu.anchor}
-                          item={item}
-                          onClose={() => setOpenMenu(null)}
-                          onMove={onMove}
-                          onRename={onRename}
-                          onExternalShare={onExternalShare}
-                        />
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-              </td>
+      <div ref={listViewportRef} className="file-list-viewport">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">選択</th>
+              <th scope="col">名前</th>
+              <th scope="col">作成者</th>
+              <th scope="col">更新日時</th>
+              <th scope="col">サイズ</th>
+              <th scope="col">操作</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+            {virtualRows.map((virtualRow) => {
+              const item = items[virtualRow.index];
+              if (!item) return null;
+              return (
+                <tr
+                  key={item.id}
+                  ref={rowVirtualizer.measureElement}
+                  data-index={virtualRow.index}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  className={[
+                    selectedIds.includes(item.id) ? "selected" : "",
+                    item.item_type === "directory" ? "directory-row" : "",
+                    draggingIds.includes(item.id) ? "dragging-row" : "",
+                    dragOverFolderId === item.id ? "drop-target" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  tabIndex={0}
+                  onDragOver={(event) => {
+                    if (item.item_type !== "directory" || draggingIds.length === 0)
+                      return;
+                    if (draggingIds.includes(item.id)) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    onDragOverFolder(item.id);
+                  }}
+                  onDragLeave={() => onDragOverFolder(null)}
+                  onDrop={(event) => {
+                    if (item.item_type !== "directory" || draggingIds.length === 0)
+                      return;
+                    if (!dragMovePayload(event.dataTransfer)) return;
+                    event.preventDefault();
+                    onDropToFolder(event, item);
+                  }}
+                >
+                  <td className="file-select-cell">
+                    <input
+                      data-no-drag
+                      type="checkbox"
+                      aria-label={`${item.name}を選択`}
+                      checked={selectedIds.includes(item.id)}
+                      onChange={() => onToggle(item.id)}
+                    />
+                  </td>
+                  <td className="drive-item-drag-cell" colSpan={4}>
+                    <div
+                      className="drive-item-info-action"
+                      role="button"
+                      tabIndex={trash ? -1 : 0}
+                      aria-label={`${displayName(item)}を開く`}
+                      draggable={!trash}
+                      onPointerDown={(event) => handleCentralPointerDown(event, item)}
+                      onPointerUp={(event) => handleCentralPointerUp(event, item)}
+                      onPointerCancel={() => {
+                        pointerStartRef.current = null;
+                      }}
+                      onKeyDown={(event) => handleCentralKeyDown(event, item)}
+                      onDragStart={(event) => {
+                        if (pointerStartRef.current?.id === item.id) {
+                          pointerStartRef.current.dragged = true;
+                        }
+                        onDragStart(event, item);
+                      }}
+                      onDragEnd={onDragEnd}
+                    >
+                      <div className="file-name-cell">
+                        <span className="file-name-content">
+                          <FileTypeIcon item={item} />
+                          <span className="file-name">{displayName(item)}</span>
+                        </span>
+                        <span className="mobile-meta">
+                          {item.owner_display_name ?? "不明"} ・{" "}
+                          {formatDate(item.updated_at)} ・ {formatSize(item.file_size)}
+                          {searchMode && item.parent_name
+                            ? ` ・ ${item.parent_name}`
+                            : ""}
+                        </span>
+                        {searchMode && item.parent_name ? (
+                          <button
+                            data-no-drag
+                            type="button"
+                            className="file-location"
+                            onClick={() => onOpenParent(item.parent_id ?? null)}
+                          >
+                            場所: {item.parent_name}
+                          </button>
+                        ) : null}
+                      </div>
+                      <span className="drive-item-owner">
+                        {item.owner_display_name ?? "不明"}
+                      </span>
+                      <span className="drive-item-updated">
+                        {formatDate(item.updated_at)}
+                      </span>
+                      <span className="drive-item-size">
+                        {formatSize(item.file_size)}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="file-actions-cell">
+                    <div className="row-actions">
+                      {!trash ? (
+                        <>
+                          <IconButton
+                            data-no-drag
+                            label={`${item.name}をダウンロード`}
+                            onClick={() => onDownload(item.id)}
+                          >
+                            <Download size={16} aria-hidden="true" />
+                          </IconButton>
+                          <IconButton
+                            data-no-drag
+                            label={`${item.name}の操作メニュー`}
+                            aria-haspopup="menu"
+                            aria-expanded={openMenu?.id === item.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const anchor = event.currentTarget;
+                              setOpenMenu((current) =>
+                                current?.id === item.id
+                                  ? null
+                                  : { id: item.id, anchor },
+                              );
+                            }}
+                          >
+                            <MoreVertical size={16} aria-hidden="true" />
+                          </IconButton>
+                          {openMenu?.id === item.id ? (
+                            <ItemActionMenu
+                              anchor={openMenu.anchor}
+                              item={item}
+                              onClose={() => setOpenMenu(null)}
+                              onMove={onMove}
+                              onRename={onRename}
+                              onExternalShare={onExternalShare}
+                            />
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
