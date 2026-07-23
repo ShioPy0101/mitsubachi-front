@@ -628,19 +628,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getByRole("button", { name: "復元" }));
 
     await waitFor(() => {
-      expect(mocks.restoreDriveItem).toHaveBeenCalledWith(
-        29,
-        [
-          {
-            itemId: 29,
-            resolution: "restore",
-            destinationParentId: 42,
-            expectedName: "simple.txt",
-            expectedExistingItemId: null,
-          },
-        ],
-        "preview-token",
-      );
+      expect(mocks.restoreDriveItem).toHaveBeenCalledWith(29, "preview-token");
     });
     expect(
       screen.queryByRole("heading", { name: "復元内容の確認" }),
