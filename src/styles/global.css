@@ -841,6 +841,18 @@ th:last-child,
 
 .modal-body {
   padding: var(--space-4);
+  overflow: visible;
+}
+
+.modal:has(.restore-preview) {
+  width: min(960px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.modal:has(.restore-preview) .modal-body {
+  max-height: calc(100vh - 132px);
+  overflow: hidden;
 }
 
 .modal-actions {
@@ -877,7 +889,11 @@ th:last-child,
 }
 
 .restore-preview {
-  min-width: min(860px, 90vw);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-width: 0;
+  max-height: calc(100vh - 164px);
+  overflow: hidden;
 }
 
 .restore-preview-summary,
@@ -898,8 +914,9 @@ th:last-child,
 .restore-preview-list {
   display: grid;
   gap: var(--space-3);
-  max-height: 58vh;
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .restore-preview-card {
@@ -994,10 +1011,6 @@ th:last-child,
 }
 
 @media (max-width: 760px) {
-  .restore-preview {
-    min-width: 0;
-  }
-
   .restore-preview-compare {
     grid-template-columns: 1fr;
   }

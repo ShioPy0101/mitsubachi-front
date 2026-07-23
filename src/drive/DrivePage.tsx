@@ -53,6 +53,7 @@ import {
   bulkMove,
   bulkDelete,
   bulkDownload,
+  bulkPurge,
   bulkRestore,
   bulkRestorePreview,
   createDirectory,
@@ -417,7 +418,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   });
   const purgeMutation = useMutation({
     mutationFn: async () => {
-      await Promise.all(selectedIds.map((id) => purgeDriveItem(id)));
+      if (selectedIds.length > 1) await bulkPurge(selectedIds);
+      else await purgeDriveItem(selectedIds[0]);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
@@ -889,28 +891,6 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       }
     },
     [captureError, queryClient, toast, updateUploadTask],
-  );
-
-  const uploadIgnoringTrashDuplicate = useCallback(
-    async (currentConflict: TrashContentConflictState) => {
-      setTrashDuplicateResolution("uploading_anyway");
-      setDialog(null);
-      setConflict(null);
-      const result = await uploadSingleFile(
-        currentConflict.file,
-        currentConflict.parentId,
-        currentConflict.uploadName,
-        { allowTrashDuplicate: true, taskId: currentConflict.taskId },
-      );
-      if (result === "done") {
-        await invalidateCurrent();
-        toast.show({
-          tone: "success",
-          message: `「${currentConflict.file.name}」をアップロードしました`,
-        });
-      }
-    },
-    [invalidateCurrent, toast, uploadSingleFile],
   );
 
   const replaceTrashDuplicateWithUpload = useCallback(
@@ -1576,7 +1556,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             resolutionState={trashDuplicateResolution}
             loading={isUploading}
             onRestore={() => void restoreTrashDuplicate(conflict)}
-            onUploadAnyway={() => void uploadIgnoringTrashDuplicate(conflict)}
+            onOpenTrash={() => {
+              setDialog(null);
+              setConflict(null);
+              void navigate("/trash");
+            }}
             onStartPurgeUpload={() => setTrashDuplicateResolution("purge_confirm")}
             onConfirmPurgeUpload={() => void replaceTrashDuplicateWithUpload(conflict)}
             onBack={() => setTrashDuplicateResolution("restore_parent_missing")}
@@ -2533,6 +2517,14 @@ function RestorePreviewDialog({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  const conflictItems = preview.items.filter(
+    (item) => item.conflictType !== "none" || item.after.resolution === "skip",
+  );
+  const hasNameConflict = conflictItems.some((item) =>
+    item.conflictType.includes("name_conflict"),
+  );
+  const hasSkippable = conflictItems.length > 0;
+
   return (
     <div className="restore-preview form-stack">
       <div className="restore-preview-summary" aria-label="復元内容サマリー">
@@ -2540,38 +2532,47 @@ function RestorePreviewDialog({
         <span>復元可能 {preview.summary.restorableCount} 件</span>
         <span>スキップ {preview.summary.skippedCount} 件</span>
         <span>名前変更 {preview.summary.renameCount} 件</span>
-        <span>完全削除 {preview.summary.purgeExistingCount} 件</span>
+        <span>
+          ゴミ箱へ移動{" "}
+          {preview.summary.trashExistingCount ?? preview.summary.purgeExistingCount} 件
+        </span>
       </div>
-      {preview.items.length > 1 ? (
+      {conflictItems.length > 1 ? (
         <div className="restore-preview-bulk-actions">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={loading}
-            onClick={() => onApplyAll("rename")}
-          >
-            すべて自動リネーム
-          </Button>
-          <Button
-            type="button"
-            variant="danger"
-            disabled={loading}
-            onClick={() => onApplyAll("purge_existing")}
-          >
-            すべて既存項目を完全削除して復元
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={loading}
-            onClick={() => onApplyAll("skip")}
-          >
-            すべてスキップ
-          </Button>
+          {hasNameConflict ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={loading}
+              onClick={() => onApplyAll("rename")}
+            >
+              すべて自動リネーム
+            </Button>
+          ) : null}
+          {hasNameConflict ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={loading}
+              onClick={() => onApplyAll("trash_existing")}
+            >
+              すべて現在の同名項目をゴミ箱へ移して復元
+            </Button>
+          ) : null}
+          {hasSkippable ? (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={loading}
+              onClick={() => onApplyAll("skip")}
+            >
+              すべてスキップ
+            </Button>
+          ) : null}
         </div>
       ) : null}
       <div className="restore-preview-list">
-        {preview.items.map((item) => (
+        {conflictItems.map((item) => (
           <article
             key={item.itemId}
             className={`restore-preview-card ${item.after.resolution === "skip" ? "is-skipped" : ""}`.trim()}
@@ -2656,7 +2657,10 @@ function RestorePreviewDialog({
                     <dt>既存項目への影響</dt>
                     <dd
                       className={
-                        item.after.existingItemWillBePurged ? "danger-value" : ""
+                        (item.after.existingItemWillBeTrashed ??
+                        item.after.existingItemWillBePurged)
+                          ? "danger-value"
+                          : ""
                       }
                     >
                       {item.after.impact}
@@ -2665,9 +2669,11 @@ function RestorePreviewDialog({
                 </dl>
               </section>
             </div>
-            {item.after.existingItemWillBePurged && item.after.existingItem ? (
+            {(item.after.existingItemWillBeTrashed ??
+              item.after.existingItemWillBePurged) &&
+            item.after.existingItem ? (
               <p className="form-message form-message-warn">
-                「{item.after.existingItem.name}」を完全削除します。
+                「{item.after.existingItem.name}」をゴミ箱へ移動します。
                 {item.after.existingItem.purgeNote}
               </p>
             ) : null}
@@ -2688,9 +2694,17 @@ function RestorePreviewDialog({
                   )
                 }
               >
-                <option value="rename">自動リネームして復元</option>
-                <option value="purge_existing">既存の項目を完全削除して復元</option>
-                <option value="restore_to_root">共有ドライブのルートに復元</option>
+                {item.conflictType.includes("name_conflict") ? (
+                  <option value="rename">別名で復元</option>
+                ) : null}
+                {item.conflictType.includes("name_conflict") ? (
+                  <option value="trash_existing">
+                    現在の同名項目をゴミ箱へ移して復元
+                  </option>
+                ) : null}
+                {item.conflictType.includes("missing_parent") ? (
+                  <option value="restore_to_root">共有ドライブのルートに復元</option>
+                ) : null}
                 <option value="select_destination">別のフォルダを選択</option>
                 <option value="skip">この項目をスキップ</option>
               </select>
@@ -2773,7 +2787,7 @@ function TrashContentConflictDialog({
   resolutionState,
   loading,
   onRestore,
-  onUploadAnyway,
+  onOpenTrash,
   onStartPurgeUpload,
   onConfirmPurgeUpload,
   onBack,
@@ -2783,7 +2797,7 @@ function TrashContentConflictDialog({
   resolutionState: TrashDuplicateResolutionState;
   loading: boolean;
   onRestore: () => void;
-  onUploadAnyway: () => void;
+  onOpenTrash: () => void;
   onStartPurgeUpload: () => void;
   onConfirmPurgeUpload: () => void;
   onBack: () => void;
@@ -2826,7 +2840,7 @@ function TrashContentConflictDialog({
       {resolutionState === "restore_parent_missing" ? (
         <>
           <p>
-            ゴミ箱内の同一ファイルは、削除前の保存先フォルダが存在しないため復元できません。新しいファイルとしてアップロードするか、ゴミ箱内の元ファイルを完全削除してからアップロードできます。
+            ゴミ箱内の同一ファイルは、削除前の保存先フォルダが存在しないため復元できません。ゴミ箱で確認するか、ゴミ箱内の元ファイルを完全削除してから新規アップロードできます。
           </p>
           <p className="form-message form-message-warn">
             この操作を行うと、ゴミ箱内の元ファイルは復元できなくなります。
@@ -2835,7 +2849,7 @@ function TrashContentConflictDialog({
       ) : (
         <>
           <p>
-            アップロードしようとしているファイルと同じ内容のファイルが、組織内のゴミ箱にあります。ゴミ箱内のファイルを復元するか、新しいファイルとしてそのままアップロードできます。
+            アップロードしようとしているファイルと同じ内容のファイルが、組織内のゴミ箱にあります。ゴミ箱内のファイルを復元するか、ゴミ箱で確認できます。
           </p>
           <p className="form-message form-message-info">
             復元したファイルは、削除前の保存先に戻ります。
@@ -2874,13 +2888,9 @@ function TrashContentConflictDialog({
           type="button"
           variant="secondary"
           disabled={loading}
-          onClick={onUploadAnyway}
+          onClick={onOpenTrash}
         >
-          {loading
-            ? "アップロードしています..."
-            : resolutionState === "restore_parent_missing"
-              ? "新規にアップロードする"
-              : "そのままアップロード"}
+          ゴミ箱で確認
         </Button>
         {resolutionState === "restore_parent_missing" ? (
           <Button
@@ -3122,7 +3132,8 @@ function restoreConflictLabel(item: RestorePreviewItem) {
 }
 
 function restoreResolutionLabel(resolution: RestoreConflictResolution) {
-  if (resolution === "purge_existing") return "既存の項目を完全削除して復元";
+  if (resolution === "trash_existing") return "現在の同名項目をゴミ箱へ移して復元";
+  if (resolution === "restore") return "そのまま復元";
   if (resolution === "select_destination") return "別のフォルダを選択";
   if (resolution === "restore_to_root") return "共有ドライブのルートに復元";
   if (resolution === "skip") return "この項目をスキップ";
