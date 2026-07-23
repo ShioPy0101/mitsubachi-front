@@ -601,6 +601,54 @@ describe("DrivePage drag and drop upload", () => {
     expect(mocks.uploadFile).toHaveBeenCalledTimes(1);
   });
 
+  it("restores a single non-conflicting trash item without showing state changed warning", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      {
+        id: 29,
+        parent_id: 42,
+        name: "simple",
+        item_type: "file",
+        extension: "txt",
+        deleted_at: "2026-07-23T10:00:00+09:00",
+      },
+    ]);
+    mocks.restorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        itemId: 29,
+        beforeName: "simple.txt",
+        afterName: "simple.txt",
+        conflictType: "none",
+        resolution: "restore",
+      }),
+    );
+
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("simpleを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "復元" }));
+
+    await waitFor(() => {
+      expect(mocks.restoreDriveItem).toHaveBeenCalledWith(29, [
+        {
+          itemId: 29,
+          resolution: "restore",
+          destinationParentId: 42,
+          expectedName: "simple.txt",
+          expectedExistingItemId: null,
+        },
+      ]);
+    });
+    expect(
+      screen.queryByRole("heading", { name: "復元内容の確認" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "確認後に復元先の状態が変更されました。内容を再確認してください",
+      ),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText("復元しました。")).toBeInTheDocument();
+  });
+
   it("shows restore preview with before and after names for a single name conflict", async () => {
     mocks.fetchTrash.mockResolvedValue([
       {
@@ -860,7 +908,7 @@ describe("DrivePage drag and drop upload", () => {
     expect(mocks.bulkRestorePreview).toHaveBeenCalledTimes(3);
   });
 
-  it("refreshes preview when restore execution returns restore_preview_stale", async () => {
+  it("refreshes preview when restore execution returns restore_state_changed", async () => {
     mocks.fetchTrash.mockResolvedValue([
       { id: 38, parent_id: 42, name: "stale", item_type: "file", extension: "txt" },
     ]);
@@ -876,7 +924,7 @@ describe("DrivePage drag and drop upload", () => {
         409,
         "確認後に復元先の状態が変更されました。内容を再確認してください",
         [],
-        "restore_preview_stale",
+        "restore_state_changed",
         "/api/v1/drive_items/38/restore",
         undefined,
         undefined,
@@ -2032,8 +2080,9 @@ function restorePreviewItem(
     afterParentPath?: string | null;
   } = {},
 ) {
-  const resolution = input.resolution ?? "rename";
   const conflictType = input.conflictType ?? "name_conflict";
+  const resolution =
+    input.resolution ?? (conflictType === "none" ? "restore" : "rename");
   return {
     itemId: input.itemId ?? 30,
     itemType: "file" as const,
@@ -2060,7 +2109,12 @@ function restorePreviewItem(
             : null,
     },
     after: {
-      name: input.afterName === undefined ? "conflict (1).txt" : input.afterName,
+      name:
+        input.afterName === undefined
+          ? conflictType === "none"
+            ? (input.beforeName ?? "conflict.txt")
+            : "conflict (1).txt"
+          : input.afterName,
       parentId: resolution === "restore_to_root" ? null : 42,
       parentPath: input.afterParentPath ?? "/共有ドライブ/Reports",
       restorable: resolution !== "skip",
@@ -2083,7 +2137,9 @@ function restorePreviewItem(
           ? "この項目は復元されません"
           : resolution === "trash_existing"
             ? "既存の項目をゴミ箱へ移動します"
-            : "自動リネームして復元します",
+            : resolution === "restore"
+              ? "そのまま復元します"
+              : "自動リネームして復元します",
     },
   };
 }
