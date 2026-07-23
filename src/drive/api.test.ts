@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { API_BASE_URL } from "../api/client";
 import {
   fetchDriveItems,
+  normalizeRestorePreview,
   purgeDriveItem,
   previewUrl,
   streamUrl,
@@ -147,5 +148,51 @@ describe("drive api", () => {
   it("builds preview and stream URLs without internal paths", () => {
     expect(previewUrl(1)).toBe(`${API_BASE_URL}/api/v1/drive_items/1/preview`);
     expect(streamUrl(1)).toBe(`${API_BASE_URL}/api/v1/drive_items/1/stream`);
+  });
+
+  it("keeps active content duplicate restore preview conflicts", () => {
+    const preview = normalizeRestorePreview({
+      items: [
+        {
+          item_id: 1,
+          item_type: "file",
+          restore_target_id: 10,
+          conflict_type: "active_content_duplicate",
+          parent_exists: true,
+          existing_item_id: 20,
+          recommended_resolution: "skip",
+          children_count: 0,
+          descendant_conflict_count: 0,
+          before: {
+            name: "child.txt",
+            parent_id: 10,
+            parent_path: "/共有ドライブ/folder",
+            state: "trashed",
+            restorable: false,
+            reason: "組織内に同じ内容のファイルがあります",
+          },
+          after: {
+            name: "child.txt",
+            parent_id: 10,
+            parent_path: "/共有ドライブ/folder",
+            restorable: false,
+            resolution: "skip",
+            existing_item_will_be_purged: false,
+            state: "skipped",
+            impact: "同じ内容の有効なファイルがあるため復元できません",
+          },
+        },
+      ],
+      summary: {
+        total_count: 1,
+        conflict_count: 1,
+        restorable_count: 0,
+        skipped_count: 1,
+        rename_count: 0,
+        purge_existing_count: 0,
+      },
+    });
+
+    expect(preview.items[0]?.conflictType).toBe("active_content_duplicate");
   });
 });

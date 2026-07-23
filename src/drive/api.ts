@@ -83,7 +83,12 @@ export type RestorePreviewItem = {
   itemType: "file" | "directory";
   restoreTargetId: number;
   conflictType:
-    "none" | "name_conflict" | "missing_parent" | "name_conflict_and_missing_parent";
+    | "none"
+    | "name_conflict"
+    | "missing_parent"
+    | "name_conflict_and_missing_parent"
+    | "active_content_duplicate"
+    | "active_content_duplicate_and_missing_parent";
   parentExists: boolean;
   existingItemId: number | null;
   existingItemType?: "file" | "directory" | null;
@@ -493,7 +498,9 @@ function restoreConflictTypeFrom(value: unknown): RestorePreviewItem["conflictTy
   if (
     value === "name_conflict" ||
     value === "missing_parent" ||
-    value === "name_conflict_and_missing_parent"
+    value === "name_conflict_and_missing_parent" ||
+    value === "active_content_duplicate" ||
+    value === "active_content_duplicate_and_missing_parent"
   ) {
     return value;
   }
