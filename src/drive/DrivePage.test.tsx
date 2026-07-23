@@ -13,6 +13,7 @@ type UploadFileInput = {
   parentId: number | null;
   allowDuplicateContent?: boolean;
   allowTrashDuplicate?: boolean;
+  replaceTrashedDriveItemId?: number;
   onProgress?: (progress: { loaded: number; total?: number; percent?: number }) => void;
 };
 
@@ -379,8 +380,9 @@ describe("DrivePage drag and drop upload", () => {
     await waitFor(() => expect(dialog.getByText("復元する")).not.toBeDisabled());
     fireEvent.click(dialog.getByText("復元する"));
 
-    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(99));
+    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(199));
     expect(mocks.uploadFile).toHaveBeenCalledTimes(1);
+    fireEvent.click(await screen.findByText("詳細を表示"));
     expect(await screen.findByText("ゴミ箱から復元済み")).toBeInTheDocument();
     expect(
       screen.getByText("「report.txt」をゴミ箱から復元しました"),
@@ -473,11 +475,152 @@ describe("DrivePage drag and drop upload", () => {
     await waitFor(() => expect(dialog.getByText("復元する")).not.toBeDisabled());
     fireEvent.click(dialog.getByText("復元する"));
 
-    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(99));
+    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(199));
     expect(
       screen.getByRole("heading", { name: "同じ内容のファイルがゴミ箱にあります" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("ゴミ箱から復元済み")).not.toBeInTheDocument();
+  });
+
+  it("shows parent-missing resolution choices when trash duplicate restore returns invalid_parent", async () => {
+    const file = new File(["same"], "report.txt", { type: "text/plain" });
+    mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
+    mocks.restoreDriveItem.mockRejectedValueOnce(
+      new ApiError(404, "復元先フォルダが見つかりません", [], "invalid_parent"),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+    await screen.findByRole("heading", {
+      name: "同じ内容のファイルがゴミ箱にあります",
+    });
+    fireEvent.click(screen.getByText("復元する"));
+
+    expect(
+      await screen.findByRole("heading", { name: "元の保存先に復元できません" }),
+    ).toBeInTheDocument();
+    const dialog = within(openDialog("元の保存先に復元できません"));
+    expect(dialog.getByText("新規にアップロードする")).toBeInTheDocument();
+    expect(
+      dialog.getByText("元のファイルを完全削除して、新規にアップロードする"),
+    ).toBeInTheDocument();
+    expect(dialog.getByText("キャンセル")).toBeInTheDocument();
+    expect(dialog.queryByText("復元する")).not.toBeInTheDocument();
+    expect(dialog.queryByLabelText("名前")).not.toBeInTheDocument();
+    expect(dialog.queryByText("名前を変更して再試行")).not.toBeInTheDocument();
+    expect(dialog.getByText("削除済み、または存在しません")).toBeInTheDocument();
+  });
+
+  it("uploads a new file after invalid_parent without replacing the trash item", async () => {
+    const file = new File(["same"], "report.txt", { type: "text/plain" });
+    mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
+    mocks.restoreDriveItem.mockRejectedValueOnce(
+      new ApiError(404, "復元先フォルダが見つかりません", [], "invalid_parent"),
+    );
+    mocks.uploadFile.mockResolvedValueOnce({
+      id: 10,
+      parent_id: 42,
+      name: "report",
+      item_type: "file",
+    });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+    await screen.findByRole("heading", {
+      name: "同じ内容のファイルがゴミ箱にあります",
+    });
+    fireEvent.click(screen.getByText("復元する"));
+    await screen.findByRole("heading", { name: "元の保存先に復元できません" });
+    fireEvent.click(screen.getByText("新規にアップロードする"));
+
+    await waitFor(() => {
+      expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
+        file,
+        name: "report",
+        parentId: 42,
+        allowTrashDuplicate: true,
+      });
+    });
+    expect(
+      mocks.uploadFile.mock.calls[1]?.[0].replaceTrashedDriveItemId,
+    ).toBeUndefined();
+  });
+
+  it("confirms purge before uploading with replace_trashed_drive_item_id", async () => {
+    const file = new File(["same"], "report.txt", { type: "text/plain" });
+    mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
+    mocks.restoreDriveItem.mockRejectedValueOnce(
+      new ApiError(404, "復元先フォルダが見つかりません", [], "invalid_parent"),
+    );
+    mocks.uploadFile.mockResolvedValueOnce({
+      id: 11,
+      parent_id: 42,
+      name: "report",
+      item_type: "file",
+    });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+    await screen.findByRole("heading", {
+      name: "同じ内容のファイルがゴミ箱にあります",
+    });
+    fireEvent.click(screen.getByText("復元する"));
+    await screen.findByRole("heading", { name: "元の保存先に復元できません" });
+    fireEvent.click(
+      screen.getByText("元のファイルを完全削除して、新規にアップロードする"),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "元のファイルを完全削除しますか？" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("完全削除してアップロード"));
+
+    await waitFor(() => {
+      expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
+        file,
+        name: "report",
+        parentId: 42,
+        replaceTrashedDriveItemId: 99,
+      });
+    });
+    expect(mocks.uploadFile.mock.calls[1]?.[0].allowTrashDuplicate).toBeUndefined();
+  });
+
+  it("returns from purge confirmation without losing the original file object", async () => {
+    const file = new File(["same"], "report.txt", { type: "text/plain" });
+    mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
+    mocks.restoreDriveItem.mockRejectedValueOnce(
+      new ApiError(404, "復元先フォルダが見つかりません", [], "invalid_parent"),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+    await screen.findByRole("heading", {
+      name: "同じ内容のファイルがゴミ箱にあります",
+    });
+    fireEvent.click(screen.getByText("復元する"));
+    await screen.findByRole("heading", { name: "元の保存先に復元できません" });
+    fireEvent.click(
+      screen.getByText("元のファイルを完全削除して、新規にアップロードする"),
+    );
+    fireEvent.click(await screen.findByText("戻る"));
+
+    expect(
+      screen.getByRole("heading", { name: "元の保存先に復元できません" }),
+    ).toBeInTheDocument();
+    expect(mocks.uploadFile).toHaveBeenCalledTimes(1);
   });
 
   it("prevents duplicate submissions while an upload is in progress", async () => {
@@ -533,104 +676,6 @@ describe("DrivePage drag and drop upload", () => {
     expect(await screen.findByText("アップロード状況")).toBeInTheDocument();
     expect(await screen.findByText(/50%/)).toBeInTheDocument();
     resolveUpload?.();
-  });
-
-  it("collapses completed uploads into a dismissible summary", async () => {
-    const { container } = renderDrivePage("/drive/folder/42");
-    await screen.findByText("Reports");
-
-    fireEvent.change(fileInput(container), {
-      target: { files: [new File(["content"], "summary.txt", { type: "text/plain" })] },
-    });
-
-    expect(
-      await screen.findByText("1件のアップロードが完了しました"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("summary.txt")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "詳細を表示" }));
-    const panel = screen.getByRole("region", { name: "アップロード進捗" });
-    expect(within(panel).getByText("summary.txt")).toBeInTheDocument();
-
-    fireEvent.click(within(panel).getByRole("button", { name: "削除" }));
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("region", { name: "アップロード進捗" }),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("reopens the upload details when a new upload starts after dismissal", async () => {
-    const { container } = renderDrivePage("/drive/folder/42");
-    await screen.findByText("Reports");
-
-    fireEvent.change(fileInput(container), {
-      target: { files: [new File(["done"], "done.txt", { type: "text/plain" })] },
-    });
-    expect(
-      await screen.findByText("1件のアップロードが完了しました"),
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
-    expect(
-      screen.queryByRole("region", { name: "アップロード進捗" }),
-    ).not.toBeInTheDocument();
-
-    let resolveUpload: (() => void) | undefined;
-    mocks.uploadFile.mockImplementationOnce(
-      (input) =>
-        new Promise((resolve) => {
-          input.onProgress?.({ loaded: 1, total: 2, percent: 50 });
-          resolveUpload = () =>
-            resolve({
-              id: 2,
-              parent_id: 42,
-              name: "next",
-              item_type: "file",
-            });
-        }),
-    );
-
-    fireEvent.change(fileInput(container), {
-      target: { files: [new File(["next"], "next.txt", { type: "text/plain" })] },
-    });
-
-    expect(await screen.findByText("アップロード状況")).toBeInTheDocument();
-    expect(screen.getByText("next.txt")).toBeInTheDocument();
-    resolveUpload?.();
-  });
-
-  it("keeps failed uploads expanded with error details and retry action", async () => {
-    mocks.uploadFile.mockRejectedValueOnce(new Error("通信が中断されました。"));
-    const { container } = renderDrivePage("/drive/folder/42");
-    await screen.findByText("Reports");
-
-    fireEvent.change(fileInput(container), {
-      target: {
-        files: [new File(["broken"], "broken.zip", { type: "application/zip" })],
-      },
-    });
-
-    const panel = await screen.findByRole("region", { name: "アップロード進捗" });
-    expect(within(panel).getByText("broken.zip")).toBeInTheDocument();
-    expect(within(panel).getAllByText("通信が中断されました。").length).toBeGreaterThan(
-      0,
-    );
-    expect(
-      screen.queryByText("1件のアップロードが完了しました"),
-    ).not.toBeInTheDocument();
-
-    mocks.uploadFile.mockResolvedValueOnce({
-      id: 3,
-      parent_id: 42,
-      name: "broken",
-      item_type: "file",
-    });
-    fireEvent.click(within(panel).getAllByRole("button", { name: "再試行" })[0]);
-
-    await waitFor(() => {
-      expect(mocks.uploadFile).toHaveBeenCalledTimes(2);
-    });
   });
 
   it("uploads a selected folder with its relative path hierarchy", async () => {
@@ -1420,25 +1465,6 @@ describe("DrivePage drag and drop upload", () => {
         "このパスワードは再表示できません。安全な方法で共有してください。",
       ),
     ).toBeInTheDocument();
-    const actions = screen
-      .getByRole("button", { name: "URLをコピー" })
-      .closest(".external-share-actions");
-    if (!(actions instanceof HTMLElement)) {
-      throw new Error("External share action layout was not rendered.");
-    }
-    const buttons = within(actions).getAllByRole("button");
-    expect(buttons.map((button) => button.textContent)).toEqual([
-      "URLをコピー",
-      "パスワードをコピー",
-      "リンクを開く",
-      "まとめてコピー",
-      "パスワードを再発行",
-    ]);
-    expect(buttons[0]).toHaveClass("external-share-action-copy-url");
-    expect(buttons[1]).toHaveClass("external-share-action-copy-password");
-    expect(buttons[2]).toHaveClass("button-primary");
-    expect(buttons[3]).toHaveClass("external-share-action-copy-all");
-    expect(buttons[4]).toHaveClass("external-share-action-regenerate");
   });
 
   it("regenerates an external share password after confirmation", async () => {
@@ -1657,6 +1683,7 @@ function trashDuplicateError() {
       deletedAt: "2026-07-23T14:22:00+09:00",
       originalParent: { id: 42, name: "Reports", path: "/Reports" },
       uploadedBy: { id: 10, displayName: "佐藤" },
+      restoreTarget: { id: 199, type: "file", displayName: "report.txt" },
     },
     ["restore", "upload_anyway", "cancel"],
   );

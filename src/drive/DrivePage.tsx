@@ -100,6 +100,13 @@ type UploadTask = {
 
 type UploadPanelState = "expanded" | "completed" | "dismissed";
 type UploadPanelPreference = "auto" | "expanded" | "dismissed";
+type TrashDuplicateResolutionState =
+  | "choice"
+  | "restoring"
+  | "restore_parent_missing"
+  | "uploading_anyway"
+  | "purge_confirm"
+  | "purging_and_uploading";
 
 type NameConflictState = {
   kind: "name";
@@ -174,6 +181,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     useState<UploadPanelPreference>("auto");
   const [isUploading, setIsUploading] = useState(false);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
+  const [trashDuplicateResolution, setTrashDuplicateResolution] =
+    useState<TrashDuplicateResolutionState>("choice");
   const [nameConflictMessage, setNameConflictMessage] = useState<string | null>(null);
   const [lastError, setLastError] = useState<AppError | null>(null);
   const [draggingIds, setDraggingIds] = useState<number[]>([]);
@@ -253,11 +262,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           page: pageLabel,
         })
       : null);
-
   const uploadPanelState = useMemo<UploadPanelState>(() => {
     if (uploadPanelPreference === "dismissed") return "dismissed";
     if (uploadPanelPreference === "expanded") return "expanded";
-    if (uploadTasks.length > 0 && uploadTasks.every((task) => task.status === "done")) {
+    if (
+      uploadTasks.length > 0 &&
+      uploadTasks.every((task) => task.status === "done" || task.status === "restored")
+    ) {
       return "completed";
     }
     return "expanded";
@@ -518,6 +529,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       options: {
         allowDuplicateContent?: boolean;
         allowTrashDuplicate?: boolean;
+        replaceTrashedDriveItemId?: number;
         taskId?: string;
       } = {},
     ) => {
@@ -569,6 +581,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           parentId,
           allowDuplicateContent: options.allowDuplicateContent,
           allowTrashDuplicate: options.allowTrashDuplicate,
+          replaceTrashedDriveItemId: options.replaceTrashedDriveItemId,
           signal: abortController.signal,
           onProgress: (progress) => updateUploadTask(taskId, progress),
         });
@@ -642,6 +655,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             message: appError.message,
             duplicate: error.trashDuplicate,
           });
+          setTrashDuplicateResolution("choice");
           setLastError(null);
           updateUploadTask(taskId, {
             status: "conflict",
@@ -716,9 +730,12 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const restoreTrashDuplicate = useCallback(
     async (currentConflict: TrashContentConflictState) => {
       setIsUploading(true);
+      setTrashDuplicateResolution("restoring");
       updateUploadTask(currentConflict.taskId, { message: "復元しています..." });
       try {
-        await restoreDriveItem(currentConflict.duplicate.id);
+        await restoreDriveItem(
+          currentConflict.duplicate.restoreTarget?.id ?? currentConflict.duplicate.id,
+        );
         updateUploadTask(currentConflict.taskId, {
           status: "restored",
           loaded: currentConflict.file.size,
@@ -737,6 +754,21 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           message: `「${currentConflict.duplicate.displayName}」をゴミ箱から復元しました`,
         });
       } catch (error) {
+        if (isInvalidParentError(error)) {
+          const message = "復元先フォルダが見つかりません";
+          setTrashDuplicateResolution("restore_parent_missing");
+          setLastError(null);
+          updateUploadTask(currentConflict.taskId, {
+            status: "conflict",
+            message,
+            error: undefined,
+          });
+          toast.show({
+            tone: "warn",
+            message: "元の保存先に復元できません。操作を選択してください。",
+          });
+          return;
+        }
         const appError = captureError(error, "ゴミ箱から復元", {
           itemName: currentConflict.duplicate.displayName,
         });
@@ -755,6 +787,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
 
   const uploadIgnoringTrashDuplicate = useCallback(
     async (currentConflict: TrashContentConflictState) => {
+      setTrashDuplicateResolution("uploading_anyway");
       setDialog(null);
       setConflict(null);
       const result = await uploadSingleFile(
@@ -774,6 +807,32 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     [invalidateCurrent, toast, uploadSingleFile],
   );
 
+  const replaceTrashDuplicateWithUpload = useCallback(
+    async (currentConflict: TrashContentConflictState) => {
+      setTrashDuplicateResolution("purging_and_uploading");
+      setDialog(null);
+      setConflict(null);
+      const result = await uploadSingleFile(
+        currentConflict.file,
+        currentConflict.parentId,
+        currentConflict.uploadName,
+        {
+          replaceTrashedDriveItemId: currentConflict.duplicate.id,
+          taskId: currentConflict.taskId,
+        },
+      );
+      if (result === "done") {
+        await invalidateCurrent();
+        await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
+        toast.show({
+          tone: "success",
+          message: `「${currentConflict.file.name}」をアップロードしました`,
+        });
+      }
+    },
+    [invalidateCurrent, queryClient, toast, uploadSingleFile],
+  );
+
   const cancelUploadConflict = useCallback(
     (currentConflict: ConflictState) => {
       updateUploadTask(currentConflict.taskId, {
@@ -783,6 +842,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       });
       setDialog(null);
       setConflict(null);
+      setTrashDuplicateResolution("choice");
       toast.show({
         tone: "info",
         message: `「${currentConflict.file.name}」のアップロードをキャンセルしました`,
@@ -1363,7 +1423,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       </Modal>
       <Modal
         open={dialog === "conflict"}
-        title={conflictTitle(conflict)}
+        title={conflictTitle(conflict, trashDuplicateResolution)}
         onClose={() => {
           if (conflict && !isUploading) cancelUploadConflict(conflict);
         }}
@@ -1406,9 +1466,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         {conflict?.kind === "trash_content" ? (
           <TrashContentConflictDialog
             conflict={conflict}
+            resolutionState={trashDuplicateResolution}
             loading={isUploading}
             onRestore={() => void restoreTrashDuplicate(conflict)}
             onUploadAnyway={() => void uploadIgnoringTrashDuplicate(conflict)}
+            onStartPurgeUpload={() => setTrashDuplicateResolution("purge_confirm")}
+            onConfirmPurgeUpload={() => void replaceTrashDuplicateWithUpload(conflict)}
+            onBack={() => setTrashDuplicateResolution("restore_parent_missing")}
             onCancel={() => cancelUploadConflict(conflict)}
           />
         ) : null}
@@ -1446,7 +1510,6 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         title={
           createdShare?.share_url ? "公開リンクを作成しました" : "外部公開リンクを作成"
         }
-        className="external-share-modal"
         onClose={() => {
           setDialog(null);
           setCreatedShare(null);
@@ -1922,10 +1985,9 @@ function ExternalShareDialog({
             </p>
           </>
         ) : null}
-        <div className="external-share-actions">
+        <div className="modal-actions">
           <Button
             type="button"
-            className="external-share-action-copy-url"
             variant="secondary"
             onClick={() =>
               void navigator.clipboard?.writeText(createdShare.share_url ?? "")
@@ -1938,7 +2000,6 @@ function ExternalShareDialog({
             <>
               <Button
                 type="button"
-                className="external-share-action-copy-password"
                 variant="secondary"
                 onClick={() =>
                   void navigator.clipboard?.writeText(
@@ -1949,11 +2010,22 @@ function ExternalShareDialog({
                 <Copy size={16} aria-hidden="true" />
                 パスワードをコピー
               </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  void navigator.clipboard?.writeText(
+                    `公開URL: ${createdShare.share_url}\nパスワード: ${createdShare.generated_password}`,
+                  )
+                }
+              >
+                <Copy size={16} aria-hidden="true" />
+                まとめてコピー
+              </Button>
             </>
           ) : null}
           <Button
             type="button"
-            className="external-share-action-open"
             onClick={() =>
               window.open(createdShare.share_url, "_blank", "noopener,noreferrer")
             }
@@ -1961,25 +2033,9 @@ function ExternalShareDialog({
             <ExternalLink size={16} aria-hidden="true" />
             リンクを開く
           </Button>
-          {createdShare.generated_password ? (
-            <Button
-              type="button"
-              className="external-share-action-copy-all"
-              variant="secondary"
-              onClick={() =>
-                void navigator.clipboard?.writeText(
-                  `公開URL: ${createdShare.share_url}\nパスワード: ${createdShare.generated_password}`,
-                )
-              }
-            >
-              <Copy size={16} aria-hidden="true" />
-              まとめてコピー
-            </Button>
-          ) : null}
           {createdShare.password_required ? (
             <Button
               type="button"
-              className="external-share-action-regenerate"
               variant="secondary"
               loading={regeneratingPassword}
               onClick={() => onRegeneratePassword(createdShare.id)}
@@ -2374,26 +2430,78 @@ function ActiveContentConflictDialog({
 
 function TrashContentConflictDialog({
   conflict,
+  resolutionState,
   loading,
   onRestore,
   onUploadAnyway,
+  onStartPurgeUpload,
+  onConfirmPurgeUpload,
+  onBack,
   onCancel,
 }: {
   conflict: TrashContentConflictState;
+  resolutionState: TrashDuplicateResolutionState;
   loading: boolean;
   onRestore: () => void;
   onUploadAnyway: () => void;
+  onStartPurgeUpload: () => void;
+  onConfirmPurgeUpload: () => void;
+  onBack: () => void;
   onCancel: () => void;
 }) {
   const duplicate = conflict.duplicate;
+  if (resolutionState === "purge_confirm") {
+    return (
+      <div className="form-stack">
+        <p>
+          ゴミ箱内の「{duplicate.displayName}
+          」を完全削除し、新しいファイルをアップロードします。完全削除したファイルは復元できません。
+        </p>
+        <div className="modal-actions">
+          <Button
+            type="button"
+            variant="danger"
+            loading={loading}
+            onClick={onConfirmPurgeUpload}
+          >
+            {loading
+              ? "完全削除してアップロードしています..."
+              : "完全削除してアップロード"}
+          </Button>
+          <Button type="button" variant="ghost" disabled={loading} onClick={onBack}>
+            戻る
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const parentLabel =
+    resolutionState === "restore_parent_missing"
+      ? "削除済み、または存在しません"
+      : (duplicate.originalParent?.path ?? "元の保存先不明");
+
   return (
     <div className="form-stack">
-      <p>
-        アップロードしようとしているファイルと同じ内容のファイルが、組織内のゴミ箱にあります。ゴミ箱内のファイルを復元するか、新しいファイルとしてそのままアップロードできます。
-      </p>
-      <p className="form-message form-message-info">
-        復元したファイルは、削除前の保存先に戻ります。
-      </p>
+      {resolutionState === "restore_parent_missing" ? (
+        <>
+          <p>
+            ゴミ箱内の同一ファイルは、削除前の保存先フォルダが存在しないため復元できません。新しいファイルとしてアップロードするか、ゴミ箱内の元ファイルを完全削除してからアップロードできます。
+          </p>
+          <p className="form-message form-message-warn">
+            この操作を行うと、ゴミ箱内の元ファイルは復元できなくなります。
+          </p>
+        </>
+      ) : (
+        <>
+          <p>
+            アップロードしようとしているファイルと同じ内容のファイルが、組織内のゴミ箱にあります。ゴミ箱内のファイルを復元するか、新しいファイルとしてそのままアップロードできます。
+          </p>
+          <p className="form-message form-message-info">
+            復元したファイルは、削除前の保存先に戻ります。
+          </p>
+        </>
+      )}
       <dl className="duplicate-details" aria-label="ゴミ箱内の既存ファイル">
         <div>
           <dt>ファイル名</dt>
@@ -2401,7 +2509,7 @@ function TrashContentConflictDialog({
         </div>
         <div>
           <dt>元の保存先</dt>
-          <dd>{duplicate.originalParent?.path ?? "元の保存先不明"}</dd>
+          <dd>{parentLabel}</dd>
         </div>
         <div>
           <dt>アップロード者</dt>
@@ -2417,17 +2525,33 @@ function TrashContentConflictDialog({
         </div>
       </dl>
       <div className="modal-actions">
-        <Button type="button" loading={loading} onClick={onRestore}>
-          復元する
-        </Button>
+        {resolutionState === "restore_parent_missing" ? null : (
+          <Button type="button" loading={loading} onClick={onRestore}>
+            {loading ? "復元しています..." : restoreButtonLabel(duplicate)}
+          </Button>
+        )}
         <Button
           type="button"
           variant="secondary"
           disabled={loading}
           onClick={onUploadAnyway}
         >
-          {loading ? "アップロードしています..." : "そのままアップロード"}
+          {loading
+            ? "アップロードしています..."
+            : resolutionState === "restore_parent_missing"
+              ? "新規にアップロードする"
+              : "そのままアップロード"}
         </Button>
+        {resolutionState === "restore_parent_missing" ? (
+          <Button
+            type="button"
+            variant="danger"
+            disabled={loading}
+            onClick={onStartPurgeUpload}
+          >
+            元のファイルを完全削除して、新規にアップロードする
+          </Button>
+        ) : null}
         <Button type="button" variant="ghost" disabled={loading} onClick={onCancel}>
           キャンセル
         </Button>
@@ -2495,7 +2619,7 @@ function UploadProgressPanel({
         </div>
         {hasCompleted ? (
           <Button type="button" variant="ghost" onClick={onClearCompleted}>
-            完了済みを削除
+            完了済みを非表示
           </Button>
         ) : null}
       </div>
@@ -2634,10 +2758,24 @@ function uploadStatusText(task: UploadTask) {
   return "アップロード中";
 }
 
-function conflictTitle(conflict: ConflictState | null) {
-  if (conflict?.kind === "trash_content") return "同じ内容のファイルがゴミ箱にあります";
+function conflictTitle(
+  conflict: ConflictState | null,
+  trashResolutionState: TrashDuplicateResolutionState,
+) {
+  if (conflict?.kind === "trash_content") {
+    if (trashResolutionState === "restore_parent_missing")
+      return "元の保存先に復元できません";
+    if (trashResolutionState === "purge_confirm")
+      return "元のファイルを完全削除しますか？";
+    return "同じ内容のファイルがゴミ箱にあります";
+  }
   if (conflict?.kind === "active_content") return "同じ内容のファイルがあります";
   return "名前の重複";
+}
+
+function restoreButtonLabel(duplicate: TrashDuplicate) {
+  if (duplicate.restoreTarget?.type === "directory") return "フォルダごと復元する";
+  return "復元する";
 }
 
 function isNameConflict(error: unknown) {
@@ -2662,6 +2800,10 @@ function isTrashContentConflict(error: unknown) {
     error.status === 409 &&
     error.code === "trash_content_duplicate"
   );
+}
+
+function isInvalidParentError(error: unknown) {
+  return error instanceof ApiError && error.code === "invalid_parent";
 }
 
 function suggestedUploadName(
