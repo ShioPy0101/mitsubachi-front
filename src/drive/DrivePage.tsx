@@ -2705,7 +2705,10 @@ function RestorePreviewDialog({
         <Button
           type="button"
           loading={loading}
-          disabled={preview.items.every((item) => item.after.resolution === "skip")}
+          disabled={
+            preview.items.every((item) => item.after.resolution === "skip") ||
+            preview.items.some((item) => !item.after.restorable)
+          }
           onClick={onSubmit}
         >
           復元実行
