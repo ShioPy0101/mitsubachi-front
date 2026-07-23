@@ -40,6 +40,11 @@ export type TrashDuplicate = {
     id: number;
     displayName: string;
   } | null;
+  restoreTarget: {
+    id: number;
+    type: string;
+    displayName: string;
+  } | null;
 };
 
 export class ApiError extends Error {
@@ -194,6 +199,22 @@ function trashDuplicateFrom(value: Record<string, unknown>) {
             : "未設定ユーザー",
       }
     : null;
+  const restoreTarget = isRecord(duplicate.restore_target)
+    ? {
+        id:
+          typeof duplicate.restore_target.id === "number"
+            ? duplicate.restore_target.id
+            : duplicate.id,
+        type:
+          typeof duplicate.restore_target.type === "string"
+            ? duplicate.restore_target.type
+            : "file",
+        displayName:
+          typeof duplicate.restore_target.display_name === "string"
+            ? duplicate.restore_target.display_name
+            : "名前未設定",
+      }
+    : null;
   return {
     id: duplicate.id,
     name: typeof duplicate.name === "string" ? duplicate.name : "",
@@ -208,6 +229,7 @@ function trashDuplicateFrom(value: Record<string, unknown>) {
     deletedAt: typeof duplicate.deleted_at === "string" ? duplicate.deleted_at : null,
     originalParent,
     uploadedBy,
+    restoreTarget,
   };
 }
 

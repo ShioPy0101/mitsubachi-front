@@ -73,6 +73,7 @@ export function uploadFile(input: {
   parentId: number | null;
   allowDuplicateContent?: boolean;
   allowTrashDuplicate?: boolean;
+  replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   onProgress?: (progress: UploadProgress) => void;
 }) {
@@ -83,6 +84,12 @@ export function uploadFile(input: {
     if (input.parentId !== null) form.append("parent_id", String(input.parentId));
     if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
     if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
+    if (input.replaceTrashedDriveItemId !== undefined) {
+      form.append(
+        "replace_trashed_drive_item_id",
+        String(input.replaceTrashedDriveItemId),
+      );
+    }
     form.append("file", input.file);
     return apiRequest<DriveItem>("/api/v1/drive_items", {
       method: "POST",
@@ -100,6 +107,7 @@ async function uploadFileWithProgress(input: {
   parentId: number | null;
   allowDuplicateContent?: boolean;
   allowTrashDuplicate?: boolean;
+  replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   onProgress: (progress: UploadProgress) => void;
 }): Promise<DriveItem> {
@@ -109,6 +117,12 @@ async function uploadFileWithProgress(input: {
   if (input.parentId !== null) form.append("parent_id", String(input.parentId));
   if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
   if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
+  if (input.replaceTrashedDriveItemId !== undefined) {
+    form.append(
+      "replace_trashed_drive_item_id",
+      String(input.replaceTrashedDriveItemId),
+    );
+  }
   form.append("file", input.file);
 
   const csrfToken = await getCsrfToken();
