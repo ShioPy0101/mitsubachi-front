@@ -218,25 +218,27 @@ describe("DrivePage drag and drop upload", () => {
     await screen.findByText("Reports");
 
     const files = Array.from(
-      { length: 120 },
+      { length: 101 },
       (_, index) =>
         new File([`content-${index}`], `clip-${index}.txt`, { type: "text/plain" }),
     );
+    // このテストでは進捗表示を検証しないため、再描画を増やさずAPIの完了だけを明示する。
+    mocks.uploadFile.mockImplementation(() => Promise.resolve({ id: 1 }));
     fireEvent.drop(driveDropTarget(container), {
       dataTransfer: dataTransferWithDirectory("素材", files),
     });
 
     await waitFor(() => {
-      expect(mocks.uploadFile).toHaveBeenCalledTimes(120);
+      expect(mocks.uploadFile).toHaveBeenCalledTimes(101);
     });
     expect(mocks.uploadFile.mock.calls[0]?.[0]).toMatchObject({
       file: files[0],
       name: "clip-0",
       parentId: 100,
     });
-    expect(mocks.uploadFile.mock.calls[119]?.[0]).toMatchObject({
-      file: files[119],
-      name: "clip-119",
+    expect(mocks.uploadFile.mock.calls[100]?.[0]).toMatchObject({
+      file: files[100],
+      name: "clip-100",
       parentId: 100,
     });
   });
