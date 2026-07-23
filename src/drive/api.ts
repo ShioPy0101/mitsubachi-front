@@ -67,6 +67,69 @@ export type UploadProgress = {
   percent?: number;
 };
 
+export type RestoreConflictResolution =
+  "rename" | "purge_existing" | "select_destination" | "restore_to_root" | "skip";
+
+export type RestorePreviewRequestItem = {
+  itemId: number;
+  resolution: RestoreConflictResolution;
+  destinationParentId?: number | null;
+  expectedName?: string | null;
+  expectedExistingItemId?: number | null;
+};
+
+export type RestorePreviewItem = {
+  itemId: number;
+  itemType: "file" | "directory";
+  restoreTargetId: number;
+  conflictType:
+    "none" | "name_conflict" | "missing_parent" | "name_conflict_and_missing_parent";
+  parentExists: boolean;
+  existingItemId: number | null;
+  existingItemType?: "file" | "directory" | null;
+  recommendedResolution: RestoreConflictResolution;
+  autoRenamedName?: string | null;
+  childrenCount: number;
+  descendantConflictCount: number;
+  before: {
+    name: string;
+    parentId: number | null;
+    parentPath: string | null;
+    state: string;
+    restorable: boolean;
+    reason: string | null;
+  };
+  after: {
+    name: string | null;
+    parentId: number | null;
+    parentPath: string | null;
+    restorable: boolean;
+    resolution: RestoreConflictResolution;
+    existingItemWillBePurged: boolean;
+    existingItem?: {
+      id: number;
+      itemType: "file" | "directory";
+      name: string;
+      parentPath: string | null;
+      purgeNote: string;
+    } | null;
+    state: string;
+    impact: string;
+  };
+};
+
+export type RestorePreviewResponse = {
+  items: RestorePreviewItem[];
+  summary: {
+    totalCount: number;
+    conflictCount: number;
+    restorableCount: number;
+    skippedCount: number;
+    renameCount: number;
+    purgeExistingCount: number;
+  };
+};
+
 export function uploadFile(input: {
   file: File;
   name: string;
@@ -195,10 +258,21 @@ export function purgeDriveItem(id: number) {
   });
 }
 
-export function restoreDriveItem(id: number) {
-  return apiRequest<DriveItem>(`/api/v1/drive_items/${id}/restore`, {
+export function restoreDriveItem(id: number, items?: RestorePreviewRequestItem[]) {
+  return apiRequest<DriveItem | { message?: string; restored_item_ids?: number[] }>(
+    `/api/v1/drive_items/${id}/restore`,
+    {
+      method: "POST",
+      body: items ? { items: restoreRequestItemsBody(items) } : undefined,
+    },
+  );
+}
+
+export function restorePreview(id: number, items?: RestorePreviewRequestItem[]) {
+  return apiRequest<unknown>(`/api/v1/drive_items/${id}/restore_preview`, {
     method: "POST",
-  });
+    body: items ? { items: restoreRequestItemsBody(items) } : undefined,
+  }).then(normalizeRestorePreview);
 }
 
 export function bulkDelete(ids: number[]) {
@@ -208,11 +282,24 @@ export function bulkDelete(ids: number[]) {
   });
 }
 
-export function bulkRestore(ids: number[]) {
+export function bulkRestore(ids: number[], items?: RestorePreviewRequestItem[]) {
   return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_restore", {
     method: "POST",
-    body: { drive_item_ids: ids },
+    body: {
+      drive_item_ids: ids,
+      ...(items ? { items: restoreRequestItemsBody(items) } : {}),
+    },
   });
+}
+
+export function bulkRestorePreview(ids: number[], items?: RestorePreviewRequestItem[]) {
+  return apiRequest<unknown>("/api/v1/drive_items/bulk_restore_preview", {
+    method: "POST",
+    body: {
+      drive_item_ids: ids,
+      ...(items ? { items: restoreRequestItemsBody(items) } : {}),
+    },
+  }).then(normalizeRestorePreview);
 }
 
 export function bulkMove(ids: number[], parentId: number | null) {
@@ -289,6 +376,154 @@ function contentDispositionFilename(value: string | null) {
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(value);
   if (!match?.[1]) return fallback;
   return decodeURIComponent(match[1]).replace(/[\\/:*?"<>|]/g, "_");
+}
+
+function restoreRequestItemsBody(items: RestorePreviewRequestItem[]) {
+  return items.map((item) => ({
+    item_id: item.itemId,
+    resolution: item.resolution,
+    destination_parent_id: item.destinationParentId,
+    expected_name: item.expectedName,
+    expected_existing_item_id: item.expectedExistingItemId,
+  }));
+}
+
+export function normalizeRestorePreview(value: unknown): RestorePreviewResponse {
+  const body = recordFrom(value);
+  const items = Array.isArray(body.items) ? body.items.map(normalizeRestoreItem) : [];
+  const summary = recordFrom(body.summary);
+  return {
+    items,
+    summary: {
+      totalCount: numberFrom(summary.total_count ?? summary.totalCount),
+      conflictCount: numberFrom(summary.conflict_count ?? summary.conflictCount),
+      restorableCount: numberFrom(summary.restorable_count ?? summary.restorableCount),
+      skippedCount: numberFrom(summary.skipped_count ?? summary.skippedCount),
+      renameCount: numberFrom(summary.rename_count ?? summary.renameCount),
+      purgeExistingCount: numberFrom(
+        summary.purge_existing_count ?? summary.purgeExistingCount,
+      ),
+    },
+  };
+}
+
+function normalizeRestoreItem(value: unknown): RestorePreviewItem {
+  const item = recordFrom(value);
+  const before = recordFrom(item.before);
+  const after = recordFrom(item.after);
+  const existingItem = recordFrom(after.existing_item ?? after.existingItem);
+  return {
+    itemId: numberFrom(item.item_id ?? item.itemId),
+    itemType: (item.item_type ?? item.itemType) === "directory" ? "directory" : "file",
+    restoreTargetId: numberFrom(item.restore_target_id ?? item.restoreTargetId),
+    conflictType: restoreConflictTypeFrom(item.conflict_type ?? item.conflictType),
+    parentExists: Boolean(item.parent_exists ?? item.parentExists),
+    existingItemId:
+      (item.existing_item_id ?? item.existingItemId) === null
+        ? null
+        : numberFrom(item.existing_item_id ?? item.existingItemId),
+    existingItemType:
+      (item.existing_item_type ?? item.existingItemType) === "directory"
+        ? "directory"
+        : (item.existing_item_type ?? item.existingItemType) === "file"
+          ? "file"
+          : null,
+    recommendedResolution: restoreResolutionFrom(
+      item.recommended_resolution ?? item.recommendedResolution,
+    ),
+    autoRenamedName:
+      typeof item.auto_renamed_name === "string" ? item.auto_renamed_name : null,
+    childrenCount: numberFrom(item.children_count ?? item.childrenCount),
+    descendantConflictCount: numberFrom(
+      item.descendant_conflict_count ?? item.descendantConflictCount,
+    ),
+    before: {
+      name: stringFrom(before.name),
+      parentId:
+        (before.parent_id ?? before.parentId) === null
+          ? null
+          : numberFrom(before.parent_id ?? before.parentId),
+      parentPath:
+        (before.parent_path ?? before.parentPath) === null
+          ? null
+          : stringFrom(before.parent_path ?? before.parentPath),
+      state: stringFrom(before.state),
+      restorable: Boolean(before.restorable),
+      reason: before.reason === null ? null : stringFrom(before.reason),
+    },
+    after: {
+      name: after.name === null ? null : stringFrom(after.name),
+      parentId:
+        (after.parent_id ?? after.parentId) === null
+          ? null
+          : numberFrom(after.parent_id ?? after.parentId),
+      parentPath:
+        (after.parent_path ?? after.parentPath) === null
+          ? null
+          : stringFrom(after.parent_path ?? after.parentPath),
+      restorable: Boolean(after.restorable),
+      resolution: restoreResolutionFrom(after.resolution),
+      existingItemWillBePurged: Boolean(
+        after.existing_item_will_be_purged ?? after.existingItemWillBePurged,
+      ),
+      existingItem:
+        (after.existing_item ?? after.existingItem) &&
+        Object.keys(existingItem).length > 0
+          ? {
+              id: numberFrom(existingItem.id),
+              itemType:
+                (existingItem.item_type ?? existingItem.itemType) === "directory"
+                  ? "directory"
+                  : "file",
+              name: stringFrom(existingItem.name),
+              parentPath:
+                (existingItem.parent_path ?? existingItem.parentPath) === null
+                  ? null
+                  : stringFrom(existingItem.parent_path ?? existingItem.parentPath),
+              purgeNote: stringFrom(existingItem.purge_note ?? existingItem.purgeNote),
+            }
+          : null,
+      state: stringFrom(after.state),
+      impact: stringFrom(after.impact),
+    },
+  };
+}
+
+function restoreConflictTypeFrom(value: unknown): RestorePreviewItem["conflictType"] {
+  if (
+    value === "name_conflict" ||
+    value === "missing_parent" ||
+    value === "name_conflict_and_missing_parent"
+  ) {
+    return value;
+  }
+  return "none";
+}
+
+function restoreResolutionFrom(value: unknown): RestoreConflictResolution {
+  if (
+    value === "purge_existing" ||
+    value === "select_destination" ||
+    value === "restore_to_root" ||
+    value === "skip"
+  ) {
+    return value;
+  }
+  return "rename";
+}
+
+function recordFrom(value: unknown) {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringFrom(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function numberFrom(value: unknown) {
+  return typeof value === "number" ? value : Number(value) || 0;
 }
 
 function parseJson(value: string) {

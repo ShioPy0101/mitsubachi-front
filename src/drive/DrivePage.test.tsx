@@ -29,11 +29,14 @@ const mocks = vi.hoisted(() => ({
   uploadFile: vi.fn<(input: UploadFileInput) => Promise<unknown>>(),
   searchDriveItems: vi.fn(),
   bulkMove: vi.fn(),
+  bulkRestore: vi.fn(),
+  bulkRestorePreview: vi.fn(),
   moveDriveItem: vi.fn(),
   createExternalShare: vi.fn(),
   regenerateExternalSharePassword: vi.fn(),
   createDirectory: vi.fn<(input: CreateDirectoryInput) => Promise<unknown>>(),
   purgeDriveItem: vi.fn(),
+  restorePreview: vi.fn(),
   restoreDriveItem: vi.fn(),
 }));
 
@@ -52,7 +55,8 @@ vi.mock("./api", () => ({
   bulkDelete: vi.fn(),
   bulkDownload: vi.fn(),
   bulkMove: mocks.bulkMove,
-  bulkRestore: vi.fn(),
+  bulkRestore: mocks.bulkRestore,
+  bulkRestorePreview: mocks.bulkRestorePreview,
   createDirectory: mocks.createDirectory,
   deleteDriveItem: vi.fn(),
   purgeDriveItem: mocks.purgeDriveItem,
@@ -61,6 +65,8 @@ vi.mock("./api", () => ({
   renameDriveItem: vi.fn(),
   moveDriveItem: mocks.moveDriveItem,
   restoreDriveItem: mocks.restoreDriveItem,
+  restorePreview: mocks.restorePreview,
+  normalizeRestorePreview: (value: unknown) => value,
   streamUrl: vi.fn((id: number) => `/stream/${id}`),
 }));
 
@@ -98,6 +104,9 @@ describe("DrivePage drag and drop upload", () => {
       meta: { current_page: 1, per_page: 50, total_pages: 0, total_count: 0 },
     });
     mocks.bulkMove.mockResolvedValue({ message: "移動しました" });
+    mocks.bulkRestore.mockResolvedValue({ message: "復元しました" });
+    mocks.restorePreview.mockResolvedValue(restorePreviewResponse());
+    mocks.bulkRestorePreview.mockResolvedValue(restorePreviewResponse());
     mocks.moveDriveItem.mockResolvedValue({
       data: { id: 1, parent_id: 2, name: "moved", item_type: "file" },
     });
@@ -621,6 +630,307 @@ describe("DrivePage drag and drop upload", () => {
       screen.getByRole("heading", { name: "元の保存先に復元できません" }),
     ).toBeInTheDocument();
     expect(mocks.uploadFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows restore preview with before and after names for a single name conflict", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      {
+        id: 30,
+        parent_id: 42,
+        name: "conflict",
+        item_type: "file",
+        extension: "txt",
+        deleted_at: "2026-07-23T10:00:00+09:00",
+      },
+    ]);
+    mocks.restorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        itemId: 30,
+        beforeName: "conflict.txt",
+        afterName: "conflict (1).txt",
+        conflictType: "name_conflict",
+      }),
+    );
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("conflictを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "復元" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "復元内容の確認" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("競合 1 件")).toBeInTheDocument();
+    expect(screen.getAllByText("conflict.txt").length).toBeGreaterThan(0);
+    expect(screen.getByText("conflict (1).txt")).toBeInTheDocument();
+    expect(
+      screen.getByText("復元先に同名のファイルまたはフォルダーがあります"),
+    ).toBeInTheDocument();
+  });
+
+  it("updates restore preview immediately when automatic rename is selected", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      { id: 31, parent_id: 42, name: "conflict", item_type: "file", extension: "txt" },
+    ]);
+    mocks.restorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        itemId: 31,
+        beforeName: "conflict.txt",
+        afterName: "conflict.txt",
+        conflictType: "name_conflict",
+        resolution: "purge_existing",
+      }),
+    );
+    mocks.restorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        itemId: 31,
+        beforeName: "conflict.txt",
+        afterName: "conflict (1).txt",
+        conflictType: "name_conflict",
+        resolution: "rename",
+      }),
+    );
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("conflictを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "復元" }));
+    const select = await screen.findByLabelText("解決方法");
+    fireEvent.change(select, { target: { value: "rename" } });
+
+    expect(await screen.findByText("conflict (1).txt")).toBeInTheDocument();
+  });
+
+  it("shows destructive warning when purge existing is selected", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      { id: 32, parent_id: 42, name: "conflict", item_type: "file", extension: "txt" },
+    ]);
+    mocks.restorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        itemId: 32,
+        beforeName: "conflict.txt",
+        afterName: "conflict.txt",
+        conflictType: "name_conflict",
+        resolution: "purge_existing",
+      }),
+    );
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("conflictを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "復元" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText((_, node) =>
+          Boolean(
+            node?.textContent?.includes("existing.txt") &&
+            node.textContent.includes("完全削除します"),
+          ),
+        ).length,
+      ).toBeGreaterThan(0);
+    });
+    expect(
+      screen.getAllByText((_, node) =>
+        Boolean(
+          node?.textContent?.includes("existing.txt") &&
+          node.textContent.includes("完全削除後は元に戻せません"),
+        ),
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("shows root restore and select destination choices for missing parent", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      { id: 33, parent_id: 999, name: "orphan", item_type: "file", extension: "txt" },
+    ]);
+    mocks.restorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        itemId: 33,
+        beforeName: "orphan.txt",
+        afterName: "orphan.txt",
+        conflictType: "missing_parent",
+        resolution: "restore_to_root",
+        beforeParentPath: "削除済み、または存在しません",
+        afterParentPath: "/共有ドライブ",
+      }),
+    );
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("orphanを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "復元" }));
+
+    expect(await screen.findByText("親フォルダなし")).toBeInTheDocument();
+    expect(screen.getAllByText("共有ドライブのルートに復元").length).toBeGreaterThan(0);
+    expect(screen.getByText("別のフォルダを選択")).toBeInTheDocument();
+    expect(screen.getByText("/共有ドライブ")).toBeInTheDocument();
+  });
+
+  it("keeps all restore conflicts in one preview modal and supports bulk changes", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      { id: 34, parent_id: 42, name: "a", item_type: "file", extension: "txt" },
+      { id: 35, parent_id: 42, name: "b", item_type: "file", extension: "txt" },
+    ]);
+    mocks.bulkRestorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        items: [
+          restorePreviewItem({
+            itemId: 34,
+            beforeName: "a.txt",
+            afterName: "a (1).txt",
+          }),
+          restorePreviewItem({
+            itemId: 35,
+            beforeName: "b.txt",
+            afterName: "b (1).txt",
+          }),
+        ],
+      }),
+    );
+    mocks.bulkRestorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        items: [
+          restorePreviewItem({
+            itemId: 34,
+            beforeName: "a.txt",
+            afterName: null,
+            resolution: "skip",
+          }),
+          restorePreviewItem({
+            itemId: 35,
+            beforeName: "b.txt",
+            afterName: null,
+            resolution: "skip",
+          }),
+        ],
+      }),
+    );
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("aを選択"));
+    fireEvent.click(screen.getByLabelText("bを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "復元" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "復元内容の確認（2件）" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("a.txt").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("b.txt").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("すべてスキップ"));
+    expect(await screen.findByText("スキップ 2 件")).toBeInTheDocument();
+  });
+
+  it("allows changing one item after bulk restore resolution is applied", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      { id: 36, parent_id: 42, name: "a", item_type: "file", extension: "txt" },
+      { id: 37, parent_id: 42, name: "b", item_type: "file", extension: "txt" },
+    ]);
+    mocks.bulkRestorePreview
+      .mockResolvedValueOnce(
+        restorePreviewResponse({
+          items: [
+            restorePreviewItem({
+              itemId: 36,
+              beforeName: "a.txt",
+              afterName: "a (1).txt",
+            }),
+            restorePreviewItem({
+              itemId: 37,
+              beforeName: "b.txt",
+              afterName: "b (1).txt",
+            }),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        restorePreviewResponse({
+          items: [
+            restorePreviewItem({
+              itemId: 36,
+              beforeName: "a.txt",
+              afterName: "a.txt",
+              resolution: "purge_existing",
+            }),
+            restorePreviewItem({
+              itemId: 37,
+              beforeName: "b.txt",
+              afterName: "b.txt",
+              resolution: "purge_existing",
+            }),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        restorePreviewResponse({
+          items: [
+            restorePreviewItem({
+              itemId: 36,
+              beforeName: "a.txt",
+              afterName: "a (1).txt",
+              resolution: "rename",
+            }),
+            restorePreviewItem({
+              itemId: 37,
+              beforeName: "b.txt",
+              afterName: "b.txt",
+              resolution: "purge_existing",
+            }),
+          ],
+        }),
+      );
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("aを選択"));
+    fireEvent.click(screen.getByLabelText("bを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "復元" }));
+    await screen.findByRole("heading", { name: "復元内容の確認（2件）" });
+    fireEvent.click(screen.getByText("すべて既存項目を完全削除して復元"));
+    const selects = await screen.findAllByLabelText("解決方法");
+    fireEvent.change(selects[0], { target: { value: "rename" } });
+
+    expect(await screen.findByText("a (1).txt")).toBeInTheDocument();
+    expect(mocks.bulkRestorePreview).toHaveBeenCalledTimes(3);
+  });
+
+  it("refreshes preview when restore execution returns restore_preview_stale", async () => {
+    mocks.fetchTrash.mockResolvedValue([
+      { id: 38, parent_id: 42, name: "stale", item_type: "file", extension: "txt" },
+    ]);
+    mocks.restorePreview.mockResolvedValueOnce(
+      restorePreviewResponse({
+        itemId: 38,
+        beforeName: "stale.txt",
+        afterName: "stale (1).txt",
+      }),
+    );
+    mocks.restoreDriveItem.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        "確認後に復元先の状態が変更されました。内容を再確認してください",
+        [],
+        "restore_preview_stale",
+        "/api/v1/drive_items/38/restore",
+        undefined,
+        undefined,
+        "request-stale",
+        {},
+        [],
+        undefined,
+        [],
+        restorePreviewResponse({
+          itemId: 38,
+          beforeName: "stale.txt",
+          afterName: "stale (2).txt",
+        }),
+      ),
+    );
+    renderDrivePage("/trash");
+
+    fireEvent.click(await screen.findByLabelText("staleを選択"));
+    fireEvent.click(screen.getByRole("button", { name: "復元" }));
+    await screen.findByText("stale (1).txt");
+    fireEvent.click(screen.getByRole("button", { name: "復元実行" }));
+
+    expect(await screen.findByText("stale (2).txt")).toBeInTheDocument();
   });
 
   it("prevents duplicate submissions while an upload is in progress", async () => {
@@ -1687,6 +1997,115 @@ function trashDuplicateError() {
     },
     ["restore", "upload_anyway", "cancel"],
   );
+}
+
+function restorePreviewResponse(
+  input: {
+    itemId?: number;
+    beforeName?: string;
+    afterName?: string | null;
+    conflictType?:
+      "none" | "name_conflict" | "missing_parent" | "name_conflict_and_missing_parent";
+    resolution?:
+      "rename" | "purge_existing" | "select_destination" | "restore_to_root" | "skip";
+    beforeParentPath?: string | null;
+    afterParentPath?: string | null;
+    items?: ReturnType<typeof restorePreviewItem>[];
+  } = {},
+) {
+  const items = input.items ?? [
+    restorePreviewItem({
+      itemId: input.itemId,
+      beforeName: input.beforeName,
+      afterName: input.afterName,
+      conflictType: input.conflictType,
+      resolution: input.resolution,
+      beforeParentPath: input.beforeParentPath,
+      afterParentPath: input.afterParentPath,
+    }),
+  ];
+  return {
+    items,
+    summary: {
+      totalCount: items.length,
+      conflictCount: items.filter((item) => item.conflictType !== "none").length,
+      restorableCount: items.filter((item) => item.after.restorable).length,
+      skippedCount: items.filter((item) => item.after.resolution === "skip").length,
+      renameCount: items.filter(
+        (item) => item.before.name !== item.after.name && item.after.name !== null,
+      ).length,
+      purgeExistingCount: items.filter((item) => item.after.existingItemWillBePurged)
+        .length,
+    },
+  };
+}
+
+function restorePreviewItem(
+  input: {
+    itemId?: number;
+    beforeName?: string;
+    afterName?: string | null;
+    conflictType?:
+      "none" | "name_conflict" | "missing_parent" | "name_conflict_and_missing_parent";
+    resolution?:
+      "rename" | "purge_existing" | "select_destination" | "restore_to_root" | "skip";
+    beforeParentPath?: string | null;
+    afterParentPath?: string | null;
+  } = {},
+) {
+  const resolution = input.resolution ?? "rename";
+  const conflictType = input.conflictType ?? "name_conflict";
+  return {
+    itemId: input.itemId ?? 30,
+    itemType: "file" as const,
+    restoreTargetId: input.itemId ?? 30,
+    conflictType,
+    parentExists: !conflictType.includes("missing_parent"),
+    existingItemId: conflictType.includes("name_conflict") ? 500 : null,
+    existingItemType: conflictType.includes("name_conflict") ? ("file" as const) : null,
+    recommendedResolution: resolution,
+    autoRenamedName: input.afterName ?? null,
+    childrenCount: 0,
+    descendantConflictCount: 0,
+    before: {
+      name: input.beforeName ?? "conflict.txt",
+      parentId: 42,
+      parentPath: input.beforeParentPath ?? "/共有ドライブ/Reports",
+      state: "trashed",
+      restorable: conflictType === "none",
+      reason:
+        conflictType === "missing_parent"
+          ? "元の復元先フォルダは削除されています"
+          : conflictType.includes("name_conflict")
+            ? "復元先に同名のファイルまたはフォルダーがあります"
+            : null,
+    },
+    after: {
+      name: input.afterName === undefined ? "conflict (1).txt" : input.afterName,
+      parentId: resolution === "restore_to_root" ? null : 42,
+      parentPath: input.afterParentPath ?? "/共有ドライブ/Reports",
+      restorable: resolution !== "skip",
+      resolution,
+      existingItemWillBePurged: resolution === "purge_existing",
+      existingItem:
+        resolution === "purge_existing"
+          ? {
+              id: 500,
+              itemType: "file" as const,
+              name: "existing.txt",
+              parentPath: "/共有ドライブ/Reports",
+              purgeNote: "完全削除後は元に戻せません",
+            }
+          : null,
+      state: resolution === "skip" ? "skipped" : "active",
+      impact:
+        resolution === "skip"
+          ? "この項目は復元されません"
+          : resolution === "purge_existing"
+            ? "既存の項目を完全削除します"
+            : "自動リネームして復元します",
+    },
+  };
 }
 
 function driveItemDataTransfer() {
