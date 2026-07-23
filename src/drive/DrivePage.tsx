@@ -54,6 +54,7 @@ import {
   bulkDelete,
   bulkDownload,
   bulkRestore,
+  bulkRestorePreview,
   createDirectory,
   deleteDriveItem,
   downloadDriveItem,
@@ -66,8 +67,14 @@ import {
   previewUrl,
   renameDriveItem,
   restoreDriveItem,
+  restorePreview,
   streamUrl,
   uploadFile,
+  normalizeRestorePreview,
+  type RestoreConflictResolution,
+  type RestorePreviewItem,
+  type RestorePreviewRequestItem,
+  type RestorePreviewResponse,
 } from "./api";
 
 type DriveMode = "drive" | "trash";
@@ -164,6 +171,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     | "purge"
     | "preview"
     | "conflict"
+    | "restorePreview"
     | "move"
     | "externalShare"
     | null
@@ -183,6 +191,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [trashDuplicateResolution, setTrashDuplicateResolution] =
     useState<TrashDuplicateResolutionState>("choice");
+  const [restorePreviewState, setRestorePreviewState] =
+    useState<RestorePreviewResponse | null>(null);
+  const [restorePreviewIds, setRestorePreviewIds] = useState<number[]>([]);
+  const [restorePreviewLoading, setRestorePreviewLoading] = useState(false);
+  const [restoreSubmitting, setRestoreSubmitting] = useState(false);
   const [nameConflictMessage, setNameConflictMessage] = useState<string | null>(null);
   const [lastError, setLastError] = useState<AppError | null>(null);
   const [draggingIds, setDraggingIds] = useState<number[]>([]);
@@ -402,21 +415,6 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     onError: (error) =>
       captureError(error, selectedIds.length > 1 ? "一括削除" : "削除"),
   });
-  const restoreMutation = useMutation({
-    mutationFn: async () =>
-      selectedIds.length > 1
-        ? bulkRestore(selectedIds)
-        : restoreDriveItem(selectedIds[0]),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
-      await queryClient.invalidateQueries({ queryKey: driveKeys.all });
-      setSelectedIds([]);
-      setLastError(null);
-      toast.show({ tone: "success", message: "一括操作が完了しました。" });
-    },
-    onError: (error) =>
-      captureError(error, selectedIds.length > 1 ? "一括復元" : "復元"),
-  });
   const purgeMutation = useMutation({
     mutationFn: async () => {
       await Promise.all(selectedIds.map((id) => purgeDriveItem(id)));
@@ -432,6 +430,114 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     onError: (error) =>
       captureError(error, selectedIds.length > 1 ? "一括完全削除" : "完全削除"),
   });
+  const executeRestorePreview = useCallback(
+    async (preview: RestorePreviewResponse, ids: number[]) => {
+      const payload = restorePreviewPayload(preview);
+      setRestoreSubmitting(true);
+      try {
+        if (ids.length > 1) await bulkRestore(ids, payload);
+        else await restoreDriveItem(ids[0], payload);
+        await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
+        await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+        setSelectedIds([]);
+        setDialog(null);
+        setRestorePreviewState(null);
+        setRestorePreviewIds([]);
+        setLastError(null);
+        toast.show({ tone: "success", message: "復元しました。" });
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "restore_preview_stale") {
+          const latestPreview = normalizeRestorePreview(error.rawDetails);
+          setRestorePreviewState(latestPreview);
+          setDialog("restorePreview");
+          toast.show({
+            tone: "warn",
+            message: "確認後に復元先の状態が変更されました。内容を再確認してください",
+          });
+          return;
+        }
+        captureError(error, ids.length > 1 ? "一括復元" : "復元");
+      } finally {
+        setRestoreSubmitting(false);
+      }
+    },
+    [captureError, queryClient, toast],
+  );
+
+  const refreshRestorePreview = useCallback(
+    async (ids: number[], items?: RestorePreviewRequestItem[]) => {
+      const preview =
+        ids.length > 1
+          ? await bulkRestorePreview(ids, items)
+          : await restorePreview(ids[0], items);
+      setRestorePreviewState(preview);
+      setRestorePreviewIds(ids);
+      return preview;
+    },
+    [],
+  );
+
+  const openRestorePreview = useCallback(async () => {
+    if (selectedIds.length === 0 || restorePreviewLoading) return;
+    setRestorePreviewLoading(true);
+    try {
+      const ids = [...selectedIds];
+      const preview = await refreshRestorePreview(ids);
+      if (preview.summary.conflictCount === 0 && preview.summary.skippedCount === 0) {
+        await executeRestorePreview(preview, ids);
+        return;
+      }
+      setDialog("restorePreview");
+      setLastError(null);
+    } catch (error) {
+      captureError(error, selectedIds.length > 1 ? "一括復元確認" : "復元確認");
+    } finally {
+      setRestorePreviewLoading(false);
+    }
+  }, [
+    captureError,
+    executeRestorePreview,
+    refreshRestorePreview,
+    restorePreviewLoading,
+    selectedIds,
+  ]);
+
+  const changeRestoreResolution = useCallback(
+    async (itemId: number, resolution: RestoreConflictResolution) => {
+      if (!restorePreviewState || restorePreviewIds.length === 0) return;
+      setRestorePreviewLoading(true);
+      try {
+        const items = restorePreviewPayload(restorePreviewState).map((item) =>
+          item.itemId === itemId ? { ...item, resolution } : item,
+        );
+        await refreshRestorePreview(restorePreviewIds, items);
+      } catch (error) {
+        captureError(error, "復元内容確認");
+      } finally {
+        setRestorePreviewLoading(false);
+      }
+    },
+    [captureError, refreshRestorePreview, restorePreviewIds, restorePreviewState],
+  );
+
+  const applyRestoreResolutionToAll = useCallback(
+    async (resolution: RestoreConflictResolution) => {
+      if (!restorePreviewState || restorePreviewIds.length === 0) return;
+      setRestorePreviewLoading(true);
+      try {
+        const items = restorePreviewPayload(restorePreviewState).map((item) => ({
+          ...item,
+          resolution,
+        }));
+        await refreshRestorePreview(restorePreviewIds, items);
+      } catch (error) {
+        captureError(error, "復元内容確認");
+      } finally {
+        setRestorePreviewLoading(false);
+      }
+    },
+    [captureError, refreshRestorePreview, restorePreviewIds, restorePreviewState],
+  );
   const bulkDownloadMutation = useMutation({
     mutationFn: () => bulkDownload(selectedIds),
     onError: (error) => captureError(error, "一括ダウンロード"),
@@ -1170,7 +1276,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => restoreMutation.mutate()}
+                  loading={restorePreviewLoading || restoreSubmitting}
+                  onClick={() => void openRestorePreview()}
                 >
                   <RotateCcw size={16} aria-hidden="true" />
                   復元
@@ -1474,6 +1581,39 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             onConfirmPurgeUpload={() => void replaceTrashDuplicateWithUpload(conflict)}
             onBack={() => setTrashDuplicateResolution("restore_parent_missing")}
             onCancel={() => cancelUploadConflict(conflict)}
+          />
+        ) : null}
+      </Modal>
+      <Modal
+        open={dialog === "restorePreview"}
+        title={
+          restorePreviewIds.length > 1
+            ? `復元内容の確認（${restorePreviewIds.length}件）`
+            : "復元内容の確認"
+        }
+        onClose={() => {
+          if (restoreSubmitting) return;
+          setDialog(null);
+          setRestorePreviewState(null);
+          setRestorePreviewIds([]);
+        }}
+      >
+        {restorePreviewState ? (
+          <RestorePreviewDialog
+            preview={restorePreviewState}
+            loading={restorePreviewLoading || restoreSubmitting}
+            onApplyAll={(resolution) => void applyRestoreResolutionToAll(resolution)}
+            onChangeResolution={(itemId, resolution) =>
+              void changeRestoreResolution(itemId, resolution)
+            }
+            onCancel={() => {
+              setDialog(null);
+              setRestorePreviewState(null);
+              setRestorePreviewIds([]);
+            }}
+            onSubmit={() =>
+              void executeRestorePreview(restorePreviewState, restorePreviewIds)
+            }
           />
         ) : null}
       </Modal>
@@ -2378,6 +2518,206 @@ function NameForm({
   );
 }
 
+function RestorePreviewDialog({
+  preview,
+  loading,
+  onApplyAll,
+  onChangeResolution,
+  onCancel,
+  onSubmit,
+}: {
+  preview: RestorePreviewResponse;
+  loading: boolean;
+  onApplyAll: (resolution: RestoreConflictResolution) => void;
+  onChangeResolution: (itemId: number, resolution: RestoreConflictResolution) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="restore-preview form-stack">
+      <div className="restore-preview-summary" aria-label="復元内容サマリー">
+        <span>競合 {preview.summary.conflictCount} 件</span>
+        <span>復元可能 {preview.summary.restorableCount} 件</span>
+        <span>スキップ {preview.summary.skippedCount} 件</span>
+        <span>名前変更 {preview.summary.renameCount} 件</span>
+        <span>完全削除 {preview.summary.purgeExistingCount} 件</span>
+      </div>
+      {preview.items.length > 1 ? (
+        <div className="restore-preview-bulk-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={loading}
+            onClick={() => onApplyAll("rename")}
+          >
+            すべて自動リネーム
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={loading}
+            onClick={() => onApplyAll("purge_existing")}
+          >
+            すべて既存項目を完全削除して復元
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={loading}
+            onClick={() => onApplyAll("skip")}
+          >
+            すべてスキップ
+          </Button>
+        </div>
+      ) : null}
+      <div className="restore-preview-list">
+        {preview.items.map((item) => (
+          <article
+            key={item.itemId}
+            className={`restore-preview-card ${item.after.resolution === "skip" ? "is-skipped" : ""}`.trim()}
+          >
+            <header>
+              <div>
+                <strong>{item.before.name}</strong>
+                <span>{item.itemType === "directory" ? "フォルダー" : "ファイル"}</span>
+              </div>
+              <span className={`status-pill status-${item.conflictType}`}>
+                {restoreConflictLabel(item)}
+              </span>
+            </header>
+            {item.itemType === "directory" ? (
+              <p className="form-message form-message-info">
+                配下 {item.childrenCount}{" "}
+                件を含めて確認します。競合する配下項目は一覧に表示されます。
+              </p>
+            ) : null}
+            <div className="restore-preview-compare">
+              <section>
+                <h3>処理前</h3>
+                <dl>
+                  <div>
+                    <dt>元の名前</dt>
+                    <dd>{item.before.name}</dd>
+                  </div>
+                  <div>
+                    <dt>元の親フォルダ</dt>
+                    <dd>{item.before.parentPath ?? "不明"}</dd>
+                  </div>
+                  <div>
+                    <dt>現在の状態</dt>
+                    <dd>
+                      {item.before.state === "trashed" ? "ゴミ箱" : item.before.state}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>競合理由</dt>
+                    <dd>{item.before.reason ?? "競合なし"}</dd>
+                  </div>
+                  <div>
+                    <dt>復元可能</dt>
+                    <dd>{item.before.restorable ? "可能" : "確認が必要"}</dd>
+                  </div>
+                </dl>
+              </section>
+              <section>
+                <h3>処理後</h3>
+                <dl>
+                  <div>
+                    <dt>最終的な名前</dt>
+                    <dd
+                      className={
+                        item.before.name !== item.after.name ? "changed-value" : ""
+                      }
+                    >
+                      {item.after.name ?? "復元しない"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>実際の復元先</dt>
+                    <dd
+                      className={
+                        item.before.parentPath !== item.after.parentPath
+                          ? "changed-value"
+                          : ""
+                      }
+                    >
+                      {item.after.parentPath ?? "未選択"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>解決方法</dt>
+                    <dd>{restoreResolutionLabel(item.after.resolution)}</dd>
+                  </div>
+                  <div>
+                    <dt>復元後の状態</dt>
+                    <dd>{item.after.restorable ? "通常領域" : "スキップ"}</dd>
+                  </div>
+                  <div>
+                    <dt>既存項目への影響</dt>
+                    <dd
+                      className={
+                        item.after.existingItemWillBePurged ? "danger-value" : ""
+                      }
+                    >
+                      {item.after.impact}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
+            {item.after.existingItemWillBePurged && item.after.existingItem ? (
+              <p className="form-message form-message-warn">
+                「{item.after.existingItem.name}」を完全削除します。
+                {item.after.existingItem.purgeNote}
+              </p>
+            ) : null}
+            {item.conflictType.includes("missing_parent") ? (
+              <p className="form-message form-message-warn">
+                元の復元先が存在しません。ルートに復元するか、別のフォルダを選択してください。
+              </p>
+            ) : null}
+            <label className="field">
+              <span>解決方法</span>
+              <select
+                value={item.after.resolution}
+                disabled={loading}
+                onChange={(event) =>
+                  onChangeResolution(
+                    item.itemId,
+                    event.target.value as RestoreConflictResolution,
+                  )
+                }
+              >
+                <option value="rename">自動リネームして復元</option>
+                <option value="purge_existing">既存の項目を完全削除して復元</option>
+                <option value="restore_to_root">共有ドライブのルートに復元</option>
+                <option value="select_destination">別のフォルダを選択</option>
+                <option value="skip">この項目をスキップ</option>
+              </select>
+            </label>
+          </article>
+        ))}
+      </div>
+      <div className="modal-actions">
+        <Button type="button" variant="ghost" disabled={loading} onClick={onCancel}>
+          キャンセル
+        </Button>
+        <Button
+          type="button"
+          loading={loading}
+          disabled={
+            preview.items.every((item) => item.after.resolution === "skip") ||
+            preview.items.some((item) => !item.after.restorable)
+          }
+          onClick={onSubmit}
+        >
+          復元実行
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ActiveContentConflictDialog({
   conflict,
   loading,
@@ -2756,6 +3096,34 @@ function uploadStatusText(task: UploadTask) {
   if (task.status === "failed") return task.message ?? "失敗";
   if (task.status === "canceled") return "キャンセルしました";
   return "アップロード中";
+}
+
+function restorePreviewPayload(
+  preview: RestorePreviewResponse,
+): RestorePreviewRequestItem[] {
+  return preview.items.map((item) => ({
+    itemId: item.itemId,
+    resolution: item.after.resolution,
+    destinationParentId: item.after.parentId,
+    expectedName: item.after.name,
+    expectedExistingItemId: item.existingItemId,
+  }));
+}
+
+function restoreConflictLabel(item: RestorePreviewItem) {
+  if (item.conflictType === "name_conflict_and_missing_parent")
+    return "同名競合 / 親フォルダなし";
+  if (item.conflictType === "name_conflict") return "同名競合";
+  if (item.conflictType === "missing_parent") return "親フォルダなし";
+  return "競合なし";
+}
+
+function restoreResolutionLabel(resolution: RestoreConflictResolution) {
+  if (resolution === "purge_existing") return "既存の項目を完全削除して復元";
+  if (resolution === "select_destination") return "別のフォルダを選択";
+  if (resolution === "restore_to_root") return "共有ドライブのルートに復元";
+  if (resolution === "skip") return "この項目をスキップ";
+  return "自動リネームして復元";
 }
 
 function conflictTitle(

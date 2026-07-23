@@ -56,6 +56,7 @@ export class ApiError extends Error {
   readonly conflictingName?: string;
   readonly requestId?: string;
   readonly safeDetails?: Record<string, string | number | boolean | null>;
+  readonly rawDetails?: Record<string, unknown>;
   readonly duplicateFiles: DuplicateContentFile[];
   readonly trashDuplicate?: TrashDuplicate;
   readonly allowedActions: string[];
@@ -73,6 +74,7 @@ export class ApiError extends Error {
     duplicateFiles: DuplicateContentFile[] = [],
     trashDuplicate?: TrashDuplicate,
     allowedActions: string[] = [],
+    rawDetails?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -84,6 +86,7 @@ export class ApiError extends Error {
     this.conflictingName = conflictingName;
     this.requestId = requestId;
     this.safeDetails = safeDetails;
+    this.rawDetails = rawDetails;
     this.duplicateFiles = duplicateFiles;
     this.trashDuplicate = trashDuplicate;
     this.allowedActions = allowedActions;
@@ -157,6 +160,7 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
         duplicateFilesFrom(errorDetails),
         trashDuplicateFrom(errorDetails),
         allowedActionsFrom(errorDetails),
+        errorDetails,
       );
     }
   }
