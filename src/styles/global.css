@@ -395,28 +395,6 @@ a {
   border-radius: var(--radius-md);
 }
 
-.file-list-viewport {
-  max-height: min(70vh, 720px);
-  overflow: auto;
-}
-
-.file-list-viewport tbody {
-  position: relative;
-  display: block;
-}
-
-.file-list-viewport thead,
-.file-list-viewport tbody tr {
-  width: 100%;
-}
-
-.file-list-viewport thead {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--color-surface);
-}
-
 .drive-page {
   position: relative;
 }
