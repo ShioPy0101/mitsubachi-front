@@ -130,6 +130,7 @@ export type RestorePreviewItem = {
 };
 
 export type RestorePreviewResponse = {
+  confirmationToken: string | null;
   items: RestorePreviewItem[];
   summary: {
     totalCount: number;
@@ -277,12 +278,22 @@ export function bulkPurge(ids: number[]) {
   });
 }
 
-export function restoreDriveItem(id: number, items?: RestorePreviewRequestItem[]) {
+export function restoreDriveItem(
+  id: number,
+  items?: RestorePreviewRequestItem[],
+  confirmationToken?: string | null,
+) {
   return apiRequest<DriveItem | { message?: string; restored_item_ids?: number[] }>(
     `/api/v1/drive_items/${id}/restore`,
     {
       method: "POST",
-      body: items ? { items: restoreRequestItemsBody(items) } : undefined,
+      body:
+        items || confirmationToken
+          ? {
+              ...(items ? { items: restoreRequestItemsBody(items) } : {}),
+              ...(confirmationToken ? { confirmation_token: confirmationToken } : {}),
+            }
+          : undefined,
     },
   );
 }
@@ -301,12 +312,17 @@ export function bulkDelete(ids: number[]) {
   });
 }
 
-export function bulkRestore(ids: number[], items?: RestorePreviewRequestItem[]) {
+export function bulkRestore(
+  ids: number[],
+  items?: RestorePreviewRequestItem[],
+  confirmationToken?: string | null,
+) {
   return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_restore", {
     method: "POST",
     body: {
       drive_item_ids: ids,
       ...(items ? { items: restoreRequestItemsBody(items) } : {}),
+      ...(confirmationToken ? { confirmation_token: confirmationToken } : {}),
     },
   });
 }
@@ -412,6 +428,12 @@ export function normalizeRestorePreview(value: unknown): RestorePreviewResponse 
   const items = Array.isArray(body.items) ? body.items.map(normalizeRestoreItem) : [];
   const summary = recordFrom(body.summary);
   return {
+    confirmationToken: nullableStringFrom(
+      body.confirmation_token ??
+        body.confirmationToken ??
+        body.preview_token ??
+        body.previewToken,
+    ),
     items,
     summary: {
       totalCount: numberFrom(summary.total_count ?? summary.totalCount),
@@ -538,6 +560,10 @@ function restoreResolutionFrom(value: unknown): RestoreConflictResolution {
     return value;
   }
   return "rename";
+}
+
+function nullableStringFrom(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function recordFrom(value: unknown) {
