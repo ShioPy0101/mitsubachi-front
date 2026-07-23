@@ -278,22 +278,12 @@ export function bulkPurge(ids: number[]) {
   });
 }
 
-export function restoreDriveItem(
-  id: number,
-  items?: RestorePreviewRequestItem[],
-  confirmationToken?: string | null,
-) {
+export function restoreDriveItem(id: number, confirmationToken?: string | null) {
   return apiRequest<DriveItem | { message?: string; restored_item_ids?: number[] }>(
     `/api/v1/drive_items/${id}/restore`,
     {
       method: "POST",
-      body:
-        items || confirmationToken
-          ? {
-              ...(items ? { items: restoreRequestItemsBody(items) } : {}),
-              ...(confirmationToken ? { confirmation_token: confirmationToken } : {}),
-            }
-          : undefined,
+      body: confirmationToken ? { confirmation_token: confirmationToken } : undefined,
     },
   );
 }
@@ -312,16 +302,11 @@ export function bulkDelete(ids: number[]) {
   });
 }
 
-export function bulkRestore(
-  ids: number[],
-  items?: RestorePreviewRequestItem[],
-  confirmationToken?: string | null,
-) {
+export function bulkRestore(ids: number[], confirmationToken?: string | null) {
   return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_restore", {
     method: "POST",
     body: {
       drive_item_ids: ids,
-      ...(items ? { items: restoreRequestItemsBody(items) } : {}),
       ...(confirmationToken ? { confirmation_token: confirmationToken } : {}),
     },
   });
