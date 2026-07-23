@@ -509,6 +509,60 @@ describe("DrivePage drag and drop upload", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("falls back to the server suggested name when auto rename is rejected", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(
+        new ApiError(
+          409,
+          "同じ名前のファイルまたはフォルダーが存在します。",
+          [],
+          "duplicate_name",
+          "/api/v1/drive_items",
+          "name",
+          "DSCN2960.jpg",
+          "request-name-409",
+          {
+            suggested_name: "DSCN2960（1）",
+            suggested_filename: "DSCN2960（1）.jpg",
+          },
+        ),
+      )
+      .mockResolvedValueOnce({
+        id: 12,
+        parent_id: 42,
+        name: "DSCN2960（1）",
+        item_type: "file",
+      });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const file = new File(["same"], "DSCN2960.jpg", { type: "image/jpeg" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "同じ内容でもすべてアップロード（1件）",
+      }),
+    );
+    const confirm = within(openDialog("同じ内容でもすべてアップロード"));
+    fireEvent.click(confirm.getByRole("button", { name: "1件をアップロード" }));
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(3));
+    expect(mocks.uploadFile.mock.calls[2]?.[0]).toMatchObject({
+      file,
+      name: "DSCN2960（1）",
+      allowDuplicateContent: true,
+      duplicateContentAction: "upload_anyway",
+      nameConflictAction: "auto_rename",
+    });
+    expect(mocks.uploadFile.mock.calls[2]?.[0].operationId).toBe(
+      mocks.uploadFile.mock.calls[1]?.[0].operationId,
+    );
+  });
+
   it("resolves trash duplicate content by restoring the duplicate item", async () => {
     const file = new File(["same"], "report.txt", { type: "text/plain" });
     mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());

@@ -670,7 +670,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     ) => {
       const taskId = options.taskId ?? `${Date.now()}-${Math.random()}`;
       const abortController = new AbortController();
-      const uploadName = nameOverride ?? file.name.replace(/\.[^.]+$/, "");
+      let uploadName = nameOverride ?? file.name.replace(/\.[^.]+$/, "");
       setUploadPanelPreference("auto");
       setUploadTasks((current) => {
         if (options.taskId) {
@@ -711,19 +711,45 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       });
 
       try {
-        await uploadFile({
-          file,
-          name: uploadName,
-          parentId,
-          allowDuplicateContent: options.allowDuplicateContent,
-          duplicateContentAction: options.duplicateContentAction,
-          nameConflictAction: options.nameConflictAction,
-          operationId: options.operationId,
-          allowTrashDuplicate: options.allowTrashDuplicate,
-          replaceTrashedDriveItemId: options.replaceTrashedDriveItemId,
-          signal: abortController.signal,
-          onProgress: (progress) => updateUploadTask(taskId, progress),
-        });
+        let nameConflictRetry: unknown;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            await uploadFile({
+              file,
+              name: uploadName,
+              parentId,
+              allowDuplicateContent: options.allowDuplicateContent,
+              duplicateContentAction: options.duplicateContentAction,
+              nameConflictAction: options.nameConflictAction,
+              operationId: options.operationId,
+              allowTrashDuplicate: options.allowTrashDuplicate,
+              replaceTrashedDriveItemId: options.replaceTrashedDriveItemId,
+              signal: abortController.signal,
+              onProgress: (progress) => updateUploadTask(taskId, progress),
+            });
+            nameConflictRetry = undefined;
+            break;
+          } catch (error) {
+            nameConflictRetry = error;
+            if (
+              attempt === 0 &&
+              options.nameConflictAction === "auto_rename" &&
+              isNameConflict(error)
+            ) {
+              const suggestedName = suggestedUploadNameForRetry(error, file);
+              if (suggestedName) {
+                uploadName = suggestedName;
+                updateUploadTask(taskId, { uploadName });
+                continue;
+              }
+            }
+            break;
+          }
+        }
+        if (nameConflictRetry instanceof Error) throw nameConflictRetry;
+        if (nameConflictRetry !== undefined) {
+          throw new Error("ファイルアップロードに失敗しました。");
+        }
         updateUploadTask(taskId, { status: "processing", percent: 100 });
         updateUploadTask(taskId, { status: "done", message: "完了" });
         return "done";
@@ -3173,7 +3199,7 @@ function UploadProgressPanel({
   const hasCompleted = completedCount > 0;
   const duplicateContentCount = duplicateContentTasks.length;
   if (state === "dismissed") return null;
-  if (state === "completed") {
+  if (state === "completed" && !duplicateContentSummary) {
     return (
       <section
         className="upload-progress upload-progress-compact"
@@ -3478,6 +3504,22 @@ function suggestedUploadName(
     )
     .map(displayName);
   return nextAvailableUploadName(file.name, existingFilenames);
+}
+
+function suggestedUploadNameForRetry(error: unknown, file: File) {
+  if (!(error instanceof ApiError)) return undefined;
+  const suggestedName = error.safeDetails?.suggested_name;
+  if (typeof suggestedName === "string" && suggestedName.length > 0) {
+    return suggestedName;
+  }
+  const suggestedFilename = error.safeDetails?.suggested_filename;
+  if (typeof suggestedFilename !== "string" || suggestedFilename.length === 0) {
+    return undefined;
+  }
+  const extension = file.name.match(/(\.[^.]+)$/)?.[1] ?? "";
+  return extension && suggestedFilename.endsWith(extension)
+    ? suggestedFilename.slice(0, -extension.length)
+    : suggestedFilename;
 }
 
 function nextAvailableUploadName(filename: string, existingFilenames: string[]) {
