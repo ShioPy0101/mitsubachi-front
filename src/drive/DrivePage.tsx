@@ -437,8 +437,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       const payload = restorePreviewPayload(preview);
       setRestoreSubmitting(true);
       try {
-        if (ids.length > 1) await bulkRestore(ids, payload);
-        else await restoreDriveItem(ids[0], payload);
+        if (ids.length > 1) await bulkRestore(ids, payload, preview.confirmationToken);
+        else await restoreDriveItem(ids[0], payload, preview.confirmationToken);
         await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
         await queryClient.invalidateQueries({ queryKey: driveKeys.all });
         setSelectedIds([]);
