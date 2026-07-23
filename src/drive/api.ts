@@ -138,6 +138,7 @@ export type RestorePreviewResponse = {
     skippedCount: number;
     renameCount: number;
     purgeExistingCount: number;
+    trashExistingCount: number;
   };
 };
 
