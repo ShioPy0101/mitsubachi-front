@@ -1550,6 +1550,20 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
               setConflict(null);
               void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`);
             }}
+            onUploadAnyway={() => {
+              setDialog(null);
+              void uploadSingleFile(
+                conflict.file,
+                conflict.parentId,
+                conflict.uploadName,
+                {
+                  taskId: conflict.taskId,
+                  allowDuplicateContent: true,
+                },
+              ).then(async (succeeded) => {
+                if (succeeded === "done") await invalidateCurrent();
+              });
+            }}
             onCancel={() => cancelUploadConflict(conflict)}
           />
         ) : null}
@@ -2739,11 +2753,13 @@ function ActiveContentConflictDialog({
   conflict,
   loading,
   onOpenDuplicateLocation,
+  onUploadAnyway,
   onCancel,
 }: {
   conflict: ActiveContentConflictState;
   loading: boolean;
   onOpenDuplicateLocation: (parentId: number | null) => void;
+  onUploadAnyway: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -2777,6 +2793,9 @@ function ActiveContentConflictDialog({
         </div>
       ) : null}
       <div className="modal-actions">
+        <Button type="button" disabled={loading} onClick={onUploadAnyway}>
+          同じ内容でもアップロード
+        </Button>
         <Button type="button" variant="ghost" disabled={loading} onClick={onCancel}>
           キャンセル
         </Button>
@@ -2839,10 +2858,10 @@ function TrashContentConflictDialog({
       : (duplicate.originalParent?.path ?? "元の保存先不明");
 
   return (
-    <div className="form-stack">
+    <div className="form-stack trash-duplicate-dialog">
       {resolutionState === "restore_parent_missing" ? (
         <>
-          <p>
+          <p className="trash-duplicate-warning">
             ゴミ箱内の同一ファイルは、削除前の保存先フォルダが存在しないため復元できません。ゴミ箱で確認するか、ゴミ箱内の元ファイルを完全削除してから新規アップロードできます。
           </p>
           <p className="form-message form-message-warn">
@@ -2881,23 +2900,34 @@ function TrashContentConflictDialog({
           <dd>{formatSize(duplicate.fileSize)}</dd>
         </div>
       </dl>
-      <div className="modal-actions">
+      <div className="modal-actions trash-duplicate-actions">
         {resolutionState === "restore_parent_missing" ? null : (
-          <Button type="button" loading={loading} onClick={onRestore}>
+          <Button
+            type="button"
+            className="trash-duplicate-primary"
+            loading={loading}
+            onClick={onRestore}
+          >
             {loading ? "復元しています..." : restoreButtonLabel(duplicate)}
           </Button>
         )}
         <Button
           type="button"
+          className="trash-duplicate-secondary"
           variant="secondary"
           disabled={loading}
           onClick={onOpenTrash}
         >
-          ゴミ箱で確認
+          <span aria-label="ゴミ箱で確認">
+            ゴミ箱で
+            <br />
+            確認
+          </span>
         </Button>
         {resolutionState === "restore_parent_missing" ? (
           <Button
             type="button"
+            className="trash-duplicate-primary"
             variant="danger"
             disabled={loading}
             onClick={onStartPurgeUpload}
@@ -2905,7 +2935,13 @@ function TrashContentConflictDialog({
             元のファイルを完全削除して、新規にアップロードする
           </Button>
         ) : null}
-        <Button type="button" variant="ghost" disabled={loading} onClick={onCancel}>
+        <Button
+          type="button"
+          className="trash-duplicate-cancel"
+          variant="ghost"
+          disabled={loading}
+          onClick={onCancel}
+        >
           キャンセル
         </Button>
       </div>
