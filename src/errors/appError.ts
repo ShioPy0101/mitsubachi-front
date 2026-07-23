@@ -121,6 +121,8 @@ export function isNameConflictAppError(error: AppError) {
     "duplicate_name",
     "name_conflict",
     "duplicate_content",
+    "active_content_duplicate",
+    "trash_content_duplicate",
     "auto_rename_required",
   ].includes(error.code);
 }
@@ -170,6 +172,8 @@ function levelFor(code: string, status: number): AppError["level"] {
       "duplicate_name",
       "name_conflict",
       "duplicate_content",
+      "active_content_duplicate",
+      "trash_content_duplicate",
       "auto_rename_required",
     ].includes(code)
   ) {

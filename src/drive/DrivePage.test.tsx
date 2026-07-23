@@ -12,6 +12,7 @@ type UploadFileInput = {
   name: string;
   parentId: number | null;
   allowDuplicateContent?: boolean;
+  allowTrashDuplicate?: boolean;
   onProgress?: (progress: { loaded: number; total?: number; percent?: number }) => void;
 };
 
@@ -32,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   regenerateExternalSharePassword: vi.fn(),
   createDirectory: vi.fn<(input: CreateDirectoryInput) => Promise<unknown>>(),
   purgeDriveItem: vi.fn(),
+  restoreDriveItem: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -57,7 +59,7 @@ vi.mock("./api", () => ({
   previewUrl: vi.fn((id: number) => `/preview/${id}`),
   renameDriveItem: vi.fn(),
   moveDriveItem: mocks.moveDriveItem,
-  restoreDriveItem: vi.fn(),
+  restoreDriveItem: mocks.restoreDriveItem,
   streamUrl: vi.fn((id: number) => `/stream/${id}`),
 }));
 
@@ -117,6 +119,13 @@ describe("DrivePage drag and drop upload", () => {
       generated_password: "N3wPassw0rdValue",
     });
     mocks.purgeDriveItem.mockResolvedValue({ message: "完全削除しました" });
+    mocks.restoreDriveItem.mockResolvedValue({
+      id: 77,
+      parent_id: 42,
+      name: "trashed",
+      extension: "txt",
+      item_type: "file",
+    });
     mocks.createDirectory.mockImplementation(({ name, parentId }) =>
       Promise.resolve({
         id: name === "素材" ? 100 : 101,
@@ -292,13 +301,13 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
-  it("shows duplicate content as an informational rename choice", async () => {
+  it("shows active duplicate content without rename retry controls", async () => {
     mocks.uploadFile.mockRejectedValueOnce(
       new ApiError(
         409,
         "同じ内容のファイルがすでに存在します。",
         [],
-        "duplicate_content",
+        "active_content_duplicate",
         "/api/v1/drive_items",
         "name",
         "report.pdf",
@@ -326,32 +335,149 @@ describe("DrivePage drag and drop upload", () => {
       dataTransfer: dataTransferWithFiles([file]),
     });
 
-    expect(await screen.findByText("名前の重複")).toBeInTheDocument();
     expect(
-      screen.getAllByText("同じ内容のファイルがすでに存在します。").length,
+      await screen.findByRole("heading", { name: "同じ内容のファイルがあります" }),
+    ).toBeInTheDocument();
+    const dialog = within(openDialog("同じ内容のファイルがあります"));
+    expect(
+      dialog.getAllByText("同じ内容のファイルがすでに存在します。").length,
     ).toBeGreaterThan(0);
-    expect(screen.getAllByText("report.pdf").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("保存先: Reports").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("アップロード者: 佐藤").length).toBeGreaterThan(0);
-    expect(screen.getAllByDisplayValue("report（1）").length).toBeGreaterThan(0);
-    expect(screen.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+    expect(dialog.getAllByText("report.pdf").length).toBeGreaterThan(0);
+    expect(dialog.getAllByText("保存先: Reports").length).toBeGreaterThan(0);
+    expect(dialog.getAllByText("アップロード者: 佐藤").length).toBeGreaterThan(0);
+    expect(dialog.queryByLabelText("名前")).not.toBeInTheDocument();
+    expect(dialog.queryByText("名前を変更して再試行")).not.toBeInTheDocument();
+    expect(dialog.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
+  });
 
+  it("resolves trash duplicate content by restoring the duplicate item", async () => {
+    const file = new File(["same"], "report.txt", { type: "text/plain" });
+    mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "同じ内容のファイルがゴミ箱にあります",
+      }),
+    ).toBeInTheDocument();
+    const dialog = within(openDialog("同じ内容のファイルがゴミ箱にあります"));
+    expect(dialog.getByText("復元する")).toBeInTheDocument();
+    expect(dialog.getByText("そのままアップロード")).toBeInTheDocument();
+    expect(dialog.getByText("キャンセル")).toBeInTheDocument();
+    expect(dialog.getByText("report.txt")).toBeInTheDocument();
+    expect(dialog.getByText("/Reports")).toBeInTheDocument();
+    expect(dialog.getByText("佐藤")).toBeInTheDocument();
+    expect(dialog.getByText("4 B")).toBeInTheDocument();
+    expect(dialog.queryByLabelText("名前")).not.toBeInTheDocument();
+    expect(dialog.queryByText("名前を変更して再試行")).not.toBeInTheDocument();
+
+    await waitFor(() => expect(dialog.getByText("復元する")).not.toBeDisabled());
+    fireEvent.click(dialog.getByText("復元する"));
+
+    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(99));
+    expect(mocks.uploadFile).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("ゴミ箱から復元済み")).toBeInTheDocument();
+    expect(
+      screen.getByText("「report.txt」をゴミ箱から復元しました"),
+    ).toBeInTheDocument();
+  });
+
+  it("retries trash duplicate content upload with allow_trash_duplicate", async () => {
+    const file = new File(["same"], "report.txt", { type: "text/plain" });
+    mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
     mocks.uploadFile.mockResolvedValueOnce({
       id: 5,
       parent_id: 42,
-      name: "report（1）",
+      name: "report",
       item_type: "file",
     });
-    fireEvent.click(screen.getByText("名前を変更して再試行"));
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+    await screen.findByRole("heading", {
+      name: "同じ内容のファイルがゴミ箱にあります",
+    });
+    const dialog = within(openDialog("同じ内容のファイルがゴミ箱にあります"));
+    await waitFor(() =>
+      expect(dialog.getByText("そのままアップロード")).not.toBeDisabled(),
+    );
+    fireEvent.click(dialog.getByText("そのままアップロード"));
 
     await waitFor(() => {
       expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
         file,
-        name: "report（1）",
+        name: "report",
         parentId: 42,
-        allowDuplicateContent: true,
+        allowTrashDuplicate: true,
       });
     });
+    expect(
+      screen.getByText("「report.txt」をアップロードしました"),
+    ).toBeInTheDocument();
+  });
+
+  it("cancels only the trash duplicate upload item", async () => {
+    const conflictFile = new File(["same"], "report.txt", { type: "text/plain" });
+    const okFile = new File(["ok"], "ok.txt", { type: "text/plain" });
+    mocks.uploadFile
+      .mockRejectedValueOnce(trashDuplicateError())
+      .mockResolvedValueOnce({
+        id: 6,
+        parent_id: 42,
+        name: "ok",
+        item_type: "file",
+      });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([conflictFile, okFile]),
+    });
+    await screen.findByRole("heading", {
+      name: "同じ内容のファイルがゴミ箱にあります",
+    });
+    const dialog = within(openDialog("同じ内容のファイルがゴミ箱にあります"));
+    await waitFor(() => expect(dialog.getByText("キャンセル")).not.toBeDisabled());
+    fireEvent.click(dialog.getByText("キャンセル"));
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
+    expect(mocks.restoreDriveItem).not.toHaveBeenCalled();
+    expect(screen.getByText("キャンセルしました")).toBeInTheDocument();
+    expect(screen.getByText("完了")).toBeInTheDocument();
+  });
+
+  it("keeps trash duplicate conflict open when restore fails", async () => {
+    const file = new File(["same"], "report.txt", { type: "text/plain" });
+    mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
+    mocks.restoreDriveItem.mockRejectedValueOnce(
+      new ApiError(404, "対象が存在しないか、アクセスできません。", [], "not_found"),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+    await screen.findByRole("heading", {
+      name: "同じ内容のファイルがゴミ箱にあります",
+    });
+    const dialog = within(openDialog("同じ内容のファイルがゴミ箱にあります"));
+    await waitFor(() => expect(dialog.getByText("復元する")).not.toBeDisabled());
+    fireEvent.click(dialog.getByText("復元する"));
+
+    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(99));
+    expect(
+      screen.getByRole("heading", { name: "同じ内容のファイルがゴミ箱にあります" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("ゴミ箱から復元済み")).not.toBeInTheDocument();
   });
 
   it("prevents duplicate submissions while an upload is in progress", async () => {
@@ -1490,6 +1616,33 @@ function dataTransferWithFiles(files: File[]) {
   };
 }
 
+function trashDuplicateError() {
+  return new ApiError(
+    409,
+    "同じ内容のファイルがゴミ箱にあります",
+    [],
+    "trash_content_duplicate",
+    "/api/v1/drive_items",
+    undefined,
+    undefined,
+    "request-trash-409",
+    { duplicate_kind: "trash_content" },
+    [],
+    {
+      id: 99,
+      name: "report",
+      extension: "txt",
+      displayName: "report.txt",
+      fileSize: 4,
+      contentType: "text/plain",
+      deletedAt: "2026-07-23T14:22:00+09:00",
+      originalParent: { id: 42, name: "Reports", path: "/Reports" },
+      uploadedBy: { id: 10, displayName: "佐藤" },
+    },
+    ["restore", "upload_anyway", "cancel"],
+  );
+}
+
 function driveItemDataTransfer() {
   const store = new Map<string, string>();
   return {
@@ -1504,12 +1657,20 @@ function driveItemDataTransfer() {
 }
 
 function openDialogCloseButton(title: string) {
-  const dialog = Array.from(document.querySelectorAll("dialog")).find((element) =>
-    element.textContent?.includes(title),
-  );
+  const dialog = openDialog(title);
   const button = dialog?.querySelector('button[aria-label="閉じる"]');
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error("Open dialog close button was not rendered.");
   }
   return button;
+}
+
+function openDialog(title: string) {
+  const dialog = Array.from(document.querySelectorAll("dialog")).find((element) =>
+    element.textContent?.includes(title),
+  );
+  if (!(dialog instanceof HTMLDialogElement)) {
+    throw new Error(`Open dialog was not rendered: ${title}`);
+  }
+  return dialog;
 }

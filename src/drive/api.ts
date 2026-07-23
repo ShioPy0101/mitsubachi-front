@@ -72,6 +72,7 @@ export function uploadFile(input: {
   name: string;
   parentId: number | null;
   allowDuplicateContent?: boolean;
+  allowTrashDuplicate?: boolean;
   signal?: AbortSignal;
   onProgress?: (progress: UploadProgress) => void;
 }) {
@@ -81,6 +82,7 @@ export function uploadFile(input: {
     form.append("item_type", "file");
     if (input.parentId !== null) form.append("parent_id", String(input.parentId));
     if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
+    if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
     form.append("file", input.file);
     return apiRequest<DriveItem>("/api/v1/drive_items", {
       method: "POST",
@@ -97,6 +99,7 @@ async function uploadFileWithProgress(input: {
   name: string;
   parentId: number | null;
   allowDuplicateContent?: boolean;
+  allowTrashDuplicate?: boolean;
   signal?: AbortSignal;
   onProgress: (progress: UploadProgress) => void;
 }): Promise<DriveItem> {
@@ -105,6 +108,7 @@ async function uploadFileWithProgress(input: {
   form.append("item_type", "file");
   if (input.parentId !== null) form.append("parent_id", String(input.parentId));
   if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
+  if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
   form.append("file", input.file);
 
   const csrfToken = await getCsrfToken();

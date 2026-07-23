@@ -848,6 +848,34 @@ th:last-child,
   margin-top: var(--space-3);
 }
 
+.duplicate-details {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-subtle);
+}
+
+.duplicate-details div {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.duplicate-details dt {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.duplicate-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .modal-open {
   overflow: hidden;
 }
