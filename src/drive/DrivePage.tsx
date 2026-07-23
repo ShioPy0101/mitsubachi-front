@@ -27,7 +27,11 @@ import {
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { ApiError, type DuplicateContentFile } from "../api/errors";
+import {
+  ApiError,
+  type DuplicateContentFile,
+  type TrashDuplicate,
+} from "../api/errors";
 import type { DriveItem } from "../api/schemas";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -81,7 +85,14 @@ type UploadTask = {
   loaded: number;
   total?: number;
   percent?: number;
-  status: "uploading" | "processing" | "done" | "failed" | "canceled";
+  status:
+    | "uploading"
+    | "processing"
+    | "done"
+    | "restored"
+    | "conflict"
+    | "failed"
+    | "canceled";
   message?: string;
   error?: AppError;
   abortController?: AbortController;
@@ -90,13 +101,35 @@ type UploadTask = {
 type UploadPanelState = "expanded" | "completed" | "dismissed";
 type UploadPanelPreference = "auto" | "expanded" | "dismissed";
 
-type ConflictState = {
+type NameConflictState = {
+  kind: "name";
+  taskId: string;
   file: File;
   parentId: number | null;
   suggestedName: string;
   message: string;
   duplicateFiles: DuplicateContentFile[];
 };
+type ActiveContentConflictState = {
+  kind: "active_content";
+  taskId: string;
+  file: File;
+  parentId: number | null;
+  uploadName: string;
+  message: string;
+  duplicateFiles: DuplicateContentFile[];
+};
+type TrashContentConflictState = {
+  kind: "trash_content";
+  taskId: string;
+  file: File;
+  parentId: number | null;
+  uploadName: string;
+  message: string;
+  duplicate: TrashDuplicate;
+};
+type ConflictState =
+  NameConflictState | ActiveContentConflictState | TrashContentConflictState;
 
 type Breadcrumb = NonNullable<DriveItem["breadcrumbs"]>[number];
 type MoveDialogState = {
@@ -482,27 +515,52 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       file: File,
       parentId: number | null,
       nameOverride?: string,
-      options: { allowDuplicateContent?: boolean } = {},
+      options: {
+        allowDuplicateContent?: boolean;
+        allowTrashDuplicate?: boolean;
+        taskId?: string;
+      } = {},
     ) => {
-      const taskId = `${Date.now()}-${Math.random()}`;
+      const taskId = options.taskId ?? `${Date.now()}-${Math.random()}`;
       const abortController = new AbortController();
       const uploadName = nameOverride ?? file.name.replace(/\.[^.]+$/, "");
       setUploadPanelPreference("auto");
-      setUploadTasks((current) => [
-        ...current,
-        {
-          id: taskId,
-          fileName: file.name,
-          file,
-          parentId,
-          uploadName,
-          loaded: 0,
-          total: file.size,
-          percent: 0,
-          status: "uploading",
-          abortController,
-        },
-      ]);
+      setUploadTasks((current) => {
+        if (options.taskId) {
+          return current.map((task) =>
+            task.id === options.taskId
+              ? {
+                  ...task,
+                  file,
+                  parentId,
+                  uploadName,
+                  loaded: 0,
+                  total: file.size,
+                  percent: 0,
+                  status: "uploading",
+                  message: undefined,
+                  error: undefined,
+                  abortController,
+                }
+              : task,
+          );
+        }
+        return [
+          ...current,
+          {
+            id: taskId,
+            fileName: file.name,
+            file,
+            parentId,
+            uploadName,
+            loaded: 0,
+            total: file.size,
+            percent: 0,
+            status: "uploading",
+            abortController,
+          },
+        ];
+      });
 
       try {
         await uploadFile({
@@ -510,6 +568,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           name: uploadName,
           parentId,
           allowDuplicateContent: options.allowDuplicateContent,
+          allowTrashDuplicate: options.allowTrashDuplicate,
           signal: abortController.signal,
           onProgress: (progress) => updateUploadTask(taskId, progress),
         });
@@ -532,6 +591,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         if (isNameConflict(error)) {
           const suggestedName = suggestedUploadName(error, file, items, parentId);
           setConflict({
+            kind: "name",
+            taskId,
             file,
             parentId,
             suggestedName,
@@ -541,7 +602,49 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           setNameValue(suggestedName);
           setLastError(null);
           updateUploadTask(taskId, {
-            status: "failed",
+            status: "conflict",
+            message: appError.message,
+            error: appError,
+          });
+          setDialog("conflict");
+          return "conflict";
+        }
+        if (isActiveContentConflict(error)) {
+          setConflict({
+            kind: "active_content",
+            taskId,
+            file,
+            parentId,
+            uploadName,
+            message: appError.message,
+            duplicateFiles: error instanceof ApiError ? error.duplicateFiles : [],
+          });
+          setLastError(null);
+          updateUploadTask(taskId, {
+            status: "conflict",
+            message: appError.message,
+            error: appError,
+          });
+          setDialog("conflict");
+          return "conflict";
+        }
+        if (
+          isTrashContentConflict(error) &&
+          error instanceof ApiError &&
+          error.trashDuplicate
+        ) {
+          setConflict({
+            kind: "trash_content",
+            taskId,
+            file,
+            parentId,
+            uploadName,
+            message: appError.message,
+            duplicate: error.trashDuplicate,
+          });
+          setLastError(null);
+          updateUploadTask(taskId, {
+            status: "conflict",
             message: appError.message,
             error: appError,
           });
@@ -608,6 +711,84 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       }
     },
     [folderId, invalidateCurrent, mode, toast, uploadSingleFile],
+  );
+
+  const restoreTrashDuplicate = useCallback(
+    async (currentConflict: TrashContentConflictState) => {
+      setIsUploading(true);
+      updateUploadTask(currentConflict.taskId, { message: "復元しています..." });
+      try {
+        await restoreDriveItem(currentConflict.duplicate.id);
+        updateUploadTask(currentConflict.taskId, {
+          status: "restored",
+          loaded: currentConflict.file.size,
+          percent: 100,
+          message: "ゴミ箱から復元済み",
+          error: undefined,
+          abortController: undefined,
+        });
+        setDialog(null);
+        setConflict(null);
+        setLastError(null);
+        await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
+        await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+        toast.show({
+          tone: "success",
+          message: `「${currentConflict.duplicate.displayName}」をゴミ箱から復元しました`,
+        });
+      } catch (error) {
+        const appError = captureError(error, "ゴミ箱から復元", {
+          itemName: currentConflict.duplicate.displayName,
+        });
+        updateUploadTask(currentConflict.taskId, {
+          status: "conflict",
+          message: appError.message,
+          error: appError,
+        });
+        await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [captureError, queryClient, toast, updateUploadTask],
+  );
+
+  const uploadIgnoringTrashDuplicate = useCallback(
+    async (currentConflict: TrashContentConflictState) => {
+      setDialog(null);
+      setConflict(null);
+      const result = await uploadSingleFile(
+        currentConflict.file,
+        currentConflict.parentId,
+        currentConflict.uploadName,
+        { allowTrashDuplicate: true, taskId: currentConflict.taskId },
+      );
+      if (result === "done") {
+        await invalidateCurrent();
+        toast.show({
+          tone: "success",
+          message: `「${currentConflict.file.name}」をアップロードしました`,
+        });
+      }
+    },
+    [invalidateCurrent, toast, uploadSingleFile],
+  );
+
+  const cancelUploadConflict = useCallback(
+    (currentConflict: ConflictState) => {
+      updateUploadTask(currentConflict.taskId, {
+        status: "canceled",
+        message: "キャンセルしました",
+        abortController: undefined,
+      });
+      setDialog(null);
+      setConflict(null);
+      toast.show({
+        tone: "info",
+        message: `「${currentConflict.file.name}」のアップロードをキャンセルしました`,
+      });
+    },
+    [toast, updateUploadTask],
   );
 
   const ensureDirectoryPath = useCallback(
@@ -1065,7 +1246,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }
           onClearCompleted={() =>
             setUploadTasks((current) =>
-              current.filter((task) => task.status !== "done"),
+              current.filter(
+                (task) => task.status !== "done" && task.status !== "restored",
+              ),
             )
           }
         />
@@ -1180,10 +1363,12 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       </Modal>
       <Modal
         open={dialog === "conflict"}
-        title="名前の重複"
-        onClose={() => setDialog(null)}
+        title={conflictTitle(conflict)}
+        onClose={() => {
+          if (conflict && !isUploading) cancelUploadConflict(conflict);
+        }}
       >
-        {conflict ? (
+        {conflict?.kind === "name" ? (
           <NameForm
             value={nameValue}
             submitLabel="名前を変更して再試行"
@@ -1199,11 +1384,32 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             onSubmit={(name) => {
               setDialog(null);
               void uploadSingleFile(conflict.file, conflict.parentId, name, {
-                allowDuplicateContent: conflict.duplicateFiles.length > 0,
+                taskId: conflict.taskId,
               }).then(async (succeeded) => {
                 if (succeeded === "done") await invalidateCurrent();
               });
             }}
+          />
+        ) : null}
+        {conflict?.kind === "active_content" ? (
+          <ActiveContentConflictDialog
+            conflict={conflict}
+            loading={isUploading}
+            onOpenDuplicateLocation={(parentId) => {
+              setDialog(null);
+              setConflict(null);
+              void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`);
+            }}
+            onCancel={() => cancelUploadConflict(conflict)}
+          />
+        ) : null}
+        {conflict?.kind === "trash_content" ? (
+          <TrashContentConflictDialog
+            conflict={conflict}
+            loading={isUploading}
+            onRestore={() => void restoreTrashDuplicate(conflict)}
+            onUploadAnyway={() => void uploadIgnoringTrashDuplicate(conflict)}
+            onCancel={() => cancelUploadConflict(conflict)}
           />
         ) : null}
       </Modal>
@@ -2116,6 +2322,120 @@ function NameForm({
   );
 }
 
+function ActiveContentConflictDialog({
+  conflict,
+  loading,
+  onOpenDuplicateLocation,
+  onCancel,
+}: {
+  conflict: ActiveContentConflictState;
+  loading: boolean;
+  onOpenDuplicateLocation: (parentId: number | null) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="form-stack">
+      <p className="form-message form-message-info">{conflict.message}</p>
+      {conflict.duplicateFiles.length > 0 ? (
+        <div className="duplicate-files" aria-label="同じ内容の既存ファイル">
+          <ul>
+            {conflict.duplicateFiles.map((file) => (
+              <li key={file.id}>
+                <div>
+                  <strong>{file.name}</strong>
+                  <span>保存先: {file.parent_name ?? "共有ドライブ"}</span>
+                  <span>アップロード者: {file.owner_display_name ?? "不明"}</span>
+                  {file.created_at ? (
+                    <span>作成日時: {formatDate(file.created_at)}</span>
+                  ) : null}
+                  <span>サイズ: {formatSize(file.file_size)}</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loading}
+                  onClick={() => onOpenDuplicateLocation(file.parent_id)}
+                >
+                  既存ファイルを開く
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="modal-actions">
+        <Button type="button" variant="ghost" disabled={loading} onClick={onCancel}>
+          キャンセル
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function TrashContentConflictDialog({
+  conflict,
+  loading,
+  onRestore,
+  onUploadAnyway,
+  onCancel,
+}: {
+  conflict: TrashContentConflictState;
+  loading: boolean;
+  onRestore: () => void;
+  onUploadAnyway: () => void;
+  onCancel: () => void;
+}) {
+  const duplicate = conflict.duplicate;
+  return (
+    <div className="form-stack">
+      <p>
+        アップロードしようとしているファイルと同じ内容のファイルが、組織内のゴミ箱にあります。ゴミ箱内のファイルを復元するか、新しいファイルとしてそのままアップロードできます。
+      </p>
+      <p className="form-message form-message-info">
+        復元したファイルは、削除前の保存先に戻ります。
+      </p>
+      <dl className="duplicate-details" aria-label="ゴミ箱内の既存ファイル">
+        <div>
+          <dt>ファイル名</dt>
+          <dd>{duplicate.displayName}</dd>
+        </div>
+        <div>
+          <dt>元の保存先</dt>
+          <dd>{duplicate.originalParent?.path ?? "元の保存先不明"}</dd>
+        </div>
+        <div>
+          <dt>アップロード者</dt>
+          <dd>{duplicate.uploadedBy?.displayName ?? "不明"}</dd>
+        </div>
+        <div>
+          <dt>削除日時</dt>
+          <dd>{formatDate(duplicate.deletedAt ?? undefined)}</dd>
+        </div>
+        <div>
+          <dt>サイズ</dt>
+          <dd>{formatSize(duplicate.fileSize)}</dd>
+        </div>
+      </dl>
+      <div className="modal-actions">
+        <Button type="button" loading={loading} onClick={onRestore}>
+          復元する
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={loading}
+          onClick={onUploadAnyway}
+        >
+          {loading ? "アップロードしています..." : "そのままアップロード"}
+        </Button>
+        <Button type="button" variant="ghost" disabled={loading} onClick={onCancel}>
+          キャンセル
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function UploadProgressPanel({
   tasks,
   state,
@@ -2138,7 +2458,9 @@ function UploadProgressPanel({
   const total = tasks.reduce((sum, task) => sum + (task.total ?? 0), 0);
   const loaded = tasks.reduce((sum, task) => sum + task.loaded, 0);
   const percent = total ? Math.round((loaded / total) * 100) : undefined;
-  const completedCount = tasks.filter((task) => task.status === "done").length;
+  const completedCount = tasks.filter(
+    (task) => task.status === "done" || task.status === "restored",
+  ).length;
   const hasCompleted = completedCount > 0;
   if (state === "dismissed") return null;
   if (state === "completed") {
@@ -2199,7 +2521,7 @@ function UploadProgressPanel({
                 再試行
               </Button>
             ) : null}
-            {task.status === "done" ? (
+            {task.status === "done" || task.status === "restored" ? (
               <Button type="button" variant="ghost" onClick={() => onRemoveTask(task)}>
                 削除
               </Button>
@@ -2286,14 +2608,16 @@ function displayName(item: DriveItem) {
 
 function formatDate(value?: string) {
   if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
   return new Intl.DateTimeFormat("ja-JP", {
     dateStyle: "short",
     timeStyle: "short",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function formatSize(value?: number | null) {
-  if (!value) return "-";
+  if (value === undefined || value === null) return "-";
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
@@ -2303,18 +2627,40 @@ function uploadStatusText(task: UploadTask) {
   if (task.status === "processing")
     return "アップロード完了。サーバーで処理しています。";
   if (task.status === "done") return "完了";
+  if (task.status === "restored") return "ゴミ箱から復元済み";
+  if (task.status === "conflict") return task.message ?? "確認が必要です";
   if (task.status === "failed") return task.message ?? "失敗";
   if (task.status === "canceled") return "キャンセルしました";
   return "アップロード中";
+}
+
+function conflictTitle(conflict: ConflictState | null) {
+  if (conflict?.kind === "trash_content") return "同じ内容のファイルがゴミ箱にあります";
+  if (conflict?.kind === "active_content") return "同じ内容のファイルがあります";
+  return "名前の重複";
 }
 
 function isNameConflict(error: unknown) {
   return (
     error instanceof ApiError &&
     error.status === 409 &&
-    (error.code === "duplicate_name" ||
-      error.code === "name_conflict" ||
-      error.code === "duplicate_content")
+    (error.code === "duplicate_name" || error.code === "name_conflict")
+  );
+}
+
+function isActiveContentConflict(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    (error.code === "active_content_duplicate" || error.code === "duplicate_content")
+  );
+}
+
+function isTrashContentConflict(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    error.code === "trash_content_duplicate"
   );
 }
 

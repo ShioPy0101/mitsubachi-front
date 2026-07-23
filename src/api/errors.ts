@@ -23,6 +23,25 @@ export type DuplicateContentFile = {
   deleted?: boolean;
 };
 
+export type TrashDuplicate = {
+  id: number;
+  name: string;
+  extension: string | null;
+  displayName: string;
+  fileSize: number | null;
+  contentType?: string | null;
+  deletedAt: string | null;
+  originalParent: {
+    id: number | null;
+    name: string | null;
+    path: string | null;
+  } | null;
+  uploadedBy: {
+    id: number;
+    displayName: string;
+  } | null;
+};
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -33,6 +52,8 @@ export class ApiError extends Error {
   readonly requestId?: string;
   readonly safeDetails?: Record<string, string | number | boolean | null>;
   readonly duplicateFiles: DuplicateContentFile[];
+  readonly trashDuplicate?: TrashDuplicate;
+  readonly allowedActions: string[];
 
   constructor(
     status: number,
@@ -45,6 +66,8 @@ export class ApiError extends Error {
     requestId?: string,
     safeDetails?: Record<string, string | number | boolean | null>,
     duplicateFiles: DuplicateContentFile[] = [],
+    trashDuplicate?: TrashDuplicate,
+    allowedActions: string[] = [],
   ) {
     super(message);
     this.name = "ApiError";
@@ -57,6 +80,8 @@ export class ApiError extends Error {
     this.requestId = requestId;
     this.safeDetails = safeDetails;
     this.duplicateFiles = duplicateFiles;
+    this.trashDuplicate = trashDuplicate;
+    this.allowedActions = allowedActions;
   }
 }
 
@@ -125,6 +150,8 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
         requestId,
         safeDetailsFrom(errorDetails),
         duplicateFilesFrom(errorDetails),
+        trashDuplicateFrom(errorDetails),
+        allowedActionsFrom(errorDetails),
       );
     }
   }
@@ -136,6 +163,58 @@ export function parseApiError(status: number, body: unknown, url?: string): ApiE
     undefined,
     url,
   );
+}
+
+function trashDuplicateFrom(value: Record<string, unknown>) {
+  const duplicate = value.duplicate;
+  if (!isRecord(duplicate) || typeof duplicate.id !== "number") return undefined;
+  const originalParent = isRecord(duplicate.original_parent)
+    ? {
+        id:
+          typeof duplicate.original_parent.id === "number"
+            ? duplicate.original_parent.id
+            : null,
+        name:
+          typeof duplicate.original_parent.name === "string"
+            ? duplicate.original_parent.name
+            : null,
+        path:
+          typeof duplicate.original_parent.path === "string"
+            ? duplicate.original_parent.path
+            : null,
+      }
+    : null;
+  const uploadedBy = isRecord(duplicate.uploaded_by)
+    ? {
+        id: typeof duplicate.uploaded_by.id === "number" ? duplicate.uploaded_by.id : 0,
+        displayName:
+          typeof duplicate.uploaded_by.display_name === "string" &&
+          duplicate.uploaded_by.display_name.trim()
+            ? duplicate.uploaded_by.display_name
+            : "未設定ユーザー",
+      }
+    : null;
+  return {
+    id: duplicate.id,
+    name: typeof duplicate.name === "string" ? duplicate.name : "",
+    extension: typeof duplicate.extension === "string" ? duplicate.extension : null,
+    displayName:
+      typeof duplicate.display_name === "string"
+        ? duplicate.display_name
+        : "名前未設定",
+    fileSize: typeof duplicate.file_size === "number" ? duplicate.file_size : null,
+    contentType:
+      typeof duplicate.content_type === "string" ? duplicate.content_type : null,
+    deletedAt: typeof duplicate.deleted_at === "string" ? duplicate.deleted_at : null,
+    originalParent,
+    uploadedBy,
+  };
+}
+
+function allowedActionsFrom(value: Record<string, unknown>) {
+  const actions = value.allowed_actions;
+  if (!Array.isArray(actions)) return [];
+  return actions.filter((action): action is string => typeof action === "string");
 }
 
 function duplicateFilesFrom(value: Record<string, unknown>) {
