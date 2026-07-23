@@ -663,6 +663,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         operationId?: string;
         allowTrashDuplicate?: boolean;
         replaceTrashedDriveItemId?: number;
+        suppressActiveContentDialog?: boolean;
         taskId?: string;
         sourceTaskId?: string;
       } = {},
@@ -776,7 +777,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             message: appError.message,
             error: appError,
           });
-          setDialog("conflict");
+          if (!options.suppressActiveContentDialog) setDialog("conflict");
           return "conflict";
         }
         if (
@@ -834,7 +835,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
 
       try {
         for (const file of files) {
-          const result = await uploadSingleFile(file, folderId);
+          const result = await uploadSingleFile(file, folderId, undefined, {
+            suppressActiveContentDialog: files.length > 1,
+          });
           if (result === "done") succeeded += 1;
           if (result === "conflict") conflicted += 1;
         }
@@ -1101,7 +1104,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         for (const file of safeFiles) {
           const segments = relativePathSegments(file);
           const fileParentId = await ensureDirectoryPath(segments.slice(0, -1));
-          const result = await uploadSingleFile(file, fileParentId);
+          const result = await uploadSingleFile(file, fileParentId, undefined, {
+            suppressActiveContentDialog: true,
+          });
           if (result === "done") succeeded += 1;
           if (result === "conflict") conflicted += 1;
         }
@@ -3655,11 +3660,25 @@ async function filesFromEntry(
   }
 
   const directory = entry as BrowserFileSystemDirectoryEntry;
-  const children = await new Promise<BrowserFileSystemEntry[]>((resolve, reject) => {
-    directory.createReader().readEntries(resolve, reject);
-  });
+  const children = await readAllDirectoryEntries(directory);
   const nestedFiles = await Promise.all(
     children.map((child) => filesFromEntry(child, path)),
   );
   return nestedFiles.flat();
+}
+
+async function readAllDirectoryEntries(directory: BrowserFileSystemDirectoryEntry) {
+  const reader = directory.createReader();
+  const entries: BrowserFileSystemEntry[] = [];
+
+  while (true) {
+    // Chromium系ではreadEntries()が一度に最大100件程度しか返さないため、空になるまで読む。
+    const chunk = await new Promise<BrowserFileSystemEntry[]>((resolve, reject) => {
+      reader.readEntries(resolve, reject);
+    });
+    if (chunk.length === 0) break;
+    entries.push(...chunk);
+  }
+
+  return entries;
 }

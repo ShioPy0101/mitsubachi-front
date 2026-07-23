@@ -213,6 +213,36 @@ describe("DrivePage drag and drop upload", () => {
     expect(mocks.uploadFile.mock.calls[1]?.[0].file).toBe(second);
   });
 
+  it("uploads every file in a dropped folder when directory entries are returned in chunks", async () => {
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const files = Array.from(
+      { length: 101 },
+      (_, index) =>
+        new File([`content-${index}`], `clip-${index}.txt`, { type: "text/plain" }),
+    );
+    // このテストでは進捗表示を検証しないため、再描画を増やさずAPIの完了だけを明示する。
+    mocks.uploadFile.mockImplementation(() => Promise.resolve({ id: 1 }));
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithDirectory("素材", files),
+    });
+
+    await waitFor(() => {
+      expect(mocks.uploadFile).toHaveBeenCalledTimes(101);
+    });
+    expect(mocks.uploadFile.mock.calls[0]?.[0]).toMatchObject({
+      file: files[0],
+      name: "clip-0",
+      parentId: 100,
+    });
+    expect(mocks.uploadFile.mock.calls[100]?.[0]).toMatchObject({
+      file: files[100],
+      name: "clip-100",
+      parentId: 100,
+    });
+  });
+
   it("does not call the upload API for non-file drops", async () => {
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
@@ -404,6 +434,9 @@ describe("DrivePage drag and drop upload", () => {
         name: "同じ内容でもすべてアップロード（2件）",
       }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "同じ内容のファイルがあります" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", {
         name: "同じ内容でもすべてアップロード（2件）",
@@ -2091,6 +2124,47 @@ function dataTransferWithFiles(files: File[]) {
       kind: "file",
       getAsFile: () => file,
     })),
+  };
+}
+
+function dataTransferWithDirectory(name: string, files: File[]) {
+  type MockFileEntry = {
+    isFile: true;
+    isDirectory: false;
+    name: string;
+    file: (success: (file: File) => void) => void;
+  };
+
+  const entries: MockFileEntry[] = files.map((file) => ({
+    isFile: true,
+    isDirectory: false,
+    name: file.name,
+    file: (success: (file: File) => void) => success(file),
+  }));
+  const chunks = [entries.slice(0, 100), entries.slice(100), []];
+  let chunkIndex = 0;
+  const directory = {
+    isFile: false,
+    isDirectory: true,
+    name,
+    createReader: () => ({
+      readEntries: (success: (entries: MockFileEntry[]) => void) => {
+        success(chunks[chunkIndex] ?? []);
+        chunkIndex += 1;
+      },
+    }),
+  };
+
+  return {
+    types: ["Files"],
+    files: [],
+    items: [
+      {
+        kind: "file",
+        getAsFile: () => null,
+        webkitGetAsEntry: () => directory,
+      },
+    ],
   };
 }
 
