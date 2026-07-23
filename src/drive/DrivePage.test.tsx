@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   uploadFile: vi.fn<(input: UploadFileInput) => Promise<unknown>>(),
   searchDriveItems: vi.fn(),
   bulkMove: vi.fn(),
+  bulkPurge: vi.fn(),
   bulkRestore: vi.fn(),
   bulkRestorePreview: vi.fn(),
   moveDriveItem: vi.fn(),
@@ -55,6 +56,7 @@ vi.mock("./api", () => ({
   bulkDelete: vi.fn(),
   bulkDownload: vi.fn(),
   bulkMove: mocks.bulkMove,
+  bulkPurge: mocks.bulkPurge,
   bulkRestore: mocks.bulkRestore,
   bulkRestorePreview: mocks.bulkRestorePreview,
   createDirectory: mocks.createDirectory,
@@ -377,7 +379,7 @@ describe("DrivePage drag and drop upload", () => {
     ).toBeInTheDocument();
     const dialog = within(openDialog("同じ内容のファイルがゴミ箱にあります"));
     expect(dialog.getByText("復元する")).toBeInTheDocument();
-    expect(dialog.getByText("そのままアップロード")).toBeInTheDocument();
+    expect(dialog.getByText("ゴミ箱で確認")).toBeInTheDocument();
     expect(dialog.getByText("キャンセル")).toBeInTheDocument();
     expect(dialog.getByText("report.txt")).toBeInTheDocument();
     expect(dialog.getByText("/Reports")).toBeInTheDocument();
@@ -398,15 +400,9 @@ describe("DrivePage drag and drop upload", () => {
     ).toBeInTheDocument();
   });
 
-  it("retries trash duplicate content upload with allow_trash_duplicate", async () => {
+  it("opens trash from trash duplicate content conflict", async () => {
     const file = new File(["same"], "report.txt", { type: "text/plain" });
     mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
-    mocks.uploadFile.mockResolvedValueOnce({
-      id: 5,
-      parent_id: 42,
-      name: "report",
-      item_type: "file",
-    });
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
 
@@ -417,22 +413,10 @@ describe("DrivePage drag and drop upload", () => {
       name: "同じ内容のファイルがゴミ箱にあります",
     });
     const dialog = within(openDialog("同じ内容のファイルがゴミ箱にあります"));
-    await waitFor(() =>
-      expect(dialog.getByText("そのままアップロード")).not.toBeDisabled(),
-    );
-    fireEvent.click(dialog.getByText("そのままアップロード"));
+    fireEvent.click(dialog.getByText("ゴミ箱で確認"));
 
-    await waitFor(() => {
-      expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
-        file,
-        name: "report",
-        parentId: 42,
-        allowTrashDuplicate: true,
-      });
-    });
-    expect(
-      screen.getByText("「report.txt」をアップロードしました"),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "ゴミ箱" })).toBeInTheDocument();
+    expect(mocks.uploadFile).toHaveBeenCalledTimes(1);
   });
 
   it("cancels only the trash duplicate upload item", async () => {
@@ -512,7 +496,7 @@ describe("DrivePage drag and drop upload", () => {
       await screen.findByRole("heading", { name: "元の保存先に復元できません" }),
     ).toBeInTheDocument();
     const dialog = within(openDialog("元の保存先に復元できません"));
-    expect(dialog.getByText("新規にアップロードする")).toBeInTheDocument();
+    expect(dialog.getByText("ゴミ箱で確認")).toBeInTheDocument();
     expect(
       dialog.getByText("元のファイルを完全削除して、新規にアップロードする"),
     ).toBeInTheDocument();
@@ -523,18 +507,12 @@ describe("DrivePage drag and drop upload", () => {
     expect(dialog.getByText("削除済み、または存在しません")).toBeInTheDocument();
   });
 
-  it("uploads a new file after invalid_parent without replacing the trash item", async () => {
+  it("opens trash after invalid_parent without re-uploading", async () => {
     const file = new File(["same"], "report.txt", { type: "text/plain" });
     mocks.uploadFile.mockRejectedValueOnce(trashDuplicateError());
     mocks.restoreDriveItem.mockRejectedValueOnce(
       new ApiError(404, "復元先フォルダが見つかりません", [], "invalid_parent"),
     );
-    mocks.uploadFile.mockResolvedValueOnce({
-      id: 10,
-      parent_id: 42,
-      name: "report",
-      item_type: "file",
-    });
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
 
@@ -546,19 +524,10 @@ describe("DrivePage drag and drop upload", () => {
     });
     fireEvent.click(screen.getByText("復元する"));
     await screen.findByRole("heading", { name: "元の保存先に復元できません" });
-    fireEvent.click(screen.getByText("新規にアップロードする"));
+    fireEvent.click(screen.getByText("ゴミ箱で確認"));
 
-    await waitFor(() => {
-      expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
-        file,
-        name: "report",
-        parentId: 42,
-        allowTrashDuplicate: true,
-      });
-    });
-    expect(
-      mocks.uploadFile.mock.calls[1]?.[0].replaceTrashedDriveItemId,
-    ).toBeUndefined();
+    expect(await screen.findByRole("heading", { name: "ゴミ箱" })).toBeInTheDocument();
+    expect(mocks.uploadFile).toHaveBeenCalledTimes(1);
   });
 
   it("confirms purge before uploading with replace_trashed_drive_item_id", async () => {
@@ -677,7 +646,7 @@ describe("DrivePage drag and drop upload", () => {
         beforeName: "conflict.txt",
         afterName: "conflict.txt",
         conflictType: "name_conflict",
-        resolution: "purge_existing",
+        resolution: "trash_existing",
       }),
     );
     mocks.restorePreview.mockResolvedValueOnce(
@@ -709,7 +678,7 @@ describe("DrivePage drag and drop upload", () => {
         beforeName: "conflict.txt",
         afterName: "conflict.txt",
         conflictType: "name_conflict",
-        resolution: "purge_existing",
+        resolution: "trash_existing",
       }),
     );
     renderDrivePage("/trash");
@@ -722,7 +691,7 @@ describe("DrivePage drag and drop upload", () => {
         screen.getAllByText((_, node) =>
           Boolean(
             node?.textContent?.includes("existing.txt") &&
-            node.textContent.includes("完全削除します"),
+            node.textContent.includes("ゴミ箱へ移動します"),
           ),
         ).length,
       ).toBeGreaterThan(0);
@@ -731,7 +700,7 @@ describe("DrivePage drag and drop upload", () => {
       screen.getAllByText((_, node) =>
         Boolean(
           node?.textContent?.includes("existing.txt") &&
-          node.textContent.includes("完全削除後は元に戻せません"),
+          node.textContent.includes("既存の項目はゴミ箱へ移動されます"),
         ),
       ).length,
     ).toBeGreaterThan(0);
@@ -848,13 +817,13 @@ describe("DrivePage drag and drop upload", () => {
               itemId: 36,
               beforeName: "a.txt",
               afterName: "a.txt",
-              resolution: "purge_existing",
+              resolution: "trash_existing",
             }),
             restorePreviewItem({
               itemId: 37,
               beforeName: "b.txt",
               afterName: "b.txt",
-              resolution: "purge_existing",
+              resolution: "trash_existing",
             }),
           ],
         }),
@@ -872,7 +841,7 @@ describe("DrivePage drag and drop upload", () => {
               itemId: 37,
               beforeName: "b.txt",
               afterName: "b.txt",
-              resolution: "purge_existing",
+              resolution: "trash_existing",
             }),
           ],
         }),
@@ -883,7 +852,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getByLabelText("bを選択"));
     fireEvent.click(screen.getByRole("button", { name: "復元" }));
     await screen.findByRole("heading", { name: "復元内容の確認（2件）" });
-    fireEvent.click(screen.getByText("すべて既存項目を完全削除して復元"));
+    fireEvent.click(screen.getByText("すべて現在の同名項目をゴミ箱へ移して復元"));
     const selects = await screen.findAllByLabelText("解決方法");
     fireEvent.change(selects[0], { target: { value: "rename" } });
 
@@ -1735,8 +1704,8 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "完全削除" }).at(-1)!);
 
     await waitFor(() => {
-      expect(mocks.purgeDriveItem).toHaveBeenCalledWith(20);
-      expect(mocks.purgeDriveItem).toHaveBeenCalledWith(21);
+      expect(mocks.bulkPurge).toHaveBeenCalledWith([20, 21]);
+      expect(mocks.purgeDriveItem).not.toHaveBeenCalled();
     });
   });
 
@@ -2007,7 +1976,12 @@ function restorePreviewResponse(
     conflictType?:
       "none" | "name_conflict" | "missing_parent" | "name_conflict_and_missing_parent";
     resolution?:
-      "rename" | "purge_existing" | "select_destination" | "restore_to_root" | "skip";
+      | "restore"
+      | "rename"
+      | "trash_existing"
+      | "select_destination"
+      | "restore_to_root"
+      | "skip";
     beforeParentPath?: string | null;
     afterParentPath?: string | null;
     items?: ReturnType<typeof restorePreviewItem>[];
@@ -2048,7 +2022,12 @@ function restorePreviewItem(
     conflictType?:
       "none" | "name_conflict" | "missing_parent" | "name_conflict_and_missing_parent";
     resolution?:
-      "rename" | "purge_existing" | "select_destination" | "restore_to_root" | "skip";
+      | "restore"
+      | "rename"
+      | "trash_existing"
+      | "select_destination"
+      | "restore_to_root"
+      | "skip";
     beforeParentPath?: string | null;
     afterParentPath?: string | null;
   } = {},
@@ -2086,23 +2065,24 @@ function restorePreviewItem(
       parentPath: input.afterParentPath ?? "/共有ドライブ/Reports",
       restorable: resolution !== "skip",
       resolution,
-      existingItemWillBePurged: resolution === "purge_existing",
+      existingItemWillBePurged: false,
+      existingItemWillBeTrashed: resolution === "trash_existing",
       existingItem:
-        resolution === "purge_existing"
+        resolution === "trash_existing"
           ? {
               id: 500,
               itemType: "file" as const,
               name: "existing.txt",
               parentPath: "/共有ドライブ/Reports",
-              purgeNote: "完全削除後は元に戻せません",
+              purgeNote: "既存の項目はゴミ箱へ移動されます",
             }
           : null,
       state: resolution === "skip" ? "skipped" : "active",
       impact:
         resolution === "skip"
           ? "この項目は復元されません"
-          : resolution === "purge_existing"
-            ? "既存の項目を完全削除します"
+          : resolution === "trash_existing"
+            ? "既存の項目をゴミ箱へ移動します"
             : "自動リネームして復元します",
     },
   };

@@ -68,7 +68,12 @@ export type UploadProgress = {
 };
 
 export type RestoreConflictResolution =
-  "rename" | "purge_existing" | "select_destination" | "restore_to_root" | "skip";
+  | "restore"
+  | "rename"
+  | "trash_existing"
+  | "select_destination"
+  | "restore_to_root"
+  | "skip";
 
 export type RestorePreviewRequestItem = {
   itemId: number;
@@ -111,6 +116,7 @@ export type RestorePreviewItem = {
     restorable: boolean;
     resolution: RestoreConflictResolution;
     existingItemWillBePurged: boolean;
+    existingItemWillBeTrashed?: boolean;
     existingItem?: {
       id: number;
       itemType: "file" | "directory";
@@ -132,6 +138,7 @@ export type RestorePreviewResponse = {
     skippedCount: number;
     renameCount: number;
     purgeExistingCount: number;
+    trashExistingCount: number;
   };
 };
 
@@ -260,6 +267,13 @@ export function deleteDriveItem(id: number) {
 export function purgeDriveItem(id: number) {
   return apiRequest<{ message?: string }>(`/api/v1/drive_items/${id}/purge`, {
     method: "DELETE",
+  });
+}
+
+export function bulkPurge(ids: number[]) {
+  return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_purge", {
+    method: "DELETE",
+    body: { drive_item_ids: ids },
   });
 }
 
@@ -408,6 +422,9 @@ export function normalizeRestorePreview(value: unknown): RestorePreviewResponse 
       purgeExistingCount: numberFrom(
         summary.purge_existing_count ?? summary.purgeExistingCount,
       ),
+      trashExistingCount: numberFrom(
+        summary.trash_existing_count ?? summary.trashExistingCount,
+      ),
     },
   };
 }
@@ -471,6 +488,9 @@ function normalizeRestoreItem(value: unknown): RestorePreviewItem {
       existingItemWillBePurged: Boolean(
         after.existing_item_will_be_purged ?? after.existingItemWillBePurged,
       ),
+      existingItemWillBeTrashed: Boolean(
+        after.existing_item_will_be_trashed ?? after.existingItemWillBeTrashed,
+      ),
       existingItem:
         (after.existing_item ?? after.existingItem) &&
         Object.keys(existingItem).length > 0
@@ -509,7 +529,8 @@ function restoreConflictTypeFrom(value: unknown): RestorePreviewItem["conflictTy
 
 function restoreResolutionFrom(value: unknown): RestoreConflictResolution {
   if (
-    value === "purge_existing" ||
+    value === "restore" ||
+    value === "trash_existing" ||
     value === "select_destination" ||
     value === "restore_to_root" ||
     value === "skip"
