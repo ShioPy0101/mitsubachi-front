@@ -448,7 +448,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         setLastError(null);
         toast.show({ tone: "success", message: "復元しました。" });
       } catch (error) {
-        if (error instanceof ApiError && error.code === "restore_preview_stale") {
+        if (
+          error instanceof ApiError &&
+          (error.code === "restore_state_changed" ||
+            error.code === "restore_preview_stale")
+        ) {
           const latestPreview = normalizeRestorePreview(error.rawDetails);
           setRestorePreviewState(latestPreview);
           setDialog("restorePreview");
