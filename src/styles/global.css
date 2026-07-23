@@ -987,7 +987,9 @@ th:last-child,
 
 .status-name_conflict,
 .status-missing_parent,
-.status-name_conflict_and_missing_parent {
+.status-name_conflict_and_missing_parent,
+.status-active_content_duplicate,
+.status-active_content_duplicate_and_missing_parent {
   background: #fff7d6;
 }
 

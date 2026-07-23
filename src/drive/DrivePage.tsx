@@ -3113,7 +3113,10 @@ function restorePreviewPayload(
 function restoreConflictLabel(item: RestorePreviewItem) {
   if (item.conflictType === "name_conflict_and_missing_parent")
     return "同名競合 / 親フォルダなし";
+  if (item.conflictType === "active_content_duplicate_and_missing_parent")
+    return "同一内容 / 親フォルダなし";
   if (item.conflictType === "name_conflict") return "同名競合";
+  if (item.conflictType === "active_content_duplicate") return "同一内容";
   if (item.conflictType === "missing_parent") return "親フォルダなし";
   return "競合なし";
 }
