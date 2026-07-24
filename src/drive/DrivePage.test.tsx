@@ -312,15 +312,18 @@ describe("DrivePage drag and drop upload", () => {
       (_, index) =>
         new File([`content-${index}`], `large-${index}.txt`, { type: "text/plain" }),
     );
-    mocks.uploadFile.mockImplementation(() => Promise.resolve({ id: 1 }));
+    const transfer = deferredDirectoryDataTransfer("素材", files);
     fireEvent.drop(driveDropTarget(container), {
-      dataTransfer: dataTransferWithDirectory("素材", files),
+      dataTransfer: transfer.dataTransfer,
     });
+    transfer.resolveNextChunk();
 
-    await waitFor(() => {
-      expect(mocks.uploadFile).toHaveBeenCalledTimes(1001);
-    });
-  }, 15000);
+    expect(await screen.findByText("1001件検出済み")).toBeInTheDocument();
+    expect(mocks.uploadFile).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("アップロードできるファイル数の上限を超えています。"),
+    ).not.toBeInTheDocument();
+  });
 
   it("refreshes the Drive list and shows completion toast once per folder batch", async () => {
     const { container } = renderDrivePage("/drive/folder/42");

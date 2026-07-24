@@ -1304,12 +1304,25 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
 
     const directoryDrop = hasDirectoryEntry(event.dataTransfer);
     const batchId = directoryDrop ? startUploadBatch("directory", false, 0) : undefined;
+    let detectedDuringScan = 0;
+    let scanFlushTimer: number | null = null;
+    const flushDetectedCount = () => {
+      if (scanFlushTimer !== null) {
+        window.clearTimeout(scanFlushTimer);
+        scanFlushTimer = null;
+      }
+      updateUploadBatch({ detectedCount: detectedDuringScan });
+    };
+    const scheduleDetectedCount = (count: number) => {
+      detectedDuringScan = count;
+      if (scanFlushTimer !== null) return;
+      scanFlushTimer = window.setTimeout(flushDetectedCount, UPLOAD_PROGRESS_FLUSH_MS);
+    };
 
     void filesFromDataTransfer(event.dataTransfer, {
-      onFileDetected: directoryDrop
-        ? (count) => updateUploadBatch({ detectedCount: count })
-        : undefined,
+      onFileDetected: directoryDrop ? scheduleDetectedCount : undefined,
     }).then((files) => {
+      if (directoryDrop) flushDetectedCount();
       if (files.length === 0) {
         if (batchId) setUploadBatch(null);
         toast.show({
