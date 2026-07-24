@@ -85,9 +85,12 @@ const DRIVE_OPEN_DISTANCE_THRESHOLD = 5;
 const FILE_LIST_INITIAL_VIEWPORT_HEIGHT = 640;
 const MENU_VIEWPORT_PADDING = 8;
 const MENU_OFFSET = 6;
+const UPLOAD_PARALLEL_LIMIT = 4;
+const UPLOAD_PROGRESS_FLUSH_MS = 120;
 
 type UploadTask = {
   id: string;
+  batchId?: string;
   fileName: string;
   file: File;
   parentId: number | null;
@@ -108,6 +111,14 @@ type UploadTask = {
   error?: AppError;
   abortController?: AbortController;
   sourceTaskId?: string;
+};
+
+type UploadBatch = {
+  id: string;
+  kind: "files" | "directory";
+  scanCompleted: boolean;
+  detectedCount: number;
+  totalCount: number;
 };
 
 type UploadPanelState = "expanded" | "completed" | "dismissed";
@@ -166,6 +177,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
   const uploadInProgressRef = useRef(false);
+  const uploadProgressPatchesRef = useRef(new Map<string, Partial<UploadTask>>());
+  const uploadProgressFlushTimerRef = useRef<number | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -191,6 +204,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     searchParams.get("scope") === "organization" ? "organization" : "current";
   const searchTerm = searchParams.get("q")?.trim() ?? "";
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  const [uploadBatch, setUploadBatch] = useState<UploadBatch | null>(null);
   const [uploadPanelPreference, setUploadPanelPreference] =
     useState<UploadPanelPreference>("auto");
   const [isUploading, setIsUploading] = useState(false);
@@ -289,6 +303,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const uploadPanelState = useMemo<UploadPanelState>(() => {
     if (uploadPanelPreference === "dismissed") return "dismissed";
     if (uploadPanelPreference === "expanded") return "expanded";
+    if (uploadBatch) {
+      return isUploadBatchCompleted(uploadBatch, uploadTasks)
+        ? "completed"
+        : "expanded";
+    }
     const visibleTasks = uploadTasks.filter((task) => task.status !== "retried");
     if (
       visibleTasks.length > 0 &&
@@ -297,7 +316,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       return "completed";
     }
     return "expanded";
-  }, [uploadPanelPreference, uploadTasks]);
+  }, [uploadBatch, uploadPanelPreference, uploadTasks]);
   const unresolvedDuplicateContentTasks = useMemo(
     () =>
       uploadTasks.filter(
@@ -653,6 +672,66 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     );
   }, []);
 
+  const flushUploadProgress = useCallback(() => {
+    if (uploadProgressFlushTimerRef.current !== null) {
+      window.clearTimeout(uploadProgressFlushTimerRef.current);
+      uploadProgressFlushTimerRef.current = null;
+    }
+    const patches = uploadProgressPatchesRef.current;
+    if (patches.size === 0) return;
+    uploadProgressPatchesRef.current = new Map();
+    setUploadTasks((current) =>
+      current.map((task) => {
+        const patch = patches.get(task.id);
+        return patch ? { ...task, ...patch } : task;
+      }),
+    );
+  }, []);
+
+  const scheduleUploadProgress = useCallback(
+    (id: string, patch: Partial<UploadTask>) => {
+      uploadProgressPatchesRef.current.set(id, {
+        ...uploadProgressPatchesRef.current.get(id),
+        ...patch,
+      });
+      if (uploadProgressFlushTimerRef.current !== null) return;
+      uploadProgressFlushTimerRef.current = window.setTimeout(
+        flushUploadProgress,
+        UPLOAD_PROGRESS_FLUSH_MS,
+      );
+    },
+    [flushUploadProgress],
+  );
+
+  useEffect(
+    () => () => {
+      if (uploadProgressFlushTimerRef.current !== null) {
+        window.clearTimeout(uploadProgressFlushTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const startUploadBatch = useCallback(
+    (kind: UploadBatch["kind"], scanCompleted: boolean, detectedCount = 0) => {
+      const batchId = createUploadOperationId(`upload-${kind}`);
+      setUploadPanelPreference("auto");
+      setUploadBatch({
+        id: batchId,
+        kind,
+        scanCompleted,
+        detectedCount,
+        totalCount: scanCompleted ? detectedCount : 0,
+      });
+      return batchId;
+    },
+    [],
+  );
+
+  const updateUploadBatch = useCallback((patch: Partial<UploadBatch>) => {
+    setUploadBatch((current) => (current ? { ...current, ...patch } : current));
+  }, []);
+
   const uploadSingleFile = useCallback(
     async (
       file: File,
@@ -668,6 +747,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         suppressActiveContentDialog?: boolean;
         taskId?: string;
         sourceTaskId?: string;
+        batchId?: string;
       } = {},
     ) => {
       const taskId = options.taskId ?? `${Date.now()}-${Math.random()}`;
@@ -680,6 +760,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             task.id === options.taskId
               ? {
                   ...task,
+                  batchId: options.batchId ?? task.batchId,
                   file,
                   parentId,
                   uploadName,
@@ -698,6 +779,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           ...current,
           {
             id: taskId,
+            batchId: options.batchId,
             fileName: file.name,
             file,
             parentId,
@@ -724,12 +806,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           allowTrashDuplicate: options.allowTrashDuplicate,
           replaceTrashedDriveItemId: options.replaceTrashedDriveItemId,
           signal: abortController.signal,
-          onProgress: (progress) => updateUploadTask(taskId, progress),
+          onProgress: (progress) => scheduleUploadProgress(taskId, progress),
         });
+        flushUploadProgress();
         updateUploadTask(taskId, { status: "processing", percent: 100 });
         updateUploadTask(taskId, { status: "done", message: "完了" });
         return "done";
       } catch (error) {
+        flushUploadProgress();
         if (error instanceof DOMException && error.name === "AbortError") {
           updateUploadTask(taskId, {
             status: "canceled",
@@ -815,11 +899,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         return "failed";
       }
     },
-    [items, pageLabel, updateUploadTask],
+    [flushUploadProgress, items, pageLabel, scheduleUploadProgress, updateUploadTask],
   );
 
   const uploadFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], existingBatchId?: string) => {
       if (mode !== "drive" || files.length === 0) return;
 
       if (uploadInProgressRef.current) {
@@ -830,19 +914,28 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         return;
       }
 
+      const batchId = existingBatchId ?? startUploadBatch("files", true, files.length);
+      if (existingBatchId) {
+        updateUploadBatch({
+          scanCompleted: true,
+          detectedCount: files.length,
+          totalCount: files.length,
+        });
+      }
       uploadInProgressRef.current = true;
       setIsUploading(true);
       let succeeded = 0;
       let conflicted = 0;
 
       try {
-        for (const file of files) {
+        await runWithConcurrency(files, UPLOAD_PARALLEL_LIMIT, async (file) => {
           const result = await uploadSingleFile(file, folderId, undefined, {
+            batchId,
             suppressActiveContentDialog: files.length > 1,
           });
           if (result === "done") succeeded += 1;
           if (result === "conflict") conflicted += 1;
-        }
+        });
 
         if (succeeded > 0) await invalidateCurrent();
 
@@ -867,7 +960,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         setIsUploading(false);
       }
     },
-    [folderId, invalidateCurrent, mode, toast, uploadSingleFile],
+    [
+      folderId,
+      invalidateCurrent,
+      mode,
+      startUploadBatch,
+      toast,
+      updateUploadBatch,
+      uploadSingleFile,
+    ],
   );
 
   const restoreTrashDuplicate = useCallback(
@@ -1081,7 +1182,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   );
 
   const uploadDirectory = useCallback(
-    async (files: File[]) => {
+    async (files: File[], existingBatchId?: string) => {
       const safeFiles = files.filter((file) => safeRelativePath(file));
       if (safeFiles.length !== files.length) {
         toast.show({
@@ -1098,20 +1199,37 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         return;
       }
 
+      const batchId =
+        existingBatchId ?? startUploadBatch("directory", true, safeFiles.length);
+      updateUploadBatch({
+        scanCompleted: true,
+        detectedCount: safeFiles.length,
+        totalCount: safeFiles.length,
+      });
       uploadInProgressRef.current = true;
       setIsUploading(true);
       let succeeded = 0;
       let conflicted = 0;
+      const directoryParentCache = new Map<string, Promise<number | null>>();
+      const resolveDirectoryParent = (segments: string[]) => {
+        const key = segments.join("/");
+        const cached = directoryParentCache.get(key);
+        if (cached) return cached;
+        const promise = ensureDirectoryPath(segments);
+        directoryParentCache.set(key, promise);
+        return promise;
+      };
       try {
-        for (const file of safeFiles) {
+        await runWithConcurrency(safeFiles, UPLOAD_PARALLEL_LIMIT, async (file) => {
           const segments = relativePathSegments(file);
-          const fileParentId = await ensureDirectoryPath(segments.slice(0, -1));
+          const fileParentId = await resolveDirectoryParent(segments.slice(0, -1));
           const result = await uploadSingleFile(file, fileParentId, undefined, {
+            batchId,
             suppressActiveContentDialog: true,
           });
           if (result === "done") succeeded += 1;
           if (result === "conflict") conflicted += 1;
-        }
+        });
         if (succeeded > 0) await invalidateCurrent();
         toast.show({
           tone:
@@ -1130,7 +1248,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         setIsUploading(false);
       }
     },
-    [ensureDirectoryPath, invalidateCurrent, toast, uploadSingleFile],
+    [
+      ensureDirectoryPath,
+      invalidateCurrent,
+      startUploadBatch,
+      toast,
+      updateUploadBatch,
+      uploadSingleFile,
+    ],
   );
 
   const handleUpload = (files: FileList | null) => {
@@ -1169,8 +1294,24 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     dragDepthRef.current = 0;
     setIsDraggingFiles(false);
 
-    void filesFromDataTransfer(event.dataTransfer).then((files) => {
+    if (uploadInProgressRef.current) {
+      toast.show({
+        tone: "info",
+        message: "アップロード中です。完了してから再度実行してください。",
+      });
+      return;
+    }
+
+    const directoryDrop = hasDirectoryEntry(event.dataTransfer);
+    const batchId = directoryDrop ? startUploadBatch("directory", false, 0) : undefined;
+
+    void filesFromDataTransfer(event.dataTransfer, {
+      onFileDetected: directoryDrop
+        ? (count) => updateUploadBatch({ detectedCount: count })
+        : undefined,
+    }).then((files) => {
       if (files.length === 0) {
+        if (batchId) setUploadBatch(null);
         toast.show({
           tone: "info",
           message: "アップロードできるファイルがありません。",
@@ -1183,9 +1324,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           (file) => (file as File & { webkitRelativePath?: string }).webkitRelativePath,
         )
       ) {
-        void uploadDirectory(files);
+        void uploadDirectory(files, batchId);
       } else {
-        void uploadFiles(files);
+        void uploadFiles(files, batchId);
       }
     });
   };
@@ -1498,9 +1639,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           {...{ webkitdirectory: "" }}
         />
       </div>
-      {uploadTasks.length > 0 ? (
+      {uploadTasks.length > 0 || uploadBatch ? (
         <UploadProgressPanel
           tasks={uploadTasks}
+          batch={uploadBatch}
           state={uploadPanelState}
           duplicateContentTasks={unresolvedDuplicateContentTasks}
           duplicateContentSummary={bulkDuplicateSummary}
@@ -1516,6 +1658,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           onShowDetails={() => setUploadPanelPreference("expanded")}
           onDismiss={() => {
             setUploadTasks([]);
+            setUploadBatch(null);
             setUploadPanelPreference("dismissed");
           }}
           onRemoveTask={(task) =>
@@ -3188,6 +3331,7 @@ function DuplicateContentBulkConfirm({
 
 function UploadProgressPanel({
   tasks,
+  batch,
   state,
   duplicateContentTasks,
   duplicateContentSummary,
@@ -3202,6 +3346,7 @@ function UploadProgressPanel({
   onClearCompleted,
 }: {
   tasks: UploadTask[];
+  batch: UploadBatch | null;
   state: UploadPanelState;
   duplicateContentTasks: UploadTask[];
   duplicateContentSummary: { completed: number; failed: number } | null;
@@ -3222,6 +3367,14 @@ function UploadProgressPanel({
   const completedCount = visibleTasks.filter(
     (task) => task.status === "done" || task.status === "restored",
   ).length;
+  const failedCount = visibleTasks.filter((task) => task.status === "failed").length;
+  const cancelledCount = visibleTasks.filter(
+    (task) => task.status === "canceled",
+  ).length;
+  const finishedCount = completedCount + failedCount + cancelledCount;
+  const displayTotal = batch?.scanCompleted
+    ? batch.totalCount
+    : (batch?.detectedCount ?? visibleTasks.length);
   const hasCompleted = completedCount > 0;
   const duplicateContentCount = duplicateContentTasks.length;
   if (state === "dismissed") return null;
@@ -3232,8 +3385,11 @@ function UploadProgressPanel({
         aria-label="アップロード進捗"
       >
         <div>
-          <h2>{completedCount}件のアップロードが完了しました</h2>
-          <span>すべてのファイルをアップロードしました。</span>
+          <h2>{finishedCount}件のアップロード処理が完了しました</h2>
+          <span>
+            成功: {completedCount}件{failedCount > 0 ? ` / 失敗: ${failedCount}件` : ""}
+            {cancelledCount > 0 ? ` / キャンセル: ${cancelledCount}件` : ""}
+          </span>
         </div>
         <div className="upload-progress-actions">
           <Button type="button" variant="secondary" onClick={onShowDetails}>
@@ -3250,9 +3406,15 @@ function UploadProgressPanel({
     <section className="upload-progress" aria-label="アップロード進捗">
       <div className="upload-progress-header">
         <div>
-          <h2>アップロード状況</h2>
+          <h2>
+            {batch && !batch.scanCompleted
+              ? "ファイルを確認しています"
+              : "アップロード状況"}
+          </h2>
           <span>
-            {completedCount} / {visibleTasks.length} 件完了
+            {batch && !batch.scanCompleted
+              ? `${batch.detectedCount}件検出済み`
+              : `${finishedCount} / ${displayTotal} 件完了`}
           </span>
         </div>
         {hasCompleted ? (
@@ -3426,6 +3588,35 @@ function uploadStatusText(task: UploadTask) {
   return "アップロード中";
 }
 
+function isUploadBatchCompleted(batch: UploadBatch, tasks: UploadTask[]) {
+  if (!batch.scanCompleted) return false;
+  const batchTasks = tasks.filter(
+    (task) => task.batchId === batch.id && task.status !== "retried",
+  );
+  const succeededCount = batchTasks.filter(
+    (task) => task.status === "done" || task.status === "restored",
+  ).length;
+  const failedCount = batchTasks.filter((task) => task.status === "failed").length;
+  const cancelledCount = batchTasks.filter((task) => task.status === "canceled").length;
+  return succeededCount + failedCount + cancelledCount === batch.totalCount;
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+) {
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 function restorePreviewPayload(
   preview: RestorePreviewResponse,
 ): RestorePreviewRequestItem[] {
@@ -3580,6 +3771,16 @@ function hasFiles(dataTransfer: DataTransfer) {
   return Array.from(dataTransfer.types).includes("Files");
 }
 
+function hasDirectoryEntry(dataTransfer: DataTransfer) {
+  return Array.from(dataTransfer.items).some((item) => {
+    const entryItem = item as DataTransferItem & {
+      webkitGetAsEntry?: () => unknown;
+    };
+    const entry = entryItem.webkitGetAsEntry?.();
+    return isBrowserFileSystemEntry(entry) && entry.isDirectory;
+  });
+}
+
 function dragMovePayload(dataTransfer: DataTransfer) {
   const raw = dataTransfer.getData(DRIVE_ITEM_MIME);
   if (!raw) return null;
@@ -3641,7 +3842,10 @@ function moveDestinationDisabledReason(
   return null;
 }
 
-async function filesFromDataTransfer(dataTransfer: DataTransfer) {
+async function filesFromDataTransfer(
+  dataTransfer: DataTransfer,
+  options: { onFileDetected?: (count: number) => void } = {},
+) {
   const entries: BrowserFileSystemEntry[] = [];
   for (const item of Array.from(dataTransfer.items)) {
     const entryItem = item as DataTransferItem & {
@@ -3652,7 +3856,15 @@ async function filesFromDataTransfer(dataTransfer: DataTransfer) {
   }
 
   if (entries.some((entry) => entry.isDirectory)) {
-    const files = await Promise.all(entries.map((entry) => filesFromEntry(entry, "")));
+    let detectedCount = 0;
+    const files = await Promise.all(
+      entries.map((entry) =>
+        filesFromEntry(entry, "", () => {
+          detectedCount += 1;
+          options.onFileDetected?.(detectedCount);
+        }),
+      ),
+    );
     return files.flat();
   }
 
@@ -3698,6 +3910,7 @@ type BrowserFileSystemDirectoryEntry = BrowserFileSystemEntry & {
 async function filesFromEntry(
   entry: BrowserFileSystemEntry,
   parentPath: string,
+  onFileDetected?: () => void,
 ): Promise<File[]> {
   const path = parentPath ? `${parentPath}/${entry.name}` : entry.name;
   if (entry.isFile) {
@@ -3708,20 +3921,13 @@ async function filesFromEntry(
       value: path,
       configurable: true,
     });
+    onFileDetected?.();
     return [file];
   }
 
   const directory = entry as BrowserFileSystemDirectoryEntry;
-  const children = await readAllDirectoryEntries(directory);
-  const nestedFiles = await Promise.all(
-    children.map((child) => filesFromEntry(child, path)),
-  );
-  return nestedFiles.flat();
-}
-
-async function readAllDirectoryEntries(directory: BrowserFileSystemDirectoryEntry) {
   const reader = directory.createReader();
-  const entries: BrowserFileSystemEntry[] = [];
+  const files: File[] = [];
 
   while (true) {
     // Chromium系ではreadEntries()が一度に最大100件程度しか返さないため、空になるまで読む。
@@ -3729,8 +3935,11 @@ async function readAllDirectoryEntries(directory: BrowserFileSystemDirectoryEntr
       reader.readEntries(resolve, reject);
     });
     if (chunk.length === 0) break;
-    entries.push(...chunk);
+    const nestedFiles = await Promise.all(
+      chunk.map((child) => filesFromEntry(child, path, onFileDetected)),
+    );
+    files.push(...nestedFiles.flat());
   }
 
-  return entries;
+  return files;
 }
