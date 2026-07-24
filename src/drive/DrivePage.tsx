@@ -2009,13 +2009,10 @@ function FileTable({
                   ref={rowVirtualizer.measureElement}
                   data-index={virtualRow.index}
                   style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={[
+                    "virtual-row",
                     selectedIds.includes(item.id) ? "selected" : "",
                     item.item_type === "directory" ? "directory-row" : "",
                     draggingIds.includes(item.id) ? "dragging-row" : "",
