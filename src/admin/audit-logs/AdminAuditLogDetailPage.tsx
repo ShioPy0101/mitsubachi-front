@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
-import { adminKeys, fetchAuditLog } from "../api";
+import {
+  adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
+  fetchAuditLog,
+} from "../api";
 import { AdminFrame, DetailList, QueryState } from "../components/AdminScaffold";
 import {
   AuditChangeSetView,
@@ -12,16 +17,18 @@ import {
 } from "../components/auditFormat";
 
 export function AdminAuditLogDetailPage() {
-  const id = Number(useParams().auditLogId);
+  const params = useParams();
+  const id = Number(params.auditLogId);
+  const organizationId = adminOrganizationIdFromParam(params.organizationId);
   const query = useQuery({
-    queryKey: adminKeys.auditLog(id),
-    queryFn: () => fetchAuditLog(id),
+    queryKey: adminKeys.auditLog(organizationId, id),
+    queryFn: () => fetchAuditLog(id, organizationId),
     enabled: Number.isFinite(id),
   });
   return (
     <AdminFrame
       title="管理監査ログ詳細"
-      actions={<Link to="/admin/audit-logs">一覧へ戻る</Link>}
+      actions={<Link to={adminUiPath(organizationId, "/audit-logs")}>一覧へ戻る</Link>}
     >
       <QueryState query={query}>
         {(log) => (

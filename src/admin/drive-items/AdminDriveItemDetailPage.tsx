@@ -11,6 +11,8 @@ import {
   adminDriveItemPreviewUrl,
   adminDriveItemStreamUrl,
   adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
   type AdminDriveItem,
   deleteAdminDriveItem,
   fetchAdminDriveItem,
@@ -26,33 +28,45 @@ import {
 import { formatCompactDateTime } from "../components/auditFormat";
 
 export function AdminDriveItemDetailPage() {
-  const id = Number(useParams().driveItemId);
+  const params = useParams();
+  const id = Number(params.driveItemId);
+  const organizationId = adminOrganizationIdFromParam(params.organizationId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const auth = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: adminKeys.driveItem(id),
-    queryFn: () => fetchAdminDriveItem(id),
+    queryKey: adminKeys.driveItem(organizationId, id),
+    queryFn: () => fetchAdminDriveItem(id, organizationId),
     enabled: Number.isFinite(id),
   });
   const mutation = useMutation({
     mutationFn: () =>
-      query.data?.deleted_at ? restoreAdminDriveItem(id) : deleteAdminDriveItem(id),
+      query.data?.deleted_at
+        ? restoreAdminDriveItem(id, organizationId)
+        : deleteAdminDriveItem(id, organizationId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: adminKeys.driveItem(id) });
-      await queryClient.invalidateQueries({ queryKey: adminKeys.driveItems("") });
+      await queryClient.invalidateQueries({
+        queryKey: adminKeys.driveItem(organizationId, id),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: adminKeys.driveItems(organizationId, ""),
+      });
       setConfirmOpen(false);
       toast.show({ tone: "success", message: "ファイル状態を更新しました。" });
     },
     onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
   });
   const purgeMutation = useMutation({
-    mutationFn: purgeAdminDriveItem,
+    mutationFn: () => purgeAdminDriveItem(id, organizationId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: adminKeys.driveItem(id) });
-      await queryClient.invalidateQueries({ queryKey: adminKeys.driveItems("") });
+      await queryClient.invalidateQueries({
+        queryKey: adminKeys.driveItem(organizationId, id),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: adminKeys.driveItems(organizationId, ""),
+      });
       setPurgeConfirmOpen(false);
       toast.show({ tone: "success", message: "ファイルを完全削除しました。" });
     },
@@ -61,7 +75,7 @@ export function AdminDriveItemDetailPage() {
   return (
     <AdminFrame
       title="ファイル詳細"
-      actions={<Link to="/admin/drive-items">一覧へ戻る</Link>}
+      actions={<Link to={adminUiPath(organizationId, "/drive-items")}>一覧へ戻る</Link>}
     >
       <QueryState query={query}>
         {(item) => (
@@ -101,7 +115,7 @@ export function AdminDriveItemDetailPage() {
             </Button>
             {auth.user?.role === "system_admin" ? (
               <>
-                <AdminDriveItemFileAccess item={item} />
+                <AdminDriveItemFileAccess item={item} organizationId={organizationId} />
                 {item.deleted_at ? (
                   <section
                     className="system-admin-panel"
@@ -139,7 +153,7 @@ export function AdminDriveItemDetailPage() {
               confirmLabel="完全削除"
               danger
               loading={purgeMutation.isPending}
-              onConfirm={() => purgeMutation.mutate(item.id)}
+              onConfirm={() => purgeMutation.mutate()}
               onClose={() => setPurgeConfirmOpen(false)}
             />
           </>
@@ -158,7 +172,13 @@ function formatFileSize(value?: number | null) {
   }).format(value);
 }
 
-function AdminDriveItemFileAccess({ item }: { item: AdminDriveItem }) {
+function AdminDriveItemFileAccess({
+  item,
+  organizationId,
+}: {
+  item: AdminDriveItem;
+  organizationId: number | null;
+}) {
   if (item.item_type !== "file") {
     return (
       <section className="system-admin-panel" aria-labelledby="file-access-title">
@@ -190,7 +210,7 @@ function AdminDriveItemFileAccess({ item }: { item: AdminDriveItem }) {
       <div className="toolbar">
         <a
           className="button button-secondary"
-          href={adminDriveItemPreviewUrl(item.id)}
+          href={adminDriveItemPreviewUrl(item.id, organizationId)}
           target="_blank"
           rel="noreferrer"
         >
@@ -198,7 +218,7 @@ function AdminDriveItemFileAccess({ item }: { item: AdminDriveItem }) {
         </a>
         <a
           className="button button-secondary"
-          href={adminDriveItemStreamUrl(item.id)}
+          href={adminDriveItemStreamUrl(item.id, organizationId)}
           target="_blank"
           rel="noreferrer"
         >
@@ -206,7 +226,7 @@ function AdminDriveItemFileAccess({ item }: { item: AdminDriveItem }) {
         </a>
         <a
           className="button button-secondary"
-          href={adminDriveItemDownloadUrl(item.id)}
+          href={adminDriveItemDownloadUrl(item.id, organizationId)}
         >
           ダウンロード
         </a>

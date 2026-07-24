@@ -257,7 +257,7 @@ describe("admin api", () => {
     ).resolves.toMatchObject({ code: "invite-code" });
 
     expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
-      `${API_BASE_URL}/api/v1/admin/organization_invites`,
+      `${API_BASE_URL}/api/v1/organizations/12/admin/organization_invites`,
     );
     expect(vi.mocked(fetch).mock.calls[1][1]).toMatchObject({
       method: "POST",

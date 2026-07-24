@@ -1,10 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { adminKeys, fetchDashboard } from "../api";
+import { useParams } from "react-router-dom";
+import { adminKeys, adminOrganizationIdFromParam, fetchDashboard } from "../api";
 import { AdminFrame, QueryState } from "../components/AdminScaffold";
 
 export function AdminDashboardPage() {
-  const query = useQuery({ queryKey: adminKeys.dashboard(), queryFn: fetchDashboard });
+  const organizationId = adminOrganizationIdFromParam(useParams().organizationId);
+  const query = useQuery({
+    queryKey: adminKeys.dashboard(organizationId),
+    queryFn: () => fetchDashboard(organizationId),
+  });
   return (
     <AdminFrame title="ダッシュボード">
       <QueryState query={query}>

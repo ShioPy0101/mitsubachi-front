@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
-import { adminKeys, fetchAuditLogs } from "../api";
+import {
+  adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
+  fetchAuditLogs,
+} from "../api";
 import {
   AdminFrame,
   AdminSearch,
@@ -18,10 +23,11 @@ import {
 
 export function AdminAuditLogsPage() {
   const [params] = useSearchParams();
+  const organizationId = adminOrganizationIdFromParam(useParams().organizationId);
   const queryString = adminQueryString(params);
   const query = useQuery({
-    queryKey: adminKeys.auditLogs(queryString),
-    queryFn: () => fetchAuditLogs(queryString),
+    queryKey: adminKeys.auditLogs(organizationId, queryString),
+    queryFn: () => fetchAuditLogs(queryString, organizationId),
   });
   return (
     <AdminFrame title="管理監査ログ">
@@ -66,7 +72,9 @@ export function AdminAuditLogsPage() {
                   </td>
                   <td>{summarizeChangeSet(log.change_set)}</td>
                   <td>
-                    <Link to={`/admin/audit-logs/${log.id}`}>詳細</Link>
+                    <Link to={adminUiPath(organizationId, `/audit-logs/${log.id}`)}>
+                      詳細
+                    </Link>
                   </td>
                 </tr>
               ))}

@@ -8,21 +8,34 @@ import {
 } from "../api/schemas";
 
 export const driveKeys = {
-  all: ["drive-items"] as const,
-  list: (parentId: number | null) => [...driveKeys.all, "list", { parentId }] as const,
-  detail: (id: number) => [...driveKeys.all, "detail", id] as const,
-  trash: () => [...driveKeys.all, "trash"] as const,
+  all: (organizationId: number | null) => ["drive-items", organizationId] as const,
+  list: (organizationId: number | null, parentId: number | null) =>
+    [...driveKeys.all(organizationId), "list", { parentId }] as const,
+  detail: (organizationId: number | null, id: number) =>
+    [...driveKeys.all(organizationId), "detail", id] as const,
+  trash: (organizationId: number | null) =>
+    [...driveKeys.all(organizationId), "trash"] as const,
 };
 
-export async function fetchDriveItems(parentId: number | null): Promise<DriveItem[]> {
+function drivePath(organizationId: number | null, suffix = "") {
+  if (organizationId == null) return `/api/v1/drive_items${suffix}`;
+
+  return `/api/v1/organizations/${organizationId}/drive_items${suffix}`;
+}
+
+export async function fetchDriveItems(
+  organizationId: number | null,
+  parentId: number | null,
+): Promise<DriveItem[]> {
   const query =
     parentId === null ? "" : `?parent_id=${encodeURIComponent(String(parentId))}`;
   return driveItemsSchema.parse(
-    await apiRequest<unknown>(`/api/v1/drive_items${query}`),
+    await apiRequest<unknown>(`${drivePath(organizationId)}${query}`),
   );
 }
 
 export async function searchDriveItems(input: {
+  organizationId: number | null;
   query: string;
   parentId: number | null;
   scope: "current" | "organization";
@@ -38,20 +51,33 @@ export async function searchDriveItems(input: {
     params.set("parent_id", String(input.parentId));
   }
   return driveSearchResponseSchema.parse(
-    await apiRequest<unknown>(`/api/v1/drive_items/search?${params.toString()}`),
+    await apiRequest<unknown>(
+      `${drivePath(input.organizationId, "/search")}?${params.toString()}`,
+    ),
   );
 }
 
-export async function fetchDriveItem(id: number): Promise<DriveItem> {
-  return driveItemSchema.parse(await apiRequest<unknown>(`/api/v1/drive_items/${id}`));
+export async function fetchDriveItem(
+  organizationId: number | null,
+  id: number,
+): Promise<DriveItem> {
+  return driveItemSchema.parse(
+    await apiRequest<unknown>(drivePath(organizationId, `/${id}`)),
+  );
 }
 
-export async function fetchTrash(): Promise<DriveItem[]> {
-  return driveItemsSchema.parse(await apiRequest<unknown>("/api/v1/drive_items/trash"));
+export async function fetchTrash(organizationId: number | null): Promise<DriveItem[]> {
+  return driveItemsSchema.parse(
+    await apiRequest<unknown>(drivePath(organizationId, "/trash")),
+  );
 }
 
-export function createDirectory(input: { name: string; parentId: number | null }) {
-  return apiRequest<DriveItem>("/api/v1/drive_items", {
+export function createDirectory(input: {
+  organizationId: number | null;
+  name: string;
+  parentId: number | null;
+}) {
+  return apiRequest<DriveItem>(drivePath(input.organizationId), {
     method: "POST",
     body: {
       name: input.name,
@@ -154,6 +180,7 @@ export function uploadFile(input: {
   allowTrashDuplicate?: boolean;
   replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
+  organizationId: number | null;
   onProgress?: (progress: UploadProgress) => void;
 }) {
   if (!input.onProgress) {
@@ -171,7 +198,7 @@ export function uploadFile(input: {
       );
     }
     form.append("file", input.file);
-    return apiRequest<DriveItem>("/api/v1/drive_items", {
+    return apiRequest<DriveItem>(drivePath(input.organizationId), {
       method: "POST",
       body: form,
       signal: input.signal,
@@ -192,6 +219,7 @@ async function uploadFileWithProgress(input: {
   allowTrashDuplicate?: boolean;
   replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
+  organizationId: number | null;
   onProgress: (progress: UploadProgress) => void;
 }): Promise<DriveItem> {
   const form = new FormData();
@@ -210,7 +238,7 @@ async function uploadFileWithProgress(input: {
   form.append("file", input.file);
 
   const csrfToken = await getCsrfToken();
-  const url = apiUrl("/api/v1/drive_items");
+  const url = apiUrl(drivePath(input.organizationId));
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -267,16 +295,24 @@ function appendUploadResolutionFields(
   if (input.operationId) form.append("operation_id", input.operationId);
 }
 
-export function renameDriveItem(input: { id: number; name: string }) {
-  return apiRequest<DriveItem>(`/api/v1/drive_items/${input.id}`, {
+export function renameDriveItem(input: {
+  organizationId: number | null;
+  id: number;
+  name: string;
+}) {
+  return apiRequest<DriveItem>(drivePath(input.organizationId, `/${input.id}`), {
     method: "PATCH",
     body: { name: input.name },
   });
 }
 
-export function moveDriveItem(input: { id: number; parentId: number | null }) {
+export function moveDriveItem(input: {
+  organizationId: number | null;
+  id: number;
+  parentId: number | null;
+}) {
   return apiRequest<{ data: DriveItem; request_id?: string }>(
-    `/api/v1/drive_items/${input.id}/move`,
+    drivePath(input.organizationId, `/${input.id}/move`),
     {
       method: "PATCH",
       body: { parent_id: input.parentId },
@@ -284,28 +320,32 @@ export function moveDriveItem(input: { id: number; parentId: number | null }) {
   );
 }
 
-export function deleteDriveItem(id: number) {
-  return apiRequest<{ message?: string }>(`/api/v1/drive_items/${id}`, {
+export function deleteDriveItem(organizationId: number | null, id: number) {
+  return apiRequest<{ message?: string }>(drivePath(organizationId, `/${id}`), {
     method: "DELETE",
   });
 }
 
-export function purgeDriveItem(id: number) {
-  return apiRequest<{ message?: string }>(`/api/v1/drive_items/${id}/purge`, {
+export function purgeDriveItem(organizationId: number | null, id: number) {
+  return apiRequest<{ message?: string }>(drivePath(organizationId, `/${id}/purge`), {
     method: "DELETE",
   });
 }
 
-export function bulkPurge(ids: number[]) {
-  return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_purge", {
+export function bulkPurge(organizationId: number | null, ids: number[]) {
+  return apiRequest<{ message?: string }>(drivePath(organizationId, "/bulk_purge"), {
     method: "DELETE",
     body: { drive_item_ids: ids },
   });
 }
 
-export function restoreDriveItem(id: number, confirmationToken?: string | null) {
+export function restoreDriveItem(
+  organizationId: number | null,
+  id: number,
+  confirmationToken?: string | null,
+) {
   return apiRequest<DriveItem | { message?: string; restored_item_ids?: number[] }>(
-    `/api/v1/drive_items/${id}/restore`,
+    drivePath(organizationId, `/${id}/restore`),
     {
       method: "POST",
       body: confirmationToken ? { confirmation_token: confirmationToken } : undefined,
@@ -313,22 +353,30 @@ export function restoreDriveItem(id: number, confirmationToken?: string | null) 
   );
 }
 
-export function restorePreview(id: number, items?: RestorePreviewRequestItem[]) {
-  return apiRequest<unknown>(`/api/v1/drive_items/${id}/restore_preview`, {
+export function restorePreview(
+  organizationId: number | null,
+  id: number,
+  items?: RestorePreviewRequestItem[],
+) {
+  return apiRequest<unknown>(drivePath(organizationId, `/${id}/restore_preview`), {
     method: "POST",
     body: items ? { items: restoreRequestItemsBody(items) } : undefined,
   }).then(normalizeRestorePreview);
 }
 
-export function bulkDelete(ids: number[]) {
-  return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_delete", {
+export function bulkDelete(organizationId: number | null, ids: number[]) {
+  return apiRequest<{ message?: string }>(drivePath(organizationId, "/bulk_delete"), {
     method: "POST",
     body: { drive_item_ids: ids },
   });
 }
 
-export function bulkRestore(ids: number[], confirmationToken?: string | null) {
-  return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_restore", {
+export function bulkRestore(
+  organizationId: number | null,
+  ids: number[],
+  confirmationToken?: string | null,
+) {
+  return apiRequest<{ message?: string }>(drivePath(organizationId, "/bulk_restore"), {
     method: "POST",
     body: {
       drive_item_ids: ids,
@@ -337,8 +385,12 @@ export function bulkRestore(ids: number[], confirmationToken?: string | null) {
   });
 }
 
-export function bulkRestorePreview(ids: number[], items?: RestorePreviewRequestItem[]) {
-  return apiRequest<unknown>("/api/v1/drive_items/bulk_restore_preview", {
+export function bulkRestorePreview(
+  organizationId: number | null,
+  ids: number[],
+  items?: RestorePreviewRequestItem[],
+) {
+  return apiRequest<unknown>(drivePath(organizationId, "/bulk_restore_preview"), {
     method: "POST",
     body: {
       drive_item_ids: ids,
@@ -347,15 +399,23 @@ export function bulkRestorePreview(ids: number[], items?: RestorePreviewRequestI
   }).then(normalizeRestorePreview);
 }
 
-export function bulkMove(ids: number[], parentId: number | null) {
-  return apiRequest<{ message?: string }>("/api/v1/drive_items/bulk_move", {
+export function bulkMove(
+  organizationId: number | null,
+  ids: number[],
+  parentId: number | null,
+) {
+  return apiRequest<{ message?: string }>(drivePath(organizationId, "/bulk_move"), {
     method: "POST",
     body: { drive_item_ids: ids, parent_id: parentId },
   });
 }
 
-export async function bulkDownload(ids: number[], signal?: AbortSignal) {
-  const response = await apiFetch("/api/v1/drive_items/bulk_download", {
+export async function bulkDownload(
+  organizationId: number | null,
+  ids: number[],
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(drivePath(organizationId, "/bulk_download"), {
     method: "POST",
     headers: {
       Accept: "application/zip, application/json",
@@ -374,7 +434,7 @@ export async function bulkDownload(ids: number[], signal?: AbortSignal) {
     throw parseApiError(
       response.status,
       body,
-      apiUrl("/api/v1/drive_items/bulk_download"),
+      apiUrl(drivePath(organizationId, "/bulk_download")),
     );
   }
 
@@ -399,20 +459,20 @@ export async function bulkDownload(ids: number[], signal?: AbortSignal) {
   URL.revokeObjectURL(url);
 }
 
-export function downloadDriveItem(id: number) {
+export function downloadDriveItem(organizationId: number | null, id: number) {
   const anchor = document.createElement("a");
-  anchor.href = apiUrl(`/api/v1/drive_items/${id}/download`);
+  anchor.href = apiUrl(drivePath(organizationId, `/${id}/download`));
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
 }
 
-export function previewUrl(id: number) {
-  return apiUrl(`/api/v1/drive_items/${id}/preview`);
+export function previewUrl(organizationId: number | null, id: number) {
+  return apiUrl(drivePath(organizationId, `/${id}/preview`));
 }
 
-export function streamUrl(id: number) {
-  return apiUrl(`/api/v1/drive_items/${id}/stream`);
+export function streamUrl(organizationId: number | null, id: number) {
+  return apiUrl(drivePath(organizationId, `/${id}/stream`));
 }
 
 function contentDispositionFilename(value: string | null) {

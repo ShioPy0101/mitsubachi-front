@@ -5,7 +5,14 @@ import { Button } from "../../components/Button";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/ToastProvider";
 import { useState } from "react";
-import { adminKeys, fetchUser, suspendUser, unsuspendUser } from "../api";
+import {
+  adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
+  fetchUser,
+  suspendUser,
+  unsuspendUser,
+} from "../api";
 import {
   AdminFrame,
   DetailList,
@@ -14,19 +21,26 @@ import {
 } from "../components/AdminScaffold";
 
 export function AdminUserDetailPage() {
-  const id = Number(useParams().userId);
+  const params = useParams();
+  const id = Number(params.userId);
+  const organizationId = adminOrganizationIdFromParam(params.organizationId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const toast = useToast();
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: adminKeys.user(id),
-    queryFn: () => fetchUser(id),
+    queryKey: adminKeys.user(organizationId, id),
+    queryFn: () => fetchUser(id, organizationId),
     enabled: Number.isFinite(id),
   });
   const mutation = useMutation({
-    mutationFn: () => (query.data?.suspended ? unsuspendUser(id) : suspendUser(id)),
+    mutationFn: () =>
+      query.data?.suspended
+        ? unsuspendUser(id, organizationId)
+        : suspendUser(id, organizationId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: adminKeys.user(id) });
+      await queryClient.invalidateQueries({
+        queryKey: adminKeys.user(organizationId, id),
+      });
       setConfirmOpen(false);
       toast.show({ tone: "success", message: "ユーザー状態を更新しました。" });
     },
@@ -37,8 +51,8 @@ export function AdminUserDetailPage() {
       title="ユーザー詳細"
       actions={
         <>
-          <Link to="/admin/users">一覧へ戻る</Link>
-          <Link to={`/admin/users/${id}/edit`}>編集</Link>
+          <Link to={adminUiPath(organizationId, "/users")}>一覧へ戻る</Link>
+          <Link to={adminUiPath(organizationId, `/users/${id}/edit`)}>編集</Link>
         </>
       }
     >

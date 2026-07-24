@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
-import { adminKeys, fetchAdminDriveItems } from "../api";
+import {
+  adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
+  fetchAdminDriveItems,
+} from "../api";
 import {
   AdminFrame,
   AdminSearch,
@@ -11,10 +16,11 @@ import {
 
 export function AdminDriveItemsPage() {
   const [params] = useSearchParams();
+  const organizationId = adminOrganizationIdFromParam(useParams().organizationId);
   const queryString = adminQueryString(params);
   const query = useQuery({
-    queryKey: adminKeys.driveItems(queryString),
-    queryFn: () => fetchAdminDriveItems(queryString),
+    queryKey: adminKeys.driveItems(organizationId, queryString),
+    queryFn: () => fetchAdminDriveItems(queryString, organizationId),
   });
   return (
     <AdminFrame title="ファイル">
@@ -63,7 +69,9 @@ export function AdminDriveItemsPage() {
                   <td>{item.organization_name ?? item.organization_id}</td>
                   <td>{item.deleted_at ? "削除済み" : "—"}</td>
                   <td>
-                    <Link to={`/admin/drive-items/${item.id}`}>詳細</Link>
+                    <Link to={adminUiPath(organizationId, `/drive-items/${item.id}`)}>
+                      詳細
+                    </Link>
                   </td>
                 </tr>
               ))}

@@ -23,6 +23,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useContext,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
@@ -34,6 +35,7 @@ import {
   type TrashDuplicate,
 } from "../api/errors";
 import type { DriveItem } from "../api/schemas";
+import { AuthContext } from "../auth/AuthContext";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
@@ -169,6 +171,11 @@ type MoveDialogState = {
 
 export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const params = useParams();
+  const auth = useContext(AuthContext);
+  const organizationId = params.organizationId
+    ? Number(params.organizationId)
+    : (auth?.user?.organization?.id ?? null);
+  const hasOrganization = organizationId == null || Number.isFinite(organizationId);
   const folderId = params.folderId ? Number(params.folderId) : null;
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -228,38 +235,59 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [dragOverBreadcrumbId, setDragOverBreadcrumbId] = useState<number | null>(null);
 
   const listQuery = useQuery({
-    queryKey: mode === "trash" ? driveKeys.trash() : driveKeys.list(folderId),
-    queryFn: () => (mode === "trash" ? fetchTrash() : fetchDriveItems(folderId)),
+    queryKey:
+      mode === "trash"
+        ? driveKeys.trash(organizationId)
+        : driveKeys.list(organizationId, folderId),
+    queryFn: () =>
+      mode === "trash"
+        ? fetchTrash(organizationId)
+        : fetchDriveItems(organizationId, folderId),
+    enabled: hasOrganization,
   });
   const folderQuery = useQuery({
-    queryKey: folderId ? driveKeys.detail(folderId) : ["drive-items", "root"],
-    queryFn: () => (folderId ? fetchDriveItem(folderId) : Promise.resolve(null)),
-    enabled: mode === "drive" && folderId !== null,
+    queryKey: folderId
+      ? driveKeys.detail(organizationId, folderId)
+      : ["drive-items", organizationId, "root"],
+    queryFn: () =>
+      folderId ? fetchDriveItem(organizationId, folderId) : Promise.resolve(null),
+    enabled: hasOrganization && mode === "drive" && folderId !== null,
   });
   const searchQuery = useQuery({
-    queryKey: ["drive-items", "search", { folderId, searchTerm, searchScope }],
+    queryKey: [
+      "drive-items",
+      organizationId,
+      "search",
+      { folderId, searchTerm, searchScope },
+    ],
     queryFn: () =>
       searchDriveItems({
+        organizationId,
         query: searchTerm,
         parentId: folderId,
         scope: searchScope,
       }),
-    enabled: mode === "drive" && searchTerm.length > 0,
+    enabled: hasOrganization && mode === "drive" && searchTerm.length > 0,
   });
   const moveDestinationQuery = useQuery({
     queryKey: moveDialog?.destinationId
-      ? driveKeys.detail(moveDialog.destinationId)
-      : ["drive-items", "move-root"],
+      ? driveKeys.detail(organizationId, moveDialog.destinationId)
+      : ["drive-items", organizationId, "move-root"],
     queryFn: () =>
       moveDialog?.destinationId
-        ? fetchDriveItem(moveDialog.destinationId)
+        ? fetchDriveItem(organizationId, moveDialog.destinationId)
         : Promise.resolve<DriveItem | null>(null),
-    enabled: dialog === "move" && Boolean(moveDialog?.destinationId),
+    enabled: hasOrganization && dialog === "move" && Boolean(moveDialog?.destinationId),
   });
   const moveDestinationItemsQuery = useQuery({
-    queryKey: ["drive-items", "move-candidates", moveDialog?.destinationId ?? null],
-    queryFn: () => fetchDriveItems(moveDialog?.destinationId ?? null),
-    enabled: dialog === "move" && moveDialog !== null,
+    queryKey: [
+      "drive-items",
+      organizationId,
+      "move-candidates",
+      moveDialog?.destinationId ?? null,
+    ],
+    queryFn: () => fetchDriveItems(organizationId, moveDialog?.destinationId ?? null),
+    enabled: hasOrganization && dialog === "move" && moveDialog !== null,
   });
 
   useEffect(() => {
@@ -330,9 +358,12 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
 
   const invalidateCurrent = useCallback(async () => {
     await queryClient.invalidateQueries({
-      queryKey: mode === "trash" ? driveKeys.trash() : driveKeys.list(folderId),
+      queryKey:
+        mode === "trash"
+          ? driveKeys.trash(organizationId)
+          : driveKeys.list(organizationId, folderId),
     });
-  }, [folderId, mode, queryClient]);
+  }, [folderId, mode, organizationId, queryClient]);
 
   const captureError = useCallback(
     (
@@ -440,11 +471,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const deleteMutation = useMutation({
     mutationFn: async () =>
       selectedIds.length > 1
-        ? bulkDelete(selectedIds)
-        : deleteDriveItem(selectedIds[0]),
+        ? bulkDelete(organizationId, selectedIds)
+        : deleteDriveItem(organizationId, selectedIds[0]),
     onSuccess: async (response) => {
       await invalidateCurrent();
-      await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
+      await queryClient.invalidateQueries({
+        queryKey: driveKeys.trash(organizationId),
+      });
       setSelectedIds([]);
       setDialog(null);
       setLastError(null);
@@ -458,12 +491,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   });
   const purgeMutation = useMutation({
     mutationFn: async () => {
-      if (selectedIds.length > 1) await bulkPurge(selectedIds);
-      else await purgeDriveItem(selectedIds[0]);
+      if (selectedIds.length > 1) await bulkPurge(organizationId, selectedIds);
+      else await purgeDriveItem(organizationId, selectedIds[0]);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
-      await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+      await queryClient.invalidateQueries({
+        queryKey: driveKeys.trash(organizationId),
+      });
+      await queryClient.invalidateQueries({ queryKey: driveKeys.all(organizationId) });
       setSelectedIds([]);
       setDialog(null);
       setLastError(null);
@@ -476,10 +511,15 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     async (preview: RestorePreviewResponse, ids: number[]) => {
       setRestoreSubmitting(true);
       try {
-        if (ids.length > 1) await bulkRestore(ids, preview.confirmationToken);
-        else await restoreDriveItem(ids[0], preview.confirmationToken);
-        await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
-        await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+        if (ids.length > 1)
+          await bulkRestore(organizationId, ids, preview.confirmationToken);
+        else await restoreDriveItem(organizationId, ids[0], preview.confirmationToken);
+        await queryClient.invalidateQueries({
+          queryKey: driveKeys.trash(organizationId),
+        });
+        await queryClient.invalidateQueries({
+          queryKey: driveKeys.all(organizationId),
+        });
         setSelectedIds([]);
         setDialog(null);
         setRestorePreviewState(null);
@@ -506,20 +546,20 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         setRestoreSubmitting(false);
       }
     },
-    [captureError, queryClient, toast],
+    [captureError, organizationId, queryClient, toast],
   );
 
   const refreshRestorePreview = useCallback(
     async (ids: number[], items?: RestorePreviewRequestItem[]) => {
       const preview =
         ids.length > 1
-          ? await bulkRestorePreview(ids, items)
-          : await restorePreview(ids[0], items);
+          ? await bulkRestorePreview(organizationId, ids, items)
+          : await restorePreview(organizationId, ids[0], items);
       setRestorePreviewState(preview);
       setRestorePreviewIds(ids);
       return preview;
     },
-    [],
+    [organizationId],
   );
 
   const openRestorePreview = useCallback(async () => {
@@ -584,7 +624,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     [captureError, refreshRestorePreview, restorePreviewIds, restorePreviewState],
   );
   const bulkDownloadMutation = useMutation({
-    mutationFn: () => bulkDownload(selectedIds),
+    mutationFn: () => bulkDownload(organizationId, selectedIds),
     onError: (error) => captureError(error, "一括ダウンロード"),
   });
   const externalShareMutation = useMutation({
@@ -614,10 +654,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       parentId: number | null;
       targetName: string;
       source: "drag" | "dialog";
-    }) => bulkMove(ids, parentId),
+    }) => bulkMove(organizationId, ids, parentId),
     onSuccess: async () => {
       await invalidateCurrent();
-      await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+      await queryClient.invalidateQueries({ queryKey: driveKeys.all(organizationId) });
       setSelectedIds([]);
       setDialog(null);
       setMoveDialog(null);
@@ -796,6 +836,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
 
       try {
         await uploadFile({
+          organizationId,
           file,
           name: uploadName,
           parentId,
@@ -899,7 +940,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         return "failed";
       }
     },
-    [flushUploadProgress, items, pageLabel, scheduleUploadProgress, updateUploadTask],
+    [
+      flushUploadProgress,
+      items,
+      organizationId,
+      pageLabel,
+      scheduleUploadProgress,
+      updateUploadTask,
+    ],
   );
 
   const uploadFiles = useCallback(
@@ -978,6 +1026,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       updateUploadTask(currentConflict.taskId, { message: "復元しています..." });
       try {
         await restoreDriveItem(
+          organizationId,
           currentConflict.duplicate.restoreTarget?.id ?? currentConflict.duplicate.id,
         );
         updateUploadTask(currentConflict.taskId, {
@@ -991,8 +1040,12 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         setDialog(null);
         setConflict(null);
         setLastError(null);
-        await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
-        await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+        await queryClient.invalidateQueries({
+          queryKey: driveKeys.trash(organizationId),
+        });
+        await queryClient.invalidateQueries({
+          queryKey: driveKeys.all(organizationId),
+        });
         toast.show({
           tone: "success",
           message: `「${currentConflict.duplicate.displayName}」をゴミ箱から復元しました`,
@@ -1021,12 +1074,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           message: appError.message,
           error: appError,
         });
-        await queryClient.invalidateQueries({ queryKey: driveKeys.all });
+        await queryClient.invalidateQueries({
+          queryKey: driveKeys.all(organizationId),
+        });
       } finally {
         setIsUploading(false);
       }
     },
-    [captureError, queryClient, toast, updateUploadTask],
+    [captureError, organizationId, queryClient, toast, updateUploadTask],
   );
 
   const replaceTrashDuplicateWithUpload = useCallback(
@@ -1045,14 +1100,16 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       );
       if (result === "done") {
         await invalidateCurrent();
-        await queryClient.invalidateQueries({ queryKey: driveKeys.trash() });
+        await queryClient.invalidateQueries({
+          queryKey: driveKeys.trash(organizationId),
+        });
         toast.show({
           tone: "success",
           message: `「${currentConflict.file.name}」をアップロードしました`,
         });
       }
     },
-    [invalidateCurrent, queryClient, toast, uploadSingleFile],
+    [invalidateCurrent, organizationId, queryClient, toast, uploadSingleFile],
   );
 
   const cancelUploadConflict = useCallback(
@@ -1165,7 +1222,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     async (segments: string[]) => {
       let parentId = folderId;
       for (const segment of segments) {
-        const siblings = await fetchDriveItems(parentId);
+        const siblings = await fetchDriveItems(organizationId, parentId);
         const existing = siblings.find(
           (item) => item.item_type === "directory" && item.name === segment,
         );
@@ -1173,12 +1230,16 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           parentId = existing.id;
           continue;
         }
-        const created = await createDirectory({ name: segment, parentId });
+        const created = await createDirectory({
+          organizationId,
+          name: segment,
+          parentId,
+        });
         parentId = created.id;
       }
       return parentId;
     },
-    [folderId],
+    [folderId, organizationId],
   );
 
   const uploadDirectory = useCallback(
@@ -1739,7 +1800,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }}
           onMove={(item) => openMoveDialog([item])}
           onExternalShare={(item) => openExternalShareDialog([item])}
-          onDownload={downloadDriveItem}
+          onDownload={(id) => downloadDriveItem(organizationId, id)}
           onDragStart={startItemDrag}
           onDragEnd={endItemDrag}
           onDropToFolder={(event, item) => {
@@ -1772,7 +1833,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           message={dialog === "folder" ? (nameConflictMessage ?? undefined) : undefined}
           messageTone="info"
           onChange={setNameValue}
-          onSubmit={(name) => createMutation.mutate({ name, parentId: folderId })}
+          onSubmit={(name) =>
+            createMutation.mutate({ organizationId, name, parentId: folderId })
+          }
         />
       </Modal>
       <Modal
@@ -1792,7 +1855,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           onChange={setNameValue}
           onSubmit={(name) => {
             if (activeItem && name !== activeItem.name)
-              renameMutation.mutate({ id: activeItem.id, name });
+              renameMutation.mutate({ organizationId, id: activeItem.id, name });
           }}
         />
       </Modal>
@@ -1982,7 +2045,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         title={activeItem?.name ?? "プレビュー"}
         onClose={() => setDialog(null)}
       >
-        {dialog === "preview" && activeItem ? <Preview item={activeItem} /> : null}
+        {dialog === "preview" && activeItem ? (
+          <Preview organizationId={organizationId} item={activeItem} />
+        ) : null}
       </Modal>
       <Modal
         open={dialog === "move"}
@@ -3518,7 +3583,13 @@ function ProgressBar({ percent }: { percent?: number }) {
   );
 }
 
-function Preview({ item }: { item: DriveItem }) {
+function Preview({
+  organizationId,
+  item,
+}: {
+  organizationId: number | null;
+  item: DriveItem;
+}) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const stopMedia = useCallback(() => {
     const media = mediaRef.current;
@@ -3532,11 +3603,21 @@ function Preview({ item }: { item: DriveItem }) {
   useEffect(() => stopMedia, [stopMedia]);
 
   if (item.content_type?.startsWith("image/")) {
-    return <img className="preview-media" src={previewUrl(item.id)} alt={item.name} />;
+    return (
+      <img
+        className="preview-media"
+        src={previewUrl(organizationId, item.id)}
+        alt={item.name}
+      />
+    );
   }
   if (item.content_type === "application/pdf") {
     return (
-      <iframe className="preview-frame" src={previewUrl(item.id)} title={item.name} />
+      <iframe
+        className="preview-frame"
+        src={previewUrl(organizationId, item.id)}
+        title={item.name}
+      />
     );
   }
   if (item.content_type?.startsWith("video/")) {
@@ -3546,7 +3627,7 @@ function Preview({ item }: { item: DriveItem }) {
           if (element) mediaRef.current = element;
         }}
         className="preview-media"
-        src={streamUrl(item.id)}
+        src={streamUrl(organizationId, item.id)}
         controls
         preload="metadata"
       />
@@ -3559,7 +3640,7 @@ function Preview({ item }: { item: DriveItem }) {
           if (element) mediaRef.current = element;
         }}
         className="preview-media"
-        src={streamUrl(item.id)}
+        src={streamUrl(organizationId, item.id)}
         controls
         preload="metadata"
       />

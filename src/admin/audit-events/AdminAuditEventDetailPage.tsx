@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
-import { adminKeys, fetchAuditEvent } from "../api";
+import {
+  adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
+  fetchAuditEvent,
+} from "../api";
 import { AdminFrame, DetailList, QueryState } from "../components/AdminScaffold";
 import {
   AuditChangeSetView,
@@ -13,16 +18,20 @@ import {
 } from "../components/auditFormat";
 
 export function AdminAuditEventDetailPage() {
-  const id = Number(useParams().auditEventId);
+  const params = useParams();
+  const id = Number(params.auditEventId);
+  const organizationId = adminOrganizationIdFromParam(params.organizationId);
   const query = useQuery({
-    queryKey: adminKeys.auditEvent(id),
-    queryFn: () => fetchAuditEvent(id),
+    queryKey: adminKeys.auditEvent(organizationId, id),
+    queryFn: () => fetchAuditEvent(id, organizationId),
     enabled: Number.isFinite(id),
   });
   return (
     <AdminFrame
       title="監査イベント詳細"
-      actions={<Link to="/admin/audit-events">一覧へ戻る</Link>}
+      actions={
+        <Link to={adminUiPath(organizationId, "/audit-events")}>一覧へ戻る</Link>
+      }
     >
       <QueryState query={query}>
         {(event) => (

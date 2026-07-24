@@ -1,7 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 
-import { adminKeys, fetchUsers } from "../api";
+import { useParams } from "react-router-dom";
+import {
+  adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
+  fetchUsers,
+} from "../api";
 import {
   AdminFrame,
   AdminSearch,
@@ -11,10 +17,11 @@ import {
 
 export function AdminUsersPage() {
   const [params] = useSearchParams();
+  const organizationId = adminOrganizationIdFromParam(useParams().organizationId);
   const queryString = adminQueryString(params);
   const query = useQuery({
-    queryKey: adminKeys.users(queryString),
-    queryFn: () => fetchUsers(queryString),
+    queryKey: adminKeys.users(organizationId, queryString),
+    queryFn: () => fetchUsers(queryString, organizationId),
   });
   return (
     <AdminFrame title="ユーザー">
@@ -63,7 +70,9 @@ export function AdminUsersPage() {
                   <td>{user.role}</td>
                   <td>{user.suspended ? "停止中" : "有効"}</td>
                   <td>
-                    <Link to={`/admin/users/${user.id}`}>詳細</Link>
+                    <Link to={adminUiPath(organizationId, `/users/${user.id}`)}>
+                      詳細
+                    </Link>
                   </td>
                 </tr>
               ))}
