@@ -9,6 +9,7 @@ export const userSchema = z
   .object({
     id: z.number(),
     email: z.string(),
+    pending_email: z.string().nullable().optional(),
     name: z.string().nullable().optional(),
     display_name: z.string().nullable().optional(),
     role: z.enum(["member", "organization_admin", "system_admin"]),
