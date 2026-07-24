@@ -1,14 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
+import { Navigate, useParams } from "react-router-dom";
+import { useAuth } from "./auth/useAuth";
 
 import { ErrorState } from "./components/ErrorState";
 import { LoadingIndicator } from "./components/LoadingIndicator";
 import { fetchGroup, groupKeys } from "./groupApi";
 
 export function GroupDashboardPage() {
+  const auth = useAuth();
+  const params = useParams();
+  const organizationId = Number(
+    params.organizationId ??
+      auth.user?.memberships[0]?.organization.id ??
+      auth.user?.organization?.id,
+  );
+  const hasOrganization = Number.isFinite(organizationId);
   const groupQuery = useQuery({
-    queryKey: groupKeys.detail,
-    queryFn: fetchGroup,
+    queryKey: hasOrganization
+      ? groupKeys.detail(organizationId)
+      : ["group", "missing-organization"],
+    queryFn: () => fetchGroup(organizationId),
+    enabled: hasOrganization,
   });
+
+  if (!hasOrganization) return <Navigate to="/" replace />;
 
   if (groupQuery.isLoading)
     return <LoadingIndicator label="グループを読み込んでいます" />;

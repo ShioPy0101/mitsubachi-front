@@ -5,6 +5,13 @@ export const organizationSchema = z.object({
   name: z.string(),
 });
 
+export const membershipSchema = z.object({
+  organization: organizationSchema,
+  role: z.enum(["member", "organization_admin"]),
+  status: z.enum(["invited", "active", "suspended", "left", "removed"]),
+  joined_at: z.string().nullable().optional(),
+});
+
 export const userSchema = z
   .object({
     id: z.number(),
@@ -17,6 +24,8 @@ export const userSchema = z
     organization_id: z.number().nullable().optional(),
     organization_name: z.string().nullable().optional(),
     organization: organizationSchema.nullable().optional(),
+    system_admin: z.boolean().optional(),
+    memberships: z.array(membershipSchema).optional().default([]),
   })
   .transform((user) => ({
     ...user,
@@ -28,7 +37,12 @@ export const userSchema = z
   }));
 
 export const meSchema = z.union([
-  z.object({ user: userSchema }),
+  z
+    .object({
+      user: userSchema,
+      memberships: z.array(membershipSchema).optional().default([]),
+    })
+    .transform(({ user, memberships }) => ({ user: { ...user, memberships } })),
   z.object({ data: userSchema }).transform(({ data }) => ({ user: data })),
 ]);
 
@@ -70,6 +84,7 @@ export const adminListSchema = <T extends z.ZodTypeAny>(item: T) =>
     meta: adminMetaSchema,
   });
 
+export type Membership = z.infer<typeof membershipSchema>;
 export type CurrentUser = z.infer<typeof userSchema>;
 export type DriveItem = z.infer<typeof driveItemSchema>;
 export type AdminMeta = z.infer<typeof adminMetaSchema>;

@@ -31,7 +31,7 @@ describe("drive api", () => {
       ),
     );
 
-    await expect(fetchDriveItems(null)).resolves.toHaveLength(1);
+    await expect(fetchDriveItems(7, null)).resolves.toHaveLength(1);
   });
 
   it("uploads multipart without setting json content type", async () => {
@@ -56,6 +56,7 @@ describe("drive api", () => {
     );
 
     await uploadFile({
+      organizationId: 7,
       file: new File(["content"], "quarterly.report.pdf", { type: "application/pdf" }),
       name: "quarterly.report",
       parentId: null,
@@ -88,6 +89,7 @@ describe("drive api", () => {
     );
 
     await uploadFile({
+      organizationId: 7,
       file: new File(["content"], "report.txt", { type: "text/plain" }),
       name: "report",
       parentId: 42,
@@ -123,6 +125,7 @@ describe("drive api", () => {
     );
 
     await uploadFile({
+      organizationId: 7,
       file: new File(["content"], "report.txt", { type: "text/plain" }),
       name: "report",
       parentId: 42,
@@ -150,12 +153,14 @@ describe("drive api", () => {
     } as unknown as HTMLAnchorElement;
     vi.spyOn(document, "createElement").mockReturnValue(anchor);
 
-    downloadDriveItem(10);
+    downloadDriveItem(7, 10);
 
     expect(append).toHaveBeenCalled();
     expect(click).toHaveBeenCalled();
     expect(remove).toHaveBeenCalled();
-    expect(anchor.href).toBe(`${API_BASE_URL}/api/v1/drive_items/10/download`);
+    expect(anchor.href).toBe(
+      `${API_BASE_URL}/api/v1/organizations/7/drive_items/10/download`,
+    );
   });
 
   it("uses DELETE for irreversible trash purge", async () => {
@@ -173,19 +178,23 @@ describe("drive api", () => {
       }),
     );
 
-    await expect(purgeDriveItem(20)).resolves.toMatchObject({
+    await expect(purgeDriveItem(7, 20)).resolves.toMatchObject({
       message: "完全削除しました",
     });
 
     expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe(
-      `${API_BASE_URL}/api/v1/drive_items/20/purge`,
+      `${API_BASE_URL}/api/v1/organizations/7/drive_items/20/purge`,
     );
     expect(vi.mocked(fetch).mock.calls[1]?.[1]?.method).toBe("DELETE");
   });
 
   it("builds preview and stream URLs without internal paths", () => {
-    expect(previewUrl(1)).toBe(`${API_BASE_URL}/api/v1/drive_items/1/preview`);
-    expect(streamUrl(1)).toBe(`${API_BASE_URL}/api/v1/drive_items/1/stream`);
+    expect(previewUrl(7, 1)).toBe(
+      `${API_BASE_URL}/api/v1/organizations/7/drive_items/1/preview`,
+    );
+    expect(streamUrl(7, 1)).toBe(
+      `${API_BASE_URL}/api/v1/organizations/7/drive_items/1/stream`,
+    );
   });
 
   it("keeps active content duplicate restore preview conflicts", () => {

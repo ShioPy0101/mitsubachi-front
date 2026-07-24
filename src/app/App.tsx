@@ -23,6 +23,7 @@ import { AuthProvider } from "../auth/AuthProvider";
 import { LoginPage } from "../auth/LoginPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { VerifyPage } from "../auth/VerifyPage";
+import { useAuth } from "../auth/useAuth";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "../drive/DrivePage";
@@ -46,6 +47,19 @@ const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { path: "/", element: <NavigateToDrive /> },
+          { path: "/organizations/:organizationId/drive", element: <DrivePage /> },
+          {
+            path: "/organizations/:organizationId/drive/folder/:folderId",
+            element: <DrivePage />,
+          },
+          {
+            path: "/organizations/:organizationId/trash",
+            element: <DrivePage mode="trash" />,
+          },
+          {
+            path: "/organizations/:organizationId/settings/group",
+            element: <GroupDashboardPage />,
+          },
           { path: "/drive", element: <DrivePage /> },
           { path: "/drive/folder/:folderId", element: <DrivePage /> },
           { path: "/trash", element: <DrivePage mode="trash" /> },
@@ -133,7 +147,16 @@ export function App() {
 }
 
 function NavigateToDrive() {
-  return <Navigate to="/drive" replace />;
+  const auth = useAuth();
+  const organizationId =
+    auth.user?.memberships[0]?.organization.id ?? auth.user?.organization?.id;
+
+  return (
+    <Navigate
+      to={organizationId ? `/organizations/${organizationId}/drive` : "/drive"}
+      replace
+    />
+  );
 }
 
 function StatePage({ title, message }: { title: string; message: string }) {

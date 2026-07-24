@@ -8,7 +8,7 @@ import {
   Users,
 } from "lucide-react";
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { clearCsrfToken } from "../api/client";
@@ -23,7 +23,19 @@ export function AppLayout() {
   const auth = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
+  const selectedOrganizationId = selectedOrganizationIdFor(
+    location.pathname,
+    auth.user,
+  );
+  const selectedMembership = auth.user?.memberships.find(
+    (membership) => membership.organization.id === selectedOrganizationId,
+  );
+  const organizationName =
+    selectedMembership?.organization.name ??
+    auth.user?.organization?.name ??
+    "Organization";
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSettled: async () => {
@@ -55,13 +67,34 @@ export function AppLayout() {
           <span>Mitsubachi Drive</span>
         </div>
         <div className="header-user">
-          <span className="org-name">
-            {auth.user?.organization?.name ?? "Organization"}
-          </span>
+          {auth.user?.memberships.length ? (
+            <select
+              className="organization-switcher"
+              aria-label="Organizationを切り替え"
+              value={selectedOrganizationId ?? ""}
+              onChange={(event) => {
+                const nextOrganizationId = Number(event.target.value);
+                void navigate(`/organizations/${nextOrganizationId}/drive`);
+              }}
+            >
+              {auth.user.memberships.map((membership) => (
+                <option
+                  key={membership.organization.id}
+                  value={membership.organization.id}
+                >
+                  {membership.organization.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="org-name">{organizationName}</span>
+          )}
           <span className="user-chip">
             {auth.user?.display_name ?? auth.user?.name ?? "未設定ユーザー"}
           </span>
-          <span className="role-chip">{auth.user?.role}</span>
+          <span className="role-chip">
+            {selectedMembership?.role ?? auth.user?.role}
+          </span>
           <IconButton
             label="ログアウト"
             onClick={() => logoutMutation.mutate()}
@@ -99,20 +132,31 @@ export function AppLayout() {
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const auth = useAuth();
+  const location = useLocation();
+  const organizationId = selectedOrganizationIdFor(location.pathname, auth.user);
+  const drivePath = organizationId
+    ? `/organizations/${organizationId}/drive`
+    : "/drive";
+  const trashPath = organizationId
+    ? `/organizations/${organizationId}/trash`
+    : "/trash";
+  const groupPath = organizationId
+    ? `/organizations/${organizationId}/settings/group`
+    : "/settings/group";
   return (
     <nav className="sidebar" aria-label="メインナビゲーション">
-      <NavLink to="/drive" onClick={onNavigate} className="nav-create">
+      <NavLink to={drivePath} onClick={onNavigate} className="nav-create">
         <UploadCloud size={18} aria-hidden="true" />
         新規アップロード
       </NavLink>
-      <NavLink to="/drive" onClick={onNavigate}>
+      <NavLink to={drivePath} onClick={onNavigate}>
         共有ドライブ
       </NavLink>
-      <NavLink to="/trash" onClick={onNavigate}>
+      <NavLink to={trashPath} onClick={onNavigate}>
         <Trash2 size={18} aria-hidden="true" />
         ゴミ箱
       </NavLink>
-      <NavLink to="/settings/group" onClick={onNavigate}>
+      <NavLink to={groupPath} onClick={onNavigate}>
         <Users size={18} aria-hidden="true" />
         グループ
       </NavLink>
@@ -120,7 +164,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <UserRound size={18} aria-hidden="true" />
         ユーザー情報
       </NavLink>
-      {canUseAdmin(auth.user) ? (
+      {canUseAdmin(auth.user, organizationId) ? (
         <NavLink to="/admin" onClick={onNavigate}>
           <Shield size={18} aria-hidden="true" />
           管理画面
@@ -128,4 +172,14 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       ) : null}
     </nav>
   );
+}
+
+function selectedOrganizationIdFor(
+  pathname: string,
+  user: ReturnType<typeof useAuth>["user"],
+) {
+  const match = /^\/organizations\/(\d+)/.exec(pathname);
+  if (match) return Number(match[1]);
+
+  return user?.memberships[0]?.organization.id ?? user?.organization?.id ?? null;
 }

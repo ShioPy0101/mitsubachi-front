@@ -8,6 +8,7 @@ import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "./DrivePage";
 
 type UploadFileInput = {
+  organizationId: number | null;
   file: File;
   name: string;
   parentId: number | null;
@@ -21,6 +22,7 @@ type UploadFileInput = {
 };
 
 type CreateDirectoryInput = {
+  organizationId: number | null;
   name: string;
   parentId: number | null;
 };
@@ -46,10 +48,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./api", () => ({
   driveKeys: {
-    all: ["drive-items"] as const,
-    list: (parentId: number | null) => ["drive-items", "list", { parentId }] as const,
-    detail: (id: number) => ["drive-items", "detail", id] as const,
-    trash: () => ["drive-items", "trash"] as const,
+    all: (organizationId: number | null) => ["drive-items", organizationId] as const,
+    list: (organizationId: number | null, parentId: number | null) =>
+      ["drive-items", organizationId, "list", { parentId }] as const,
+    detail: (organizationId: number | null, id: number) =>
+      ["drive-items", organizationId, "detail", id] as const,
+    trash: (organizationId: number | null) =>
+      ["drive-items", organizationId, "trash"] as const,
   },
   fetchDriveItems: mocks.fetchDriveItems,
   fetchDriveItem: mocks.fetchDriveItem,
@@ -66,13 +71,13 @@ vi.mock("./api", () => ({
   deleteDriveItem: vi.fn(),
   purgeDriveItem: mocks.purgeDriveItem,
   downloadDriveItem: vi.fn(),
-  previewUrl: vi.fn((id: number) => `/preview/${id}`),
+  previewUrl: vi.fn((_organizationId: number | null, id: number) => `/preview/${id}`),
   renameDriveItem: vi.fn(),
   moveDriveItem: mocks.moveDriveItem,
   restoreDriveItem: mocks.restoreDriveItem,
   restorePreview: mocks.restorePreview,
   normalizeRestorePreview: (value: unknown) => value,
-  streamUrl: vi.fn((id: number) => `/stream/${id}`),
+  streamUrl: vi.fn((_organizationId: number | null, id: number) => `/stream/${id}`),
 }));
 
 vi.mock("../externalShares/api", () => ({
@@ -329,7 +334,7 @@ describe("DrivePage drag and drop upload", () => {
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
     const initialCurrentFolderFetches = mocks.fetchDriveItems.mock.calls.filter(
-      ([parentId]) => parentId === 42,
+      ([, parentId]) => parentId === 42,
     ).length;
 
     const files = [
@@ -346,7 +351,7 @@ describe("DrivePage drag and drop upload", () => {
       expect(screen.getAllByText("3 / 3 件アップロードしました。")).toHaveLength(1);
     });
     const currentFolderFetches = mocks.fetchDriveItems.mock.calls.filter(
-      ([parentId]) => parentId === 42,
+      ([, parentId]) => parentId === 42,
     ).length;
     expect(currentFolderFetches).toBe(initialCurrentFolderFetches + 2);
   });
@@ -648,7 +653,7 @@ describe("DrivePage drag and drop upload", () => {
     await waitFor(() => expect(dialog.getByText("復元する")).not.toBeDisabled());
     fireEvent.click(dialog.getByText("復元する"));
 
-    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(199));
+    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(null, 199));
     expect(mocks.uploadFile).toHaveBeenCalledTimes(1);
     fireEvent.click(await screen.findByText("詳細を表示"));
     expect(await screen.findByText("ゴミ箱から復元済み")).toBeInTheDocument();
@@ -727,7 +732,7 @@ describe("DrivePage drag and drop upload", () => {
     await waitFor(() => expect(dialog.getByText("復元する")).not.toBeDisabled());
     fireEvent.click(dialog.getByText("復元する"));
 
-    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(199));
+    await waitFor(() => expect(mocks.restoreDriveItem).toHaveBeenCalledWith(null, 199));
     expect(
       screen.getByRole("heading", { name: "同じ内容のファイルがゴミ箱にあります" }),
     ).toBeInTheDocument();
@@ -887,7 +892,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getByRole("button", { name: "復元" }));
 
     await waitFor(() => {
-      expect(mocks.restoreDriveItem).toHaveBeenCalledWith(29, "preview-token");
+      expect(mocks.restoreDriveItem).toHaveBeenCalledWith(null, 29, "preview-token");
     });
     expect(
       screen.queryByRole("heading", { name: "復元内容の確認" }),
@@ -1268,10 +1273,12 @@ describe("DrivePage drag and drop upload", () => {
 
     await waitFor(() => {
       expect(mocks.createDirectory).toHaveBeenCalledWith({
+        organizationId: null,
         name: "素材",
         parentId: 42,
       });
       expect(mocks.createDirectory).toHaveBeenCalledWith({
+        organizationId: null,
         name: "camera-a",
         parentId: 100,
       });
@@ -1404,7 +1411,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getByText("h2"));
 
     await waitFor(() => {
-      expect(mocks.fetchDriveItem).toHaveBeenCalledWith(20);
+      expect(mocks.fetchDriveItem).toHaveBeenCalledWith(null, 20);
     });
   });
 
@@ -1436,7 +1443,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.drop(target, { dataTransfer });
 
     await waitFor(() => {
-      expect(mocks.bulkMove).toHaveBeenCalledWith([1], 2);
+      expect(mocks.bulkMove).toHaveBeenCalledWith(null, [1], 2);
     });
     expect(mocks.moveDriveItem).not.toHaveBeenCalled();
     expect(container.querySelector(".dragging-row")).not.toBeInTheDocument();
@@ -1543,7 +1550,7 @@ describe("DrivePage drag and drop upload", () => {
     clickCentralArea("素材");
 
     await waitFor(() => {
-      expect(mocks.fetchDriveItem).toHaveBeenCalledWith(9);
+      expect(mocks.fetchDriveItem).toHaveBeenCalledWith(null, 9);
     });
   });
 
@@ -1633,7 +1640,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.drop(target, { dataTransfer });
 
     await waitFor(() => {
-      expect(mocks.bulkMove).toHaveBeenCalledWith([1], 2);
+      expect(mocks.bulkMove).toHaveBeenCalledWith(null, [1], 2);
     });
   });
 
@@ -1658,7 +1665,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.drop(target, { dataTransfer });
 
     await waitFor(() => {
-      expect(mocks.bulkMove).toHaveBeenCalledWith([1, 2], 3);
+      expect(mocks.bulkMove).toHaveBeenCalledWith(null, [1, 2], 3);
     });
   });
 
@@ -1682,7 +1689,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.drop(target, { dataTransfer });
 
     await waitFor(() => {
-      expect(mocks.bulkMove).toHaveBeenCalledWith([2], 3);
+      expect(mocks.bulkMove).toHaveBeenCalledWith(null, [2], 3);
     });
   });
 
@@ -1816,12 +1823,14 @@ describe("DrivePage drag and drop upload", () => {
   });
 
   it("opens the move dialog from the item menu and moves to root", async () => {
-    mocks.fetchDriveItems.mockImplementation((parentId: number | null) => {
-      if (parentId === 10) return Promise.resolve([]);
-      return Promise.resolve([
-        { id: 1, parent_id: 10, name: "clip", item_type: "file", extension: "mp4" },
-      ]);
-    });
+    mocks.fetchDriveItems.mockImplementation(
+      (_organizationId: number | null, parentId: number | null) => {
+        if (parentId === 10) return Promise.resolve([]);
+        return Promise.resolve([
+          { id: 1, parent_id: 10, name: "clip", item_type: "file", extension: "mp4" },
+        ]);
+      },
+    );
     mocks.fetchDriveItem.mockResolvedValue({
       id: 10,
       parent_id: null,
@@ -1842,7 +1851,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getByRole("button", { name: "ここに移動" }));
 
     await waitFor(() => {
-      expect(mocks.bulkMove).toHaveBeenCalledWith([1], null);
+      expect(mocks.bulkMove).toHaveBeenCalledWith(null, [1], null);
     });
   });
 
@@ -1914,22 +1923,24 @@ describe("DrivePage drag and drop upload", () => {
   });
 
   it("opens the move dialog from the selection toolbar and disables forbidden destinations", async () => {
-    mocks.fetchDriveItems.mockImplementation((parentId: number | null) => {
-      if (parentId === null) {
-        return Promise.resolve([
-          { id: 10, parent_id: null, name: "parent", item_type: "directory" },
-          { id: 20, parent_id: null, name: "destination", item_type: "directory" },
-        ]);
-      }
-      if (parentId === 10) {
-        return Promise.resolve([
-          { id: 1, parent_id: 10, name: "folder", item_type: "directory" },
-          { id: 2, parent_id: 10, name: "file", item_type: "file", extension: "txt" },
-          { id: 3, parent_id: 10, name: "other", item_type: "directory" },
-        ]);
-      }
-      return Promise.resolve([]);
-    });
+    mocks.fetchDriveItems.mockImplementation(
+      (_organizationId: number | null, parentId: number | null) => {
+        if (parentId === null) {
+          return Promise.resolve([
+            { id: 10, parent_id: null, name: "parent", item_type: "directory" },
+            { id: 20, parent_id: null, name: "destination", item_type: "directory" },
+          ]);
+        }
+        if (parentId === 10) {
+          return Promise.resolve([
+            { id: 1, parent_id: 10, name: "folder", item_type: "directory" },
+            { id: 2, parent_id: 10, name: "file", item_type: "file", extension: "txt" },
+            { id: 3, parent_id: 10, name: "other", item_type: "directory" },
+          ]);
+        }
+        return Promise.resolve([]);
+      },
+    );
     mocks.fetchDriveItem.mockResolvedValue({
       id: 10,
       parent_id: null,
@@ -1978,7 +1989,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "完全削除" }).at(-1)!);
 
     await waitFor(() => {
-      expect(mocks.purgeDriveItem).toHaveBeenCalledWith(20);
+      expect(mocks.purgeDriveItem).toHaveBeenCalledWith(null, 20);
     });
     await waitFor(() => {
       expect(mocks.fetchTrash.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -2003,7 +2014,7 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "完全削除" }).at(-1)!);
 
     await waitFor(() => {
-      expect(mocks.bulkPurge).toHaveBeenCalledWith([20, 21]);
+      expect(mocks.bulkPurge).toHaveBeenCalledWith(null, [20, 21]);
       expect(mocks.purgeDriveItem).not.toHaveBeenCalled();
     });
   });

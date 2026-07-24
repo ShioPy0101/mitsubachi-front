@@ -180,6 +180,23 @@ a {
   font-size: var(--font-size-sm);
 }
 
+.organization-switcher {
+  max-width: 220px;
+  min-width: 160px;
+  height: 34px;
+  padding: 0 var(--space-8) 0 var(--space-3);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.organization-switcher:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .org-name,
 .user-chip {
   max-width: 180px;
