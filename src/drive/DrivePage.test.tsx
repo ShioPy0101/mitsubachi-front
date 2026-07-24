@@ -243,6 +243,114 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
+  it("keeps a dropped folder batch scanning until directory traversal finishes", async () => {
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const file = new File(["content"], "clip.txt", { type: "text/plain" });
+    const transfer = deferredDirectoryDataTransfer("素材", [file]);
+    fireEvent.drop(driveDropTarget(container), { dataTransfer: transfer.dataTransfer });
+
+    expect(await screen.findByText("ファイルを確認しています")).toBeInTheDocument();
+    expect(screen.getByText("0件検出済み")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/アップロード処理が完了しました/),
+    ).not.toBeInTheDocument();
+    expect(mocks.uploadFile).not.toHaveBeenCalled();
+
+    transfer.resolveNextChunk();
+    expect(await screen.findByText("1件検出済み")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/アップロード処理が完了しました/),
+    ).not.toBeInTheDocument();
+    expect(mocks.uploadFile).not.toHaveBeenCalled();
+
+    transfer.resolveNextChunk();
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(1));
+  });
+
+  it("marks a folder batch completed only after scanning and every upload result finish", async () => {
+    const uploadResolvers: Array<() => void> = [];
+    mocks.uploadFile.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          uploadResolvers.push(() => resolve({ id: 1 }));
+        }),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const files = [
+      new File(["a"], "first.txt", { type: "text/plain" }),
+      new File(["b"], "second.txt", { type: "text/plain" }),
+    ];
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithDirectory("素材", files),
+    });
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("0 / 2 件完了")).toBeInTheDocument();
+
+    uploadResolvers[0]?.();
+    await waitFor(() => expect(screen.getByText("1 / 2 件完了")).toBeInTheDocument());
+    expect(
+      screen.queryByText(/アップロード処理が完了しました/),
+    ).not.toBeInTheDocument();
+
+    uploadResolvers[1]?.();
+    expect(
+      await screen.findByText("2件のアップロード処理が完了しました"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not reject dropped folders with more than 1000 files", async () => {
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const files = Array.from(
+      { length: 1001 },
+      (_, index) =>
+        new File([`content-${index}`], `large-${index}.txt`, { type: "text/plain" }),
+    );
+    const transfer = deferredDirectoryDataTransfer("素材", files);
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: transfer.dataTransfer,
+    });
+    transfer.resolveNextChunk();
+
+    expect(await screen.findByText("1001件検出済み")).toBeInTheDocument();
+    expect(mocks.uploadFile).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("アップロードできるファイル数の上限を超えています。"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("refreshes the Drive list and shows completion toast once per folder batch", async () => {
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+    const initialCurrentFolderFetches = mocks.fetchDriveItems.mock.calls.filter(
+      ([parentId]) => parentId === 42,
+    ).length;
+
+    const files = [
+      new File(["a"], "first.txt", { type: "text/plain" }),
+      new File(["b"], "second.txt", { type: "text/plain" }),
+      new File(["c"], "third.txt", { type: "text/plain" }),
+    ];
+    mocks.uploadFile.mockImplementation(() => Promise.resolve({ id: 1 }));
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithDirectory("素材", files),
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("3 / 3 件アップロードしました。")).toHaveLength(1);
+    });
+    const currentFolderFetches = mocks.fetchDriveItems.mock.calls.filter(
+      ([parentId]) => parentId === 42,
+    ).length;
+    expect(currentFolderFetches).toBe(initialCurrentFolderFetches + 2);
+  });
+
   it("does not call the upload API for non-file drops", async () => {
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
@@ -500,6 +608,8 @@ describe("DrivePage drag and drop upload", () => {
     );
 
     await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
+    const detailsButton = screen.queryAllByRole("button", { name: "詳細を表示" })[0];
+    if (detailsButton) fireEvent.click(detailsButton);
     expect(screen.getByText("同じ内容のため除外しました")).toBeInTheDocument();
     expect(screen.getAllByText("容量が不足しています。").length).toBeGreaterThan(0);
     expect(
@@ -592,6 +702,8 @@ describe("DrivePage drag and drop upload", () => {
 
     await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
     expect(mocks.restoreDriveItem).not.toHaveBeenCalled();
+    const detailsButton = screen.queryAllByRole("button", { name: "詳細を表示" })[0];
+    if (detailsButton) fireEvent.click(detailsButton);
     expect(screen.getByText("キャンセルしました")).toBeInTheDocument();
     expect(screen.getByText("完了")).toBeInTheDocument();
   });
@@ -2165,6 +2277,53 @@ function dataTransferWithDirectory(name: string, files: File[]) {
         webkitGetAsEntry: () => directory,
       },
     ],
+  };
+}
+
+function deferredDirectoryDataTransfer(name: string, files: File[]) {
+  type MockFileEntry = {
+    isFile: true;
+    isDirectory: false;
+    name: string;
+    file: (success: (file: File) => void) => void;
+  };
+
+  const entries: MockFileEntry[] = files.map((file) => ({
+    isFile: true,
+    isDirectory: false,
+    name: file.name,
+    file: (success: (file: File) => void) => success(file),
+  }));
+  const chunks = [entries, []];
+  const pendingReads: Array<(entries: MockFileEntry[]) => void> = [];
+  const directory = {
+    isFile: false,
+    isDirectory: true,
+    name,
+    createReader: () => ({
+      readEntries: (success: (entries: MockFileEntry[]) => void) => {
+        pendingReads.push(success);
+      },
+    }),
+  };
+
+  return {
+    dataTransfer: {
+      types: ["Files"],
+      files: [],
+      items: [
+        {
+          kind: "file",
+          getAsFile: () => null,
+          webkitGetAsEntry: () => directory,
+        },
+      ],
+    },
+    resolveNextChunk: () => {
+      const resolve = pendingReads.shift();
+      if (!resolve) throw new Error("No pending directory read");
+      resolve(chunks.shift() ?? []);
+    },
   };
 }
 
