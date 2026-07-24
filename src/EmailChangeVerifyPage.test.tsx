@@ -84,6 +84,13 @@ const currentUser: CurrentUser = {
   organization_id: 7,
   organization_name: "映像コミュニティ",
   organization: { id: 7, name: "映像コミュニティ" },
+  memberships: [
+    {
+      organization: { id: 7, name: "映像コミュニティ" },
+      role: "member",
+      status: "active",
+    },
+  ],
 };
 
 function renderPage(

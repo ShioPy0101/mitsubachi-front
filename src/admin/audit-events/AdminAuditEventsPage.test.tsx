@@ -116,6 +116,7 @@ function renderAdminRoute(initialEntry: string) {
             organization_id: 1,
             organization_name: "Admin Org",
             organization: { id: 1, name: "Admin Org" },
+            memberships: [],
           },
           status: "authenticated",
           error: null,

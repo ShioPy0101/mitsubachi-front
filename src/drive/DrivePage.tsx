@@ -1800,7 +1800,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }}
           onMove={(item) => openMoveDialog([item])}
           onExternalShare={(item) => openExternalShareDialog([item])}
-          onDownload={downloadDriveItem}
+          onDownload={(id) => downloadDriveItem(organizationId, id)}
           onDragStart={startItemDrag}
           onDragEnd={endItemDrag}
           onDropToFolder={(event, item) => {
@@ -1833,7 +1833,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           message={dialog === "folder" ? (nameConflictMessage ?? undefined) : undefined}
           messageTone="info"
           onChange={setNameValue}
-          onSubmit={(name) => createMutation.mutate({ name, parentId: folderId })}
+          onSubmit={(name) =>
+            createMutation.mutate({ organizationId, name, parentId: folderId })
+          }
         />
       </Modal>
       <Modal
@@ -1853,7 +1855,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           onChange={setNameValue}
           onSubmit={(name) => {
             if (activeItem && name !== activeItem.name)
-              renameMutation.mutate({ id: activeItem.id, name });
+              renameMutation.mutate({ organizationId, id: activeItem.id, name });
           }}
         />
       </Modal>

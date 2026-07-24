@@ -1331,6 +1331,7 @@ describe("DrivePage drag and drop upload", () => {
 
     await waitFor(() => {
       expect(mocks.createDirectory.mock.calls.at(-1)?.[0]).toEqual({
+        organizationId: null,
         name: "素材2",
         parentId: 42,
       });
