@@ -73,6 +73,50 @@ const router = createBrowserRouter([
           {
             element: <AdminLayout />,
             children: [
+              {
+                path: "/organizations/:organizationId/admin",
+                element: <Navigate to="dashboard" replace />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/dashboard",
+                element: <AdminDashboardPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/users",
+                element: <AdminUsersPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/users/:userId/edit",
+                element: <AdminUserEditPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/users/:userId",
+                element: <AdminUserDetailPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/drive-items",
+                element: <AdminDriveItemsPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/drive-items/:driveItemId",
+                element: <AdminDriveItemDetailPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/audit-logs",
+                element: <AdminAuditLogsPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/audit-logs/:auditLogId",
+                element: <AdminAuditLogDetailPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/audit-events",
+                element: <AdminAuditEventsPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/audit-events/:auditEventId",
+                element: <AdminAuditEventDetailPage />,
+              },
               { path: "/admin", element: <Navigate to="/admin/dashboard" replace /> },
               {
                 path: "/admin/system",

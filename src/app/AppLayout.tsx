@@ -165,7 +165,14 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         ユーザー情報
       </NavLink>
       {canUseAdmin(auth.user, organizationId) ? (
-        <NavLink to="/admin" onClick={onNavigate}>
+        <NavLink
+          to={
+            organizationId
+              ? `/organizations/${organizationId}/admin/dashboard`
+              : "/admin"
+          }
+          onClick={onNavigate}
+        >
           <Shield size={18} aria-hidden="true" />
           管理画面
         </NavLink>

@@ -1,8 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { StatusBadge } from "../../components/StatusBadge";
-import { adminKeys, fetchAuditEvents, type AuditEvent } from "../api";
+import {
+  adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
+  fetchAuditEvents,
+  type AuditEvent,
+} from "../api";
 import {
   AdminFrame,
   AdminSearch,
@@ -19,10 +25,11 @@ import {
 
 export function AdminAuditEventsPage() {
   const [params] = useSearchParams();
+  const organizationId = adminOrganizationIdFromParam(useParams().organizationId);
   const queryString = adminQueryString(params);
   const query = useQuery({
-    queryKey: adminKeys.auditEvents(queryString),
-    queryFn: () => fetchAuditEvents(queryString),
+    queryKey: adminKeys.auditEvents(organizationId, queryString),
+    queryFn: () => fetchAuditEvents(queryString, organizationId),
   });
   return (
     <AdminFrame title="システムイベント">
@@ -91,7 +98,11 @@ export function AdminAuditEventsPage() {
               </thead>
               <tbody>
                 {data.data.map((event) => (
-                  <AuditEventRow key={event.id} event={event} />
+                  <AuditEventRow
+                    key={event.id}
+                    event={event}
+                    organizationId={organizationId}
+                  />
                 ))}
               </tbody>
             </table>
@@ -102,7 +113,13 @@ export function AdminAuditEventsPage() {
   );
 }
 
-function AuditEventRow({ event }: { event: AuditEvent }) {
+function AuditEventRow({
+  event,
+  organizationId,
+}: {
+  event: AuditEvent;
+  organizationId: number | null;
+}) {
   const occurredAt = formatCompactDateTime(event.occurred_at);
   const actionLabel = formatAuditAction(event.action);
   return (
@@ -151,7 +168,7 @@ function AuditEventRow({ event }: { event: AuditEvent }) {
       <td>
         <Link
           className="button button-secondary audit-detail-button"
-          to={`/admin/audit-events/${event.id}`}
+          to={adminUiPath(organizationId, `/audit-events/${event.id}`)}
           aria-label={`${occurredAt} の監査イベント詳細を表示`}
         >
           詳細

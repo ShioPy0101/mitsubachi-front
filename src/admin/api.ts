@@ -11,17 +11,26 @@ import {
 
 export const adminKeys = {
   all: ["admin"] as const,
-  dashboard: () => [...adminKeys.all, "dashboard"] as const,
+  dashboard: (organizationId: number | null = null) =>
+    [...adminKeys.all, organizationId, "dashboard"] as const,
   organizations: (query: string) => [...adminKeys.all, "organizations", query] as const,
   organization: (id: number) => [...adminKeys.all, "organizations", id] as const,
-  users: (query: string) => [...adminKeys.all, "users", query] as const,
-  user: (id: number) => [...adminKeys.all, "users", id] as const,
-  driveItems: (query: string) => [...adminKeys.all, "drive-items", query] as const,
-  driveItem: (id: number) => [...adminKeys.all, "drive-items", id] as const,
-  auditLogs: (query: string) => [...adminKeys.all, "audit-logs", query] as const,
-  auditLog: (id: number) => [...adminKeys.all, "audit-logs", id] as const,
-  auditEvents: (query: string) => [...adminKeys.all, "audit-events", query] as const,
-  auditEvent: (id: number) => [...adminKeys.all, "audit-events", id] as const,
+  users: (organizationId: number | null, query: string) =>
+    [...adminKeys.all, organizationId, "users", query] as const,
+  user: (organizationId: number | null, id: number) =>
+    [...adminKeys.all, organizationId, "users", id] as const,
+  driveItems: (organizationId: number | null, query: string) =>
+    [...adminKeys.all, organizationId, "drive-items", query] as const,
+  driveItem: (organizationId: number | null, id: number) =>
+    [...adminKeys.all, organizationId, "drive-items", id] as const,
+  auditLogs: (organizationId: number | null, query: string) =>
+    [...adminKeys.all, organizationId, "audit-logs", query] as const,
+  auditLog: (organizationId: number | null, id: number) =>
+    [...adminKeys.all, organizationId, "audit-logs", id] as const,
+  auditEvents: (organizationId: number | null, query: string) =>
+    [...adminKeys.all, organizationId, "audit-events", query] as const,
+  auditEvent: (organizationId: number | null, id: number) =>
+    [...adminKeys.all, organizationId, "audit-events", id] as const,
 };
 
 export const adminOrganizationSchema = organizationSchema.extend({
@@ -109,6 +118,24 @@ export type OrganizationInvite = z.infer<typeof organizationInviteSchema>;
 export type Dashboard = z.infer<typeof dashboardSchema>;
 export type AdminList<T> = { data: T[]; meta: AdminMeta };
 
+export function adminOrganizationIdFromParam(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  const id = Number(value);
+  return Number.isFinite(id) ? id : null;
+}
+
+export function adminPath(organizationId: number | null, suffix: string) {
+  if (organizationId === null) return `/api/v1/admin${suffix}`;
+
+  return `/api/v1/organizations/${organizationId}/admin${suffix}`;
+}
+
+export function adminUiPath(organizationId: number | null, suffix: string) {
+  if (organizationId === null) return `/admin${suffix}`;
+
+  return `/organizations/${organizationId}/admin${suffix}`;
+}
+
 function parseEnvelope<T>(schema: z.ZodType<T>, payload: unknown): T {
   const envelopeSchema = z.object({ data: z.unknown() });
   const enveloped = envelopeSchema.safeParse(payload);
@@ -129,10 +156,12 @@ function parseAdminList<T>(schema: z.ZodType<T>, payload: unknown): AdminList<T>
   };
 }
 
-export async function fetchDashboard(): Promise<Dashboard> {
+export async function fetchDashboard(
+  organizationId: number | null = null,
+): Promise<Dashboard> {
   return parseEnvelope(
     dashboardSchema,
-    await apiRequest<unknown>("/api/v1/admin/dashboard"),
+    await apiRequest<unknown>(adminPath(organizationId, "/dashboard")),
   );
 }
 
@@ -175,7 +204,7 @@ export function createOrganizationInvite(input: {
   organizationId: number;
   expiresAt: string;
 }): Promise<OrganizationInvite> {
-  return apiRequest<unknown>("/api/v1/admin/organization_invites", {
+  return apiRequest<unknown>(adminPath(input.organizationId, "/organization_invites"), {
     method: "POST",
     body: {
       organization_invite: {
@@ -186,17 +215,23 @@ export function createOrganizationInvite(input: {
   }).then((response) => parseEnvelope(organizationInviteSchema, response));
 }
 
-export async function fetchUsers(query: string): Promise<AdminList<AdminUser>> {
+export async function fetchUsers(
+  query: string,
+  organizationId: number | null = null,
+): Promise<AdminList<AdminUser>> {
   return parseAdminList(
     userSchema,
-    await apiRequest<unknown>(`/api/v1/admin/users${query}`),
+    await apiRequest<unknown>(`${adminPath(organizationId, "/users")}${query}`),
   );
 }
 
-export async function fetchUser(id: number): Promise<AdminUser> {
+export async function fetchUser(
+  id: number,
+  organizationId: number | null = null,
+): Promise<AdminUser> {
   return parseEnvelope(
     userSchema,
-    await apiRequest<unknown>(`/api/v1/admin/users/${id}`),
+    await apiRequest<unknown>(adminPath(organizationId, `/users/${id}`)),
   );
 }
 
@@ -206,62 +241,85 @@ export function updateUser(input: {
   email: string;
   role: AdminUser["role"];
   organizationId?: number | null;
+  scopedOrganizationId?: number | null;
 }): Promise<AdminUser> {
-  return apiRequest<unknown>(`/api/v1/admin/users/${input.id}`, {
-    method: "PATCH",
-    body: {
-      user: {
-        name: input.name,
-        email: input.email,
-        role: input.role,
-        organization_id: input.organizationId,
+  return apiRequest<unknown>(
+    adminPath(input.scopedOrganizationId ?? null, `/users/${input.id}`),
+    {
+      method: "PATCH",
+      body: {
+        user: {
+          name: input.name,
+          email: input.email,
+          role: input.role,
+          organization_id: input.organizationId,
+        },
       },
     },
-  }).then((response) => parseEnvelope(userSchema, response));
+  ).then((response) => parseEnvelope(userSchema, response));
 }
 
-export function suspendUser(id: number): Promise<AdminUser> {
-  return apiRequest<unknown>(`/api/v1/admin/users/${id}/suspend`, {
+export function suspendUser(
+  id: number,
+  organizationId: number | null = null,
+): Promise<AdminUser> {
+  return apiRequest<unknown>(adminPath(organizationId, `/users/${id}/suspend`), {
     method: "PATCH",
   }).then((response) => parseEnvelope(userSchema, response));
 }
 
-export function unsuspendUser(id: number): Promise<AdminUser> {
-  return apiRequest<unknown>(`/api/v1/admin/users/${id}/unsuspend`, {
+export function unsuspendUser(
+  id: number,
+  organizationId: number | null = null,
+): Promise<AdminUser> {
+  return apiRequest<unknown>(adminPath(organizationId, `/users/${id}/unsuspend`), {
     method: "PATCH",
   }).then((response) => parseEnvelope(userSchema, response));
 }
 
 export async function fetchAdminDriveItems(
   query: string,
+  organizationId: number | null = null,
 ): Promise<AdminList<AdminDriveItem>> {
   return parseAdminList(
     adminDriveItemSchema,
-    await apiRequest<unknown>(`/api/v1/admin/drive_items${query}`),
+    await apiRequest<unknown>(`${adminPath(organizationId, "/drive_items")}${query}`),
   );
 }
 
-export async function fetchAdminDriveItem(id: number): Promise<AdminDriveItem> {
+export async function fetchAdminDriveItem(
+  id: number,
+  organizationId: number | null = null,
+): Promise<AdminDriveItem> {
   return parseEnvelope(
     adminDriveItemSchema,
-    await apiRequest<unknown>(`/api/v1/admin/drive_items/${id}`),
+    await apiRequest<unknown>(adminPath(organizationId, `/drive_items/${id}`)),
   );
 }
 
-export function deleteAdminDriveItem(id: number): Promise<AdminDriveItem> {
-  return apiRequest<unknown>(`/api/v1/admin/drive_items/${id}`, {
+export function deleteAdminDriveItem(
+  id: number,
+  organizationId: number | null = null,
+): Promise<AdminDriveItem> {
+  return apiRequest<unknown>(adminPath(organizationId, `/drive_items/${id}`), {
     method: "DELETE",
   }).then((response) => parseEnvelope(adminDriveItemSchema, response));
 }
 
-export function restoreAdminDriveItem(id: number): Promise<AdminDriveItem> {
-  return apiRequest<unknown>(`/api/v1/admin/drive_items/${id}/restore`, {
+export function restoreAdminDriveItem(
+  id: number,
+  organizationId: number | null = null,
+): Promise<AdminDriveItem> {
+  return apiRequest<unknown>(adminPath(organizationId, `/drive_items/${id}/restore`), {
     method: "PATCH",
   }).then((response) => parseEnvelope(adminDriveItemSchema, response));
 }
 
-export function purgeAdminDriveItem(id: number): Promise<{ message: string }> {
-  return apiRequest<unknown>(`/api/v1/admin/drive_items/${id}/purge`, {
+export function purgeAdminDriveItem(
+  id: number,
+  organizationId: number | null = null,
+): Promise<{ message: string }> {
+  return apiRequest<unknown>(adminPath(organizationId, `/drive_items/${id}/purge`), {
     method: "DELETE",
   }).then((response) =>
     z
@@ -272,42 +330,63 @@ export function purgeAdminDriveItem(id: number): Promise<{ message: string }> {
   );
 }
 
-export function adminDriveItemPreviewUrl(id: number) {
-  return apiUrl(`/api/v1/admin/drive_items/${id}/preview`);
+export function adminDriveItemPreviewUrl(
+  id: number,
+  organizationId: number | null = null,
+) {
+  return apiUrl(adminPath(organizationId, `/drive_items/${id}/preview`));
 }
 
-export function adminDriveItemDownloadUrl(id: number) {
-  return apiUrl(`/api/v1/admin/drive_items/${id}/download`);
+export function adminDriveItemDownloadUrl(
+  id: number,
+  organizationId: number | null = null,
+) {
+  return apiUrl(adminPath(organizationId, `/drive_items/${id}/download`));
 }
 
-export function adminDriveItemStreamUrl(id: number) {
-  return apiUrl(`/api/v1/admin/drive_items/${id}/stream`);
+export function adminDriveItemStreamUrl(
+  id: number,
+  organizationId: number | null = null,
+) {
+  return apiUrl(adminPath(organizationId, `/drive_items/${id}/stream`));
 }
 
-export async function fetchAuditLogs(query: string): Promise<AdminList<AuditLog>> {
+export async function fetchAuditLogs(
+  query: string,
+  organizationId: number | null = null,
+): Promise<AdminList<AuditLog>> {
   return parseAdminList(
     auditLogSchema,
-    await apiRequest<unknown>(`/api/v1/admin/audit_logs${query}`),
+    await apiRequest<unknown>(`${adminPath(organizationId, "/audit_logs")}${query}`),
   );
 }
 
-export async function fetchAuditLog(id: number): Promise<AuditLog> {
+export async function fetchAuditLog(
+  id: number,
+  organizationId: number | null = null,
+): Promise<AuditLog> {
   return parseEnvelope(
     auditLogSchema,
-    await apiRequest<unknown>(`/api/v1/admin/audit_logs/${id}`),
+    await apiRequest<unknown>(adminPath(organizationId, `/audit_logs/${id}`)),
   );
 }
 
-export async function fetchAuditEvents(query: string): Promise<AdminList<AuditEvent>> {
+export async function fetchAuditEvents(
+  query: string,
+  organizationId: number | null = null,
+): Promise<AdminList<AuditEvent>> {
   return parseAdminList(
     auditEventSchema,
-    await apiRequest<unknown>(`/api/v1/admin/audit_events${query}`),
+    await apiRequest<unknown>(`${adminPath(organizationId, "/audit_events")}${query}`),
   );
 }
 
-export async function fetchAuditEvent(id: number): Promise<AuditEvent> {
+export async function fetchAuditEvent(
+  id: number,
+  organizationId: number | null = null,
+): Promise<AuditEvent> {
   return parseEnvelope(
     auditEventSchema,
-    await apiRequest<unknown>(`/api/v1/admin/audit_events/${id}`),
+    await apiRequest<unknown>(adminPath(organizationId, `/audit_events/${id}`)),
   );
 }

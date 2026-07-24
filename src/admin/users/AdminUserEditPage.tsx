@@ -4,25 +4,36 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "../../components/Button";
 import { useToast } from "../../components/ToastProvider";
-import { adminKeys, fetchUser, updateUser, type AdminUser } from "../api";
+import {
+  adminKeys,
+  adminOrganizationIdFromParam,
+  adminUiPath,
+  fetchUser,
+  updateUser,
+  type AdminUser,
+} from "../api";
 import { AdminFrame, QueryState, errorMessage } from "../components/AdminScaffold";
 
 export function AdminUserEditPage() {
-  const id = Number(useParams().userId);
+  const params = useParams();
+  const id = Number(params.userId);
+  const organizationId = adminOrganizationIdFromParam(params.organizationId);
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: adminKeys.user(id),
-    queryFn: () => fetchUser(id),
+    queryKey: adminKeys.user(organizationId, id),
+    queryFn: () => fetchUser(id, organizationId),
     enabled: Number.isFinite(id),
   });
   const mutation = useMutation({
     mutationFn: updateUser,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: adminKeys.user(id) });
+      await queryClient.invalidateQueries({
+        queryKey: adminKeys.user(organizationId, id),
+      });
       toast.show({ tone: "success", message: "ユーザーを更新しました。" });
-      void navigate(`/admin/users/${id}`, { replace: true });
+      void navigate(adminUiPath(organizationId, `/users/${id}`), { replace: true });
     },
     onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
   });
