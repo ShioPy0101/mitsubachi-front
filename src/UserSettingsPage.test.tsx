@@ -24,7 +24,7 @@ const currentUser: CurrentUser = {
   email: "current@example.com",
   pending_email: null,
   name: "Current User",
-  display_name: "丸山拓真",
+  display_name: "表示名テスト",
   role: "member",
   suspended: false,
   organization_id: 7,
@@ -42,7 +42,7 @@ describe("UserSettingsPage", () => {
   it("shows current user and disables unchanged display name save", () => {
     renderPage(currentUser);
 
-    expect(screen.getByDisplayValue("丸山拓真")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("表示名テスト")).toBeInTheDocument();
     expect(screen.getByText("current@example.com")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
   });
@@ -50,17 +50,17 @@ describe("UserSettingsPage", () => {
   it("updates display name with trimmed value", async () => {
     vi.mocked(updateCurrentUser).mockResolvedValue({
       ...currentUser,
-      display_name: "しお",
+      display_name: "新しい表示名",
     });
     const user = userEvent.setup();
     renderPage(currentUser);
 
-    const input = screen.getByDisplayValue("丸山拓真");
+    const input = screen.getByDisplayValue("表示名テスト");
     await user.clear(input);
-    await user.type(input, "  しお  ");
+    await user.type(input, "  新しい表示名  ");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(updateCurrentUser).toHaveBeenCalledWith({ displayName: "しお" });
+    expect(updateCurrentUser).toHaveBeenCalledWith({ displayName: "新しい表示名" });
     expect(await screen.findByText("表示名を保存しました。")).toBeInTheDocument();
   });
 

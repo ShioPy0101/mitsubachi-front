@@ -1,15 +1,22 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { authKeys, verifyEmailChange } from "./auth/api";
+import { useAuth } from "./auth/useAuth";
 
 export function EmailChangeVerifyPage() {
   const [params] = useSearchParams();
   const token = params.get("token");
   const sentRef = useRef(false);
   const queryClient = useQueryClient();
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const successRedirectPath = auth.isAuthenticated ? "/settings/user" : "/login";
+  const successRedirectLabel = auth.isAuthenticated
+    ? "ユーザー情報へ戻る"
+    : "ログイン画面へ";
   const mutation = useMutation({
     mutationFn: verifyEmailChange,
     onSuccess: async () => {
@@ -22,6 +29,16 @@ export function EmailChangeVerifyPage() {
     sentRef.current = true;
     mutation.mutate(token);
   }, [mutation, token]);
+
+  useEffect(() => {
+    if (!mutation.isSuccess) return undefined;
+
+    const timer = window.setTimeout(() => {
+      void navigate(successRedirectPath, { replace: true });
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [mutation.isSuccess, navigate, successRedirectPath]);
 
   if (!token) {
     return (
@@ -39,8 +56,8 @@ export function EmailChangeVerifyPage() {
       <main className="state-page">
         <CheckCircle2 size={36} aria-hidden="true" />
         <h1>メールアドレスを変更しました</h1>
-        <p>次回以降は新しいメールアドレスでログインできます。</p>
-        <Link to="/login">ログイン画面へ</Link>
+        <p>まもなく移動します。</p>
+        <Link to={successRedirectPath}>{successRedirectLabel}</Link>
       </main>
     );
   }

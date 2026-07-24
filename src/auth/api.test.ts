@@ -75,13 +75,15 @@ describe("auth api", () => {
         organization_id: 7,
         organization_name: "Mitsubachi",
         email: "user@example.com",
-        display_name: "しお",
+        display_name: "新しい表示名",
         role: "member",
       },
     });
 
-    await expect(updateCurrentUser({ displayName: "しお" })).resolves.toMatchObject({
-      display_name: "しお",
+    await expect(
+      updateCurrentUser({ displayName: "新しい表示名" }),
+    ).resolves.toMatchObject({
+      display_name: "新しい表示名",
     });
 
     expect(vi.mocked(fetch).mock.calls[1][0]).toBe(`${API_BASE_URL}/api/v1/me`);
