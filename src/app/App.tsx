@@ -26,8 +26,10 @@ import { VerifyPage } from "../auth/VerifyPage";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "../drive/DrivePage";
+import { EmailChangeVerifyPage } from "../EmailChangeVerifyPage";
 import { PublicSharePage } from "../externalShares/PublicSharePage";
 import { GroupDashboardPage } from "../GroupDashboardPage";
+import { UserSettingsPage } from "../UserSettingsPage";
 import { AppLayout } from "./AppLayout";
 
 const queryClient = createAppQueryClient();
@@ -35,6 +37,7 @@ const queryClient = createAppQueryClient();
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/auth/verify", element: <VerifyPage /> },
+  { path: "/settings/email-change/verify", element: <EmailChangeVerifyPage /> },
   { path: "/share/:token", element: <PublicSharePage /> },
   {
     element: <RequireAuth />,
@@ -46,6 +49,7 @@ const router = createBrowserRouter([
           { path: "/drive", element: <DrivePage /> },
           { path: "/drive/folder/:folderId", element: <DrivePage /> },
           { path: "/trash", element: <DrivePage mode="trash" /> },
+          { path: "/settings/user", element: <UserSettingsPage /> },
           { path: "/settings/group", element: <GroupDashboardPage /> },
         ],
       },

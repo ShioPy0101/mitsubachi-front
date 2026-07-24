@@ -39,6 +39,42 @@ export function verifyEmailToken(token: string) {
   });
 }
 
+export async function updateCurrentUser(input: {
+  displayName: string;
+}): Promise<CurrentUser> {
+  const response = await apiRequest<unknown>("/api/v1/me", {
+    method: "PATCH",
+    body: { display_name: input.displayName },
+  });
+  return meSchema.parse(response).user;
+}
+
+export function requestEmailChange(email: string) {
+  return apiRequest<{ message?: string; pending_email?: string }>(
+    "/api/v1/me/email_change",
+    {
+      method: "POST",
+      body: { email },
+    },
+  );
+}
+
+export function verifyEmailChange(token: string) {
+  return apiRequest<{ message?: string; email?: string }>(
+    "/api/v1/me/email_change/verify",
+    {
+      method: "POST",
+      body: { token },
+    },
+  );
+}
+
+export function cancelEmailChange() {
+  return apiRequest<{ message?: string }>("/api/v1/me/email_change", {
+    method: "DELETE",
+  });
+}
+
 export function logout() {
   return apiRequest<unknown>("/api/v1/logout", {
     method: "DELETE",

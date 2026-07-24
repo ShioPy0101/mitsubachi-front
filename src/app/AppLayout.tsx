@@ -1,4 +1,12 @@
-import { LogOut, Menu, Shield, Trash2, UploadCloud, Users } from "lucide-react";
+import {
+  LogOut,
+  Menu,
+  Shield,
+  Trash2,
+  UploadCloud,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -107,6 +115,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <NavLink to="/settings/group" onClick={onNavigate}>
         <Users size={18} aria-hidden="true" />
         グループ
+      </NavLink>
+      <NavLink to="/settings/user" onClick={onNavigate}>
+        <UserRound size={18} aria-hidden="true" />
+        ユーザー情報
       </NavLink>
       {canUseAdmin(auth.user) ? (
         <NavLink to="/admin" onClick={onNavigate}>
