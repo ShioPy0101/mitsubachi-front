@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { authKeys } from "./api";
 import { verifyEmailToken } from "./api";
+import { AUTH_RETURN_PATH_KEY } from "./LoginPage";
 
 export function VerifyPage() {
   const [params] = useSearchParams();
@@ -15,7 +16,11 @@ export function VerifyPage() {
     mutationFn: verifyEmailToken,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: authKeys.me });
-      void navigate("/drive", { replace: true });
+      const returnPath = localStorage.getItem(AUTH_RETURN_PATH_KEY);
+      if (returnPath) {
+        localStorage.removeItem(AUTH_RETURN_PATH_KEY);
+      }
+      void navigate(returnPath ?? "/drive", { replace: true });
     },
   });
 

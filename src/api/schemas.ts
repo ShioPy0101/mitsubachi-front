@@ -12,6 +12,24 @@ export const membershipSchema = z.object({
   joined_at: z.string().nullable().optional(),
 });
 
+export const organizationInvitationSchema = z.object({
+  token: z.string(),
+  organization: organizationSchema,
+  invited_by: z
+    .object({
+      id: z.number(),
+      display_name: z.string(),
+      email: z.string(),
+    })
+    .nullable()
+    .optional(),
+  email: z.string().nullable().optional(),
+  role: z.enum(["member", "organization_admin"]),
+  expires_at: z.string(),
+  accepted_at: z.string().nullable().optional(),
+  revoked_at: z.string().nullable().optional(),
+});
+
 export const userSchema = z
   .object({
     id: z.number(),
@@ -85,6 +103,7 @@ export const adminListSchema = <T extends z.ZodTypeAny>(item: T) =>
   });
 
 export type Membership = z.infer<typeof membershipSchema>;
+export type OrganizationInvitation = z.infer<typeof organizationInvitationSchema>;
 export type CurrentUser = z.infer<typeof userSchema>;
 export type DriveItem = z.infer<typeof driveItemSchema>;
 export type AdminMeta = z.infer<typeof adminMetaSchema>;

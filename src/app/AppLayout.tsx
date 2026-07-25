@@ -1,6 +1,7 @@
 import {
   LogOut,
   Menu,
+  PlusCircle,
   Shield,
   Trash2,
   UploadCloud,
@@ -163,6 +164,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <NavLink to="/settings/user" onClick={onNavigate}>
         <UserRound size={18} aria-hidden="true" />
         ユーザー情報
+      </NavLink>
+      <NavLink to="/organizations/join" onClick={onNavigate}>
+        <PlusCircle size={18} aria-hidden="true" />
+        新しい組織に参加
       </NavLink>
       {canUseAdmin(auth.user, organizationId) ? (
         <NavLink

@@ -30,6 +30,11 @@ import { DrivePage } from "../drive/DrivePage";
 import { EmailChangeVerifyPage } from "../EmailChangeVerifyPage";
 import { PublicSharePage } from "../externalShares/PublicSharePage";
 import { GroupDashboardPage } from "../GroupDashboardPage";
+import { JoinOrganizationPage } from "../organizationInvitations/JoinOrganizationPage";
+import {
+  OrganizationInvitationJoinedPage,
+  OrganizationInvitationPage,
+} from "../organizationInvitations/OrganizationInvitationPage";
 import { UserSettingsPage } from "../UserSettingsPage";
 import { AppLayout } from "./AppLayout";
 
@@ -40,6 +45,10 @@ const router = createBrowserRouter([
   { path: "/auth/verify", element: <VerifyPage /> },
   { path: "/settings/email-change/verify", element: <EmailChangeVerifyPage /> },
   { path: "/share/:token", element: <PublicSharePage /> },
+  {
+    path: "/organization-invitations/:token",
+    element: <OrganizationInvitationPage />,
+  },
   {
     element: <RequireAuth />,
     children: [
@@ -63,6 +72,11 @@ const router = createBrowserRouter([
           { path: "/drive", element: <DrivePage /> },
           { path: "/drive/folder/:folderId", element: <DrivePage /> },
           { path: "/trash", element: <DrivePage mode="trash" /> },
+          { path: "/organizations/join", element: <JoinOrganizationPage /> },
+          {
+            path: "/organization-invitations/:token/joined",
+            element: <OrganizationInvitationJoinedPage />,
+          },
           { path: "/settings/user", element: <UserSettingsPage /> },
           { path: "/settings/group", element: <GroupDashboardPage /> },
         ],
