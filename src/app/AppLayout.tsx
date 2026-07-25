@@ -1,6 +1,7 @@
 import {
   LogOut,
   Menu,
+  PlusCircle,
   Shield,
   Trash2,
   UploadCloud,
@@ -32,10 +33,7 @@ export function AppLayout() {
   const selectedMembership = auth.user?.memberships.find(
     (membership) => membership.organization.id === selectedOrganizationId,
   );
-  const organizationName =
-    selectedMembership?.organization.name ??
-    auth.user?.organization?.name ??
-    "Organization";
+  const organizationName = selectedMembership?.organization.name ?? "Organization";
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSettled: async () => {
@@ -164,6 +162,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <UserRound size={18} aria-hidden="true" />
         ユーザー情報
       </NavLink>
+      <NavLink to="/organizations/join" onClick={onNavigate}>
+        <PlusCircle size={18} aria-hidden="true" />
+        新しい組織に参加
+      </NavLink>
       {canUseAdmin(auth.user, organizationId) ? (
         <NavLink
           to={
@@ -188,5 +190,5 @@ function selectedOrganizationIdFor(
   const match = /^\/organizations\/(\d+)/.exec(pathname);
   if (match) return Number(match[1]);
 
-  return user?.memberships[0]?.organization.id ?? user?.organization?.id ?? null;
+  return user?.memberships[0]?.organization.id ?? null;
 }

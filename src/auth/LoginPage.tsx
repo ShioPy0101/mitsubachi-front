@@ -1,9 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { Mail } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { z } from "zod";
 
 import { ApiError } from "../api/errors";
@@ -11,6 +11,8 @@ import { Button } from "../components/Button";
 import { FieldError } from "../components/FieldError";
 import { useToast } from "../components/ToastProvider";
 import { login, registerByInvite } from "./api";
+
+export const AUTH_RETURN_PATH_KEY = "mitsubachi.auth.returnPath";
 
 const authSchema = z.object({
   email: z.string().email("メールアドレスを入力してください。"),
@@ -26,6 +28,7 @@ type AuthFormValues = {
 
 export function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
+  const location = useLocation();
   const toast = useToast();
   const form = useForm<AuthFormValues>({
     resolver: zodResolver(authSchema),
@@ -61,6 +64,12 @@ export function LoginPage() {
       });
     },
   });
+  const returnPath = invitationReturnPathFrom(location.state);
+
+  useEffect(() => {
+    if (!returnPath) return;
+    localStorage.setItem(AUTH_RETURN_PATH_KEY, returnPath);
+  }, [returnPath]);
 
   return (
     <main className="auth-page">
@@ -69,7 +78,11 @@ export function LoginPage() {
           M
         </div>
         <h1 id="auth-title">{mode === "login" ? "ログイン" : "招待コードで登録"}</h1>
-        <p>入力したメールアドレスに確認メールを送信します。</p>
+        <p>
+          {returnPath
+            ? "ログイン後に招待確認画面へ戻ります。"
+            : "入力したメールアドレスに確認メールを送信します。"}
+        </p>
         <form
           onSubmit={(event) => {
             void form.handleSubmit((values) => {
@@ -143,4 +156,12 @@ export function LoginPage() {
       </section>
     </main>
   );
+}
+
+function invitationReturnPathFrom(state: unknown) {
+  const from = (state as { from?: { pathname?: unknown } } | null)?.from;
+  return typeof from?.pathname === "string" &&
+    from.pathname.startsWith("/organization-invitations/")
+    ? from.pathname
+    : null;
 }
