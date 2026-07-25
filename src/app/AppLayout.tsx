@@ -33,10 +33,7 @@ export function AppLayout() {
   const selectedMembership = auth.user?.memberships.find(
     (membership) => membership.organization.id === selectedOrganizationId,
   );
-  const organizationName =
-    selectedMembership?.organization.name ??
-    auth.user?.organization?.name ??
-    "Organization";
+  const organizationName = selectedMembership?.organization.name ?? "Organization";
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSettled: async () => {
@@ -193,5 +190,5 @@ function selectedOrganizationIdFor(
   const match = /^\/organizations\/(\d+)/.exec(pathname);
   if (match) return Number(match[1]);
 
-  return user?.memberships[0]?.organization.id ?? user?.organization?.id ?? null;
+  return user?.memberships[0]?.organization.id ?? null;
 }

@@ -206,8 +206,7 @@ export function App() {
 
 function NavigateToDrive() {
   const auth = useAuth();
-  const organizationId =
-    auth.user?.memberships[0]?.organization.id ?? auth.user?.organization?.id;
+  const organizationId = auth.user?.memberships[0]?.organization.id;
 
   return (
     <Navigate
