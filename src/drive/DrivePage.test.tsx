@@ -185,6 +185,23 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
+  it("shows a session expired state without retry for list authorization errors", async () => {
+    mocks.fetchDriveItems.mockRejectedValue(
+      new ApiError(401, "ログインが必要です。", [], undefined, "/api/v1/drive_items"),
+    );
+
+    renderDrivePage("/drive");
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "セッションの有効期限が切れました",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("再度ログインしてください。")).toBeInTheDocument();
+    expect(screen.queryByText("ログインが必要です。")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "再試行" })).not.toBeInTheDocument();
+  });
+
   it("uses the same upload path for file input selection", async () => {
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");

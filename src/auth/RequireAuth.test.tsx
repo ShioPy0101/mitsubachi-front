@@ -22,12 +22,23 @@ describe("RequireAuth", () => {
     });
   });
 
-  it("redirects to login when /api/v1/me returns 401", async () => {
+  it("shows a session expired state when /api/v1/me returns 401", async () => {
     mockMe(jsonResponse({ error: "ログインが必要です。" }, 401));
 
     renderProtectedRoute();
 
-    expect(await screen.findByText("Login page")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", {
+        name: "セッションの有効期限が切れました",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("再度ログインしてください。")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "ログイン画面へ" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(screen.queryByRole("button", { name: "再試行" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Login page")).not.toBeInTheDocument();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
   });
 

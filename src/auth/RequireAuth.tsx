@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Link, Navigate, Outlet } from "react-router-dom";
 
 import { API_BASE_URL } from "../api/client";
 import { ErrorState } from "../components/ErrorState";
@@ -21,7 +21,6 @@ export function RequireAuth({
   allowedRoles?: Role[];
 }) {
   const auth = useAuth();
-  const location = useLocation();
 
   if (auth.status === "checking") {
     return <LoadingIndicator label="認証状態を確認しています" />;
@@ -58,7 +57,17 @@ export function RequireAuth({
   }
 
   if (auth.status === "unauthenticated") {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    return (
+      <main className="state-page" aria-live="polite">
+        <section className="error-state session-expired-state" role="status">
+          <h2>セッションの有効期限が切れました</h2>
+          <p>再度ログインしてください。</p>
+          <Link to="/login" className="button button-secondary">
+            ログイン画面へ
+          </Link>
+        </section>
+      </main>
+    );
   }
 
   if (allowedRoles && !hasAllowedRole(auth.user, allowedRoles)) {
