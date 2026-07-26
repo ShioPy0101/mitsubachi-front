@@ -167,6 +167,7 @@ function codeForStatus(status: number) {
 }
 
 function levelFor(code: string, status: number): AppError["level"] {
+  if (status === 401) return "warn";
   if (
     [
       "duplicate_name",

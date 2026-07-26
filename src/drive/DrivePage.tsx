@@ -320,14 +320,17 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     [folderQuery.data?.breadcrumbs],
   );
   const pageLabel = breadcrumbs.map((crumb) => crumb.name).join(" / ");
-  const visibleError =
-    lastError ??
-    (visibleQuery.isError
+  const visibleQueryUnauthorized =
+    visibleQuery.isError && isUnauthorizedError(visibleQuery.error);
+  const visibleQueryError =
+    visibleQuery.isError && !visibleQueryUnauthorized
       ? normalizeAppError(visibleQuery.error, {
           operation: searchTerm ? "検索" : "一覧取得",
           page: pageLabel,
         })
-      : null);
+      : null;
+  const visibleError =
+    lastError && !isUnauthorizedError(lastError) ? lastError : visibleQueryError;
   const uploadPanelState = useMemo<UploadPanelState>(() => {
     if (uploadPanelPreference === "dismissed") return "dismissed";
     if (uploadPanelPreference === "expanded") return "expanded";
@@ -1762,13 +1765,20 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         <LoadingIndicator label="一覧を読み込んでいます" />
       ) : null}
       {visibleQuery.isError ? (
-        <ErrorState
-          message={errorMessage(visibleQuery.error)}
-          onRetry={() => {
-            captureError(visibleQuery.error, searchTerm ? "検索" : "一覧取得");
-            void visibleQuery.refetch();
-          }}
-        />
+        visibleQueryUnauthorized ? (
+          <ErrorState
+            title="セッションの有効期限が切れました"
+            message="再度ログインしてください。"
+          />
+        ) : (
+          <ErrorState
+            message={errorMessage(visibleQuery.error)}
+            onRetry={() => {
+              captureError(visibleQuery.error, searchTerm ? "検索" : "一覧取得");
+              void visibleQuery.refetch();
+            }}
+          />
+        )
       ) : null}
       {!visibleQuery.isLoading && !visibleQuery.isError && items.length === 0 ? (
         <EmptyState
@@ -3859,6 +3869,16 @@ function safeRelativePath(file: File) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "処理に失敗しました。";
+}
+
+function isUnauthorizedError(error: unknown) {
+  if (error instanceof ApiError) return error.status === 401;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    (error as { status?: unknown }).status === 401
+  );
 }
 
 function hasFiles(dataTransfer: DataTransfer) {
