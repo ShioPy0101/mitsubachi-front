@@ -56,34 +56,37 @@
 
 :root[data-color-mode="dark"] {
   color-scheme: dark;
-  --color-bg: #17202c;
-  --color-surface: #1d2633;
-  --color-surface-subtle: #242f3d;
-  --color-surface-hover: #2a3748;
-  --color-surface-selected: #203a57;
-  --color-focus: #7faee8;
-  --color-disabled-bg: #263140;
-  --color-disabled-text: #778293;
+  --color-bg: #111318;
+  --color-surface: #191d24;
+  --color-surface-subtle: #1e232b;
+  --color-surface-hover: #242a33;
+  --color-surface-selected: #263142;
+  --color-focus: #5f8fc8;
+  --color-disabled-bg: #20242b;
+  --color-disabled-text: #686f7a;
   --color-text-primary: #e5e7eb;
-  --color-text-secondary: #b8c1ce;
-  --color-text-muted: #8b97a8;
-  --color-border: #2f3b4d;
-  --color-border-strong: #405066;
-  --color-primary: #7faee8;
-  --color-primary-hover: #9bbfee;
-  --color-primary-soft: #223955;
-  --color-danger: #e7a19c;
-  --color-danger-hover: #f0b7b2;
-  --color-danger-soft: #3a2729;
-  --color-info: #a8c7eb;
-  --color-info-soft: #223955;
-  --color-success: #9fd2aa;
-  --color-warning: #dfbd76;
-  --color-warning-soft: #3a3324;
+  --color-text-secondary: #a7adb7;
+  --color-text-muted: #747c88;
+  --color-border: #2a3039;
+  --color-border-strong: #3a424d;
+  --color-primary: #3b6ea8;
+  --color-primary-hover: #477db8;
+  --color-primary-soft: #202a38;
+  --color-danger: #d58b86;
+  --color-danger-hover: #e0a09b;
+  --color-danger-soft: #2c2021;
+  --color-info: #8aa8c8;
+  --color-info-soft: #202832;
+  --color-success: #8fbf99;
+  --color-warning: #d2b06d;
+  --color-warning-soft: #302c22;
   --color-session-bg: #2d2a22;
   --color-session-border: #665d3e;
   --color-session-text: #eee6cc;
   --shadow-menu: 0 6px 18px rgba(0, 0, 0, 0.38), 0 18px 42px rgba(0, 0, 0, 0.26);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 }
 
 html {
@@ -300,6 +303,57 @@ a {
   border: 1px solid var(--color-border);
 }
 
+:root[data-color-mode="dark"] .app-header {
+  background: #171a20;
+  border-bottom-color: #242a33;
+}
+
+:root[data-color-mode="dark"] .sidebar {
+  background: #171a20;
+  border-right-color: #242a33;
+}
+
+:root[data-color-mode="dark"] .sidebar a,
+:root[data-color-mode="dark"] .admin-tabs a {
+  color: var(--color-text-secondary);
+}
+
+:root[data-color-mode="dark"] .sidebar a.active,
+:root[data-color-mode="dark"] .admin-tabs a.active {
+  color: var(--color-text-primary);
+  background: var(--color-surface-subtle);
+}
+
+:root[data-color-mode="dark"] .sidebar a:hover,
+:root[data-color-mode="dark"] .admin-tabs a:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+:root[data-color-mode="dark"] .sidebar .nav-create {
+  color: var(--color-text-primary);
+  background: var(--color-surface-subtle);
+  border-color: transparent;
+}
+
+:root[data-color-mode="dark"] .role-chip,
+:root[data-color-mode="dark"] .status-badge {
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+:root[data-color-mode="dark"] .organization-switcher {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-subtle);
+  border-color: transparent;
+}
+
+:root[data-color-mode="dark"] .color-mode-toggle[aria-pressed="true"] {
+  color: var(--color-text-secondary);
+  background: transparent;
+  border-color: transparent;
+}
+
 .app-main {
   min-width: 0;
   padding: var(--space-5);
@@ -446,11 +500,67 @@ a {
   background: var(--color-surface-hover);
 }
 
+:root[data-color-mode="dark"] .toolbar {
+  padding-inline: 0;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+}
+
+:root[data-color-mode="dark"] .button-secondary {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-subtle);
+  border-color: transparent;
+}
+
+:root[data-color-mode="dark"] .button-secondary:hover,
+:root[data-color-mode="dark"] .button-ghost:hover,
+:root[data-color-mode="dark"] .icon-button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+:root[data-color-mode="dark"] .button-primary {
+  color: #f0f3f6;
+  background: var(--color-primary);
+  border-color: transparent;
+}
+
+:root[data-color-mode="dark"] .button-primary:hover {
+  background: var(--color-primary-hover);
+}
+
+:root[data-color-mode="dark"] .button-ghost,
+:root[data-color-mode="dark"] .icon-button {
+  color: var(--color-text-secondary);
+}
+
+:root[data-color-mode="dark"] .toolbar .button-primary {
+  color: var(--color-text-primary);
+  background: var(--color-surface-subtle);
+  border-color: transparent;
+}
+
+:root[data-color-mode="dark"] .toolbar .button-primary:hover {
+  background: var(--color-surface-hover);
+}
+
+:root[data-color-mode="dark"] .brand-mark {
+  color: var(--color-text-primary);
+  background: var(--color-surface-subtle);
+}
+
 .file-list {
   overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+}
+
+:root[data-color-mode="dark"] .file-list {
+  background: var(--color-surface);
+  border-color: transparent;
+  border-radius: 0;
 }
 
 .file-list-viewport {
@@ -564,6 +674,24 @@ tr.dragging-row .drive-item-info-action {
 }
 
 tr.selected {
+  background: var(--color-surface-selected);
+}
+
+:root[data-color-mode="dark"] th,
+:root[data-color-mode="dark"] td {
+  border-bottom-color: #252b34;
+}
+
+:root[data-color-mode="dark"] .file-list-viewport thead {
+  background: var(--color-surface);
+}
+
+:root[data-color-mode="dark"] tr:hover,
+:root[data-color-mode="dark"] .drive-item-info-action:hover {
+  background: var(--color-surface-hover);
+}
+
+:root[data-color-mode="dark"] tr.selected {
   background: var(--color-surface-selected);
 }
 
@@ -1454,6 +1582,51 @@ th:last-child,
   grid-column: 1 / -1;
 }
 
+:root[data-color-mode="dark"] .admin-section,
+:root[data-color-mode="dark"] .settings-panel,
+:root[data-color-mode="dark"] .system-admin-panel,
+:root[data-color-mode="dark"] .metric,
+:root[data-color-mode="dark"] .admin-table,
+:root[data-color-mode="dark"] .audit-table-wrapper {
+  background: var(--color-surface);
+  border-color: transparent;
+}
+
+:root[data-color-mode="dark"] .admin-tabs {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+}
+
+:root[data-color-mode="dark"] .admin-tabs a.active {
+  color: var(--color-text-primary);
+  background: var(--color-surface-subtle);
+  border-color: transparent;
+}
+
+:root[data-color-mode="dark"] .admin-search {
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+}
+
+:root[data-color-mode="dark"] .admin-search input,
+:root[data-color-mode="dark"] .admin-search select,
+:root[data-color-mode="dark"] .field input,
+:root[data-color-mode="dark"] .field select,
+:root[data-color-mode="dark"] .field textarea {
+  color: var(--color-text-primary);
+  background: var(--color-surface-subtle);
+  border-color: var(--color-border);
+}
+
+:root[data-color-mode="dark"] .admin-search input::placeholder,
+:root[data-color-mode="dark"] .field input::placeholder,
+:root[data-color-mode="dark"] .field textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
 .admin-table,
 .metric {
   background: var(--color-surface);
@@ -1973,6 +2146,41 @@ th:last-child,
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+}
+
+:root[data-color-mode="dark"] .drive-search {
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+}
+
+:root[data-color-mode="dark"] .search-input {
+  background: var(--color-surface-subtle);
+  border-color: var(--color-border);
+}
+
+:root[data-color-mode="dark"] .directory-row {
+  background: var(--color-surface);
+}
+
+:root[data-color-mode="dark"] .directory-row:hover {
+  background: var(--color-surface-hover);
+}
+
+:root[data-color-mode="dark"] .directory-row svg {
+  color: var(--color-text-secondary);
+}
+
+:root[data-color-mode="dark"] tr.selected .directory-row,
+:root[data-color-mode="dark"] tr.selected .directory-row:hover {
+  background: transparent;
+}
+
+:root[data-color-mode="dark"] .upload-progress {
+  background: var(--color-surface);
+  border-color: transparent;
+  border-radius: 0;
 }
 
 .upload-progress-header,
