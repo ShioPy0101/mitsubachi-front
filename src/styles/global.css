@@ -51,6 +51,35 @@
   --radius-pill: 999px;
 }
 
+:root[data-color-mode="dark"] {
+  color-scheme: dark;
+  --color-bg: #111827;
+  --color-surface: #182231;
+  --color-surface-subtle: #202c3d;
+  --color-surface-hover: #273548;
+  --color-surface-selected: #183a5f;
+  --color-focus: #60a5fa;
+  --color-disabled-bg: #243041;
+  --color-disabled-text: #7f8da1;
+  --color-text-primary: #f3f6fa;
+  --color-text-secondary: #c3ccd8;
+  --color-text-muted: #9aa7b6;
+  --color-border: #344155;
+  --color-border-strong: #4a5a70;
+  --color-primary: #7aa7ff;
+  --color-primary-hover: #a8c4ff;
+  --color-primary-soft: #17365d;
+  --color-danger: #ffb4ab;
+  --color-danger-hover: #ffd6d1;
+  --color-danger-soft: #5f1f1b;
+  --color-info: #9ecaff;
+  --color-info-soft: #17365d;
+  --color-success: #8fd99f;
+  --color-warning: #f4bf70;
+  --color-warning-soft: #4b3413;
+  --shadow-menu: 0 6px 18px rgba(0, 0, 0, 0.38), 0 18px 42px rgba(0, 0, 0, 0.26);
+}
+
 html {
   min-width: 320px;
 }
@@ -166,10 +195,16 @@ a {
   height: 32px;
   flex: 0 0 auto;
   place-items: center;
-  color: #ffffff;
+  color: var(--color-surface);
   background: var(--color-primary);
   border-radius: var(--radius-sm);
   font-weight: 700;
+}
+
+.color-mode-toggle[aria-pressed="true"] {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-color: color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
 }
 
 .header-user {
@@ -349,7 +384,7 @@ a {
 }
 
 .button-primary {
-  color: #ffffff;
+  color: var(--color-surface);
   background: var(--color-primary);
 }
 
@@ -374,7 +409,7 @@ a {
 }
 
 .button-danger {
-  color: #ffffff;
+  color: var(--color-surface);
   background: var(--color-danger);
 }
 
@@ -1191,7 +1226,7 @@ th:last-child,
   display: inline-block;
   padding: 2px 4px;
   font-weight: 700;
-  background: #fff7d6;
+  background: var(--color-warning-soft);
   border-radius: 4px;
 }
 
@@ -1212,7 +1247,7 @@ th:last-child,
 .status-name_conflict_and_missing_parent,
 .status-active_content_duplicate,
 .status-active_content_duplicate_and_missing_parent {
-  background: #fff7d6;
+  background: var(--color-warning-soft);
 }
 
 @media (max-width: 760px) {
@@ -1266,12 +1301,12 @@ th:last-child,
 
 .status-success {
   color: var(--color-success);
-  background: #e6f4ea;
+  background: color-mix(in srgb, var(--color-success) 18%, var(--color-surface));
 }
 
 .status-warning {
   color: var(--color-warning);
-  background: #fff4df;
+  background: var(--color-warning-soft);
 }
 
 .status-danger {
