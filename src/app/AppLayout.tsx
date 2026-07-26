@@ -1,14 +1,16 @@
 import {
   LogOut,
   Menu,
+  Moon,
   PlusCircle,
   Shield,
+  Sun,
   Trash2,
   UploadCloud,
   UserRound,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -18,9 +20,16 @@ import { canUseAdmin } from "../auth/permissions";
 import { useAuth } from "../auth/useAuth";
 import { IconButton } from "../components/IconButton";
 import { useToast } from "../components/ToastProvider";
+import {
+  applyColorMode,
+  getInitialColorMode,
+  persistColorMode,
+  type ColorMode,
+} from "./colorMode";
 
 export function AppLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [colorMode, setColorMode] = useState<ColorMode>(() => getInitialColorMode());
   const auth = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -46,6 +55,15 @@ export function AppLayout() {
       toast.show({ tone: "danger", message: "ログアウトに失敗しました。" });
     },
   });
+
+  useEffect(() => {
+    applyColorMode(colorMode);
+    persistColorMode(colorMode);
+  }, [colorMode]);
+
+  const nextColorMode = colorMode === "light" ? "dark" : "light";
+  const colorModeLabel =
+    colorMode === "light" ? "黒モードへ切り替え" : "白モードへ切り替え";
 
   return (
     <div className="app-shell">
@@ -93,6 +111,18 @@ export function AppLayout() {
           <span className="role-chip">
             {selectedMembership?.role ?? auth.user?.role}
           </span>
+          <IconButton
+            label={colorModeLabel}
+            className="color-mode-toggle"
+            aria-pressed={colorMode === "dark"}
+            onClick={() => setColorMode(nextColorMode)}
+          >
+            {colorMode === "light" ? (
+              <Moon size={18} aria-hidden="true" />
+            ) : (
+              <Sun size={18} aria-hidden="true" />
+            )}
+          </IconButton>
           <IconButton
             label="ログアウト"
             onClick={() => logoutMutation.mutate()}

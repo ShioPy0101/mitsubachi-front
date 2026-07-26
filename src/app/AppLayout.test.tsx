@@ -1,13 +1,19 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthContext, type AuthContextValue } from "../auth/AuthContext";
 import { ToastProvider } from "../components/ToastProvider";
 import { AppLayout } from "./AppLayout";
 
 describe("AppLayout organization navigation", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute("data-color-mode");
+    document.documentElement.style.colorScheme = "";
+  });
+
   it("shows organization switcher and navigates to selected organization drive", () => {
     renderLayout();
 
@@ -19,6 +25,20 @@ describe("AppLayout organization navigation", () => {
     expect(screen.getByText("新しい組織に参加")).toHaveAttribute(
       "href",
       "/organizations/join",
+    );
+  });
+
+  it("toggles and persists the color mode", () => {
+    renderLayout();
+
+    const toggle = screen.getByRole("button", { name: "黒モードへ切り替え" });
+    fireEvent.click(toggle);
+
+    expect(document.documentElement.dataset.colorMode).toBe("dark");
+    expect(localStorage.getItem("mitsubachi.colorMode")).toBe("dark");
+    expect(screen.getByRole("button", { name: "白モードへ切り替え" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
   });
 });
