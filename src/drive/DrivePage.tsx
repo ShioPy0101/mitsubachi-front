@@ -90,6 +90,16 @@ const MENU_OFFSET = 6;
 const UPLOAD_PARALLEL_LIMIT = 4;
 const UPLOAD_PROGRESS_FLUSH_MS = 120;
 
+function driveUiPath(organizationId: number | null, suffix = "") {
+  return organizationId == null
+    ? `/drive${suffix}`
+    : `/organizations/${organizationId}/drive${suffix}`;
+}
+
+function trashUiPath(organizationId: number | null) {
+  return organizationId == null ? "/trash" : `/organizations/${organizationId}/trash`;
+}
+
 type UploadTask = {
   id: string;
   batchId?: string;
@@ -177,6 +187,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     : (auth?.user?.organization?.id ?? null);
   const hasOrganization = organizationId == null || Number.isFinite(organizationId);
   const folderId = params.folderId ? Number(params.folderId) : null;
+  const driveRootPath = driveUiPath(organizationId);
+  const trashRootPath = trashUiPath(organizationId);
   const queryClient = useQueryClient();
   const toast = useToast();
   const navigate = useNavigate();
@@ -658,9 +670,17 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       targetName: string;
       source: "drag" | "dialog";
     }) => bulkMove(organizationId, ids, parentId),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       await invalidateCurrent();
       await queryClient.invalidateQueries({ queryKey: driveKeys.all(organizationId) });
+      if (
+        typeof response.organization_id === "number" &&
+        response.organization_id !== organizationId
+      ) {
+        await queryClient.invalidateQueries({
+          queryKey: driveKeys.all(response.organization_id),
+        });
+      }
       setSelectedIds([]);
       setDialog(null);
       setMoveDialog(null);
@@ -702,7 +722,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     if (mode === "trash") return;
     if (item.item_type === "directory") {
       setSelectedIds([]);
-      void navigate(`/drive/folder/${item.id}`);
+      void navigate(
+        driveUiPath(item.organization_id ?? organizationId, `/folder/${item.id}`),
+      );
       return;
     }
     setActiveItem(item);
@@ -1508,7 +1530,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         <nav className="breadcrumbs" aria-label="パンくず">
           {breadcrumbs.map((crumb, index) => {
             const current = index === breadcrumbs.length - 1;
-            const to = crumb.id === null ? "/drive" : `/drive/folder/${crumb.id}`;
+            const to =
+              crumb.id === null
+                ? driveRootPath
+                : driveUiPath(organizationId, `/folder/${crumb.id}`);
             return (
               <span
                 key={crumb.id ?? "root"}
@@ -1820,7 +1845,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }}
           onDragOverFolder={setDragOverFolderId}
           onOpenParent={(parentId) =>
-            void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`)
+            void navigate(
+              parentId === null
+                ? driveRootPath
+                : driveUiPath(organizationId, `/folder/${parentId}`),
+            )
           }
           draggingIds={draggingIds}
           dragOverFolderId={dragOverFolderId}
@@ -1886,7 +1915,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             duplicateFiles={conflict.duplicateFiles}
             onOpenDuplicateLocation={(parentId) => {
               setDialog(null);
-              void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`);
+              void navigate(
+                parentId === null
+                  ? driveRootPath
+                  : driveUiPath(organizationId, `/folder/${parentId}`),
+              );
             }}
             onChange={setNameValue}
             onSubmit={(name) => {
@@ -1906,7 +1939,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             onOpenDuplicateLocation={(parentId) => {
               setDialog(null);
               setConflict(null);
-              void navigate(parentId === null ? "/drive" : `/drive/folder/${parentId}`);
+              void navigate(
+                parentId === null
+                  ? driveRootPath
+                  : driveUiPath(organizationId, `/folder/${parentId}`),
+              );
             }}
             onUploadAnyway={() => {
               setDialog(null);
@@ -1937,7 +1974,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             onOpenTrash={() => {
               setDialog(null);
               setConflict(null);
-              void navigate("/trash");
+              void navigate(trashRootPath);
             }}
             onStartPurgeUpload={() => setTrashDuplicateResolution("purge_confirm")}
             onConfirmPurgeUpload={() => void replaceTrashDuplicateWithUpload(conflict)}
