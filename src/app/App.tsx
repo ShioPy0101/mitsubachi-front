@@ -1,4 +1,9 @@
-import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
+import {
+  Navigate,
+  RouterProvider,
+  createBrowserRouter,
+  useParams,
+} from "react-router-dom";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 
@@ -131,50 +136,55 @@ const router = createBrowserRouter([
                 path: "/organizations/:organizationId/admin/audit-events/:auditEventId",
                 element: <AdminAuditEventDetailPage />,
               },
-              { path: "/admin", element: <Navigate to="/admin/dashboard" replace /> },
+              { path: "/admin", element: <Navigate to="/system-admin" replace /> },
+              { path: "/admin/*", element: <NavigateLegacyAdminPath /> },
+              { path: "/system-admin", element: <Navigate to="dashboard" replace /> },
+              { path: "/system-admin/dashboard", element: <AdminDashboardPage /> },
               {
-                path: "/admin/system",
-                element: <Navigate to="/admin/dashboard" replace />,
-              },
-              { path: "/admin/dashboard", element: <AdminDashboardPage /> },
-              { path: "/admin/organizations", element: <AdminOrganizationsPage /> },
-              {
-                element: <RequireAuth allowedRoles={["system_admin"]} />,
-                children: [
-                  {
-                    path: "/admin/organizations/new",
-                    element: <AdminOrganizationNewPage />,
-                  },
-                ],
+                path: "/system-admin/organizations",
+                element: <AdminOrganizationsPage />,
               },
               {
-                path: "/admin/organizations/:organizationId/invites/new",
+                path: "/system-admin/organizations/new",
+                element: <AdminOrganizationNewPage />,
+              },
+              {
+                path: "/system-admin/organizations/:organizationId/invites/new",
                 element: <AdminOrganizationInviteNewPage />,
               },
               {
-                path: "/admin/organizations/:organizationId/edit",
+                path: "/system-admin/organizations/:organizationId/edit",
                 element: <AdminOrganizationEditPage />,
               },
               {
-                path: "/admin/organizations/:organizationId",
+                path: "/system-admin/organizations/:organizationId",
                 element: <AdminOrganizationDetailPage />,
               },
-              { path: "/admin/users", element: <AdminUsersPage /> },
-              { path: "/admin/users/:userId/edit", element: <AdminUserEditPage /> },
-              { path: "/admin/users/:userId", element: <AdminUserDetailPage /> },
-              { path: "/admin/drive-items", element: <AdminDriveItemsPage /> },
+              { path: "/system-admin/users", element: <AdminUsersPage /> },
               {
-                path: "/admin/drive-items/:driveItemId",
+                path: "/system-admin/users/:userId/edit",
+                element: <AdminUserEditPage />,
+              },
+              { path: "/system-admin/users/:userId", element: <AdminUserDetailPage /> },
+              {
+                path: "/system-admin/drive-items",
+                element: <AdminDriveItemsPage />,
+              },
+              {
+                path: "/system-admin/drive-items/:driveItemId",
                 element: <AdminDriveItemDetailPage />,
               },
-              { path: "/admin/audit-logs", element: <AdminAuditLogsPage /> },
+              { path: "/system-admin/audit-logs", element: <AdminAuditLogsPage /> },
               {
-                path: "/admin/audit-logs/:auditLogId",
+                path: "/system-admin/audit-logs/:auditLogId",
                 element: <AdminAuditLogDetailPage />,
               },
-              { path: "/admin/audit-events", element: <AdminAuditEventsPage /> },
               {
-                path: "/admin/audit-events/:auditEventId",
+                path: "/system-admin/audit-events",
+                element: <AdminAuditEventsPage />,
+              },
+              {
+                path: "/system-admin/audit-events/:auditEventId",
                 element: <AdminAuditEventDetailPage />,
               },
             ],
@@ -214,6 +224,11 @@ function NavigateToDrive() {
       replace
     />
   );
+}
+
+function NavigateLegacyAdminPath() {
+  const params = useParams();
+  return <Navigate to={`/system-admin/${params["*"] ?? "dashboard"}`} replace />;
 }
 
 function StatePage({ title, message }: { title: string; message: string }) {

@@ -27,7 +27,7 @@ export function AdminOrganizationEditPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.organization(id) });
       toast.show({ tone: "success", message: "組織を更新しました。" });
-      void navigate(`/admin/organizations/${id}`, { replace: true });
+      void navigate(`/system-admin/organizations/${id}`, { replace: true });
     },
     onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
   });

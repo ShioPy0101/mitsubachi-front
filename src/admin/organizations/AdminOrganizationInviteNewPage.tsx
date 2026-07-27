@@ -50,7 +50,7 @@ export function AdminOrganizationInviteNewPage() {
     <AdminFrame
       title="招待コード発行"
       actions={
-        <Link to={`/admin/organizations/${organizationId}`}>組織詳細へ戻る</Link>
+        <Link to={`/system-admin/organizations/${organizationId}`}>組織詳細へ戻る</Link>
       }
     >
       <QueryState query={query}>

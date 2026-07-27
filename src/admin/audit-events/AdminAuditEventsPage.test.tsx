@@ -12,10 +12,10 @@ describe("AdminAuditEventsPage", () => {
   it("renders the admin layout and active navigation", async () => {
     mockAuditEvents();
 
-    renderAdminRoute("/admin/audit-events");
+    renderAdminRoute("/system-admin/audit-events");
 
     expect(
-      await screen.findByRole("heading", { name: "管理画面" }),
+      await screen.findByRole("heading", { name: "システム管理" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "システムイベント" })).toHaveClass(
       "active",
@@ -25,7 +25,9 @@ describe("AdminAuditEventsPage", () => {
   it("passes filters to the API request and can reset them", async () => {
     mockAuditEvents();
 
-    renderAdminRoute("/admin/audit-events?actor_user_id=42&outcome=success&page=3");
+    renderAdminRoute(
+      "/system-admin/audit-events?actor_user_id=42&outcome=success&page=3",
+    );
 
     await screen.findByText("ファイルを作成");
     expect(lastAuditEventsUrl()).toContain("actor_user_id=42");
@@ -42,7 +44,7 @@ describe("AdminAuditEventsPage", () => {
   it("renders outcome badges and stable table cells for long text", async () => {
     mockAuditEvents();
 
-    renderAdminRoute("/admin/audit-events");
+    renderAdminRoute("/system-admin/audit-events");
 
     const row = await screen.findByRole("row", {
       name: /2026\/07\/17 05:34:30 ファイルを作成/,
@@ -65,7 +67,7 @@ describe("AdminAuditEventsPage", () => {
   it("renders the empty state", async () => {
     mockAuditEvents({ data: [] });
 
-    renderAdminRoute("/admin/audit-events");
+    renderAdminRoute("/system-admin/audit-events");
 
     expect(
       await screen.findByText("条件に一致する項目はありません。"),
@@ -78,7 +80,7 @@ describe("AdminAuditEventsPage", () => {
       vi.fn(() => jsonResponse({ error: "server error" }, 500)),
     );
 
-    renderAdminRoute("/admin/audit-events");
+    renderAdminRoute("/system-admin/audit-events");
 
     expect(await screen.findByText(/HTTPステータス: 500/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "再試行" })).toBeInTheDocument();
@@ -89,7 +91,7 @@ describe("AdminAuditEventsPage", () => {
       meta: { current_page: 2, per_page: 50, total_pages: 4, total_count: 175 },
     });
 
-    renderAdminRoute("/admin/audit-events?page=2&per_page=50");
+    renderAdminRoute("/system-admin/audit-events?page=2&per_page=50");
 
     expect(await screen.findByText("総件数 175")).toBeInTheDocument();
     expect(screen.getByDisplayValue("50")).toBeInTheDocument();
@@ -128,7 +130,10 @@ function renderAdminRoute(initialEntry: string) {
         <MemoryRouter initialEntries={[initialEntry]}>
           <Routes>
             <Route element={<AdminLayout />}>
-              <Route path="/admin/audit-events" element={<AdminAuditEventsPage />} />
+              <Route
+                path="/system-admin/audit-events"
+                element={<AdminAuditEventsPage />}
+              />
             </Route>
           </Routes>
         </MemoryRouter>

@@ -27,7 +27,9 @@ export function AdminDriveItemsPage() {
       <AdminSearch
         fields={[
           { name: "q", label: "検索" },
-          { name: "organization_id", label: "組織ID" },
+          ...(organizationId === null
+            ? [{ name: "organization_id", label: "組織ID" }]
+            : []),
           { name: "user_id", label: "所有者ID" },
           {
             name: "item_type",

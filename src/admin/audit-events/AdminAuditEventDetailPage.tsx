@@ -57,7 +57,12 @@ export function AdminAuditEventDetailPage() {
                   {
                     label: "ユーザー",
                     value: event.actor_user_id ? (
-                      <Link to={`/admin/users/${event.actor_user_id}`}>
+                      <Link
+                        to={adminUiPath(
+                          organizationId,
+                          `/users/${event.actor_user_id}`,
+                        )}
+                      >
                         {event.actor_email ?? `ID: ${event.actor_user_id}`}
                       </Link>
                     ) : (
@@ -77,6 +82,7 @@ export function AdminAuditEventDetailPage() {
                       <AuditTargetLink
                         targetType={event.target_type}
                         targetId={event.target_id}
+                        organizationId={organizationId}
                       />
                     ),
                   },

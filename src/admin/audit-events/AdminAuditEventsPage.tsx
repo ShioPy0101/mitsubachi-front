@@ -41,11 +41,15 @@ export function AdminAuditEventsPage() {
             label: "実行者ID",
             placeholder: "実行したユーザーID",
           },
-          {
-            name: "organization_id",
-            label: "組織ID",
-            placeholder: "対象組織ID",
-          },
+          ...(organizationId === null
+            ? [
+                {
+                  name: "organization_id",
+                  label: "組織ID",
+                  placeholder: "対象組織ID",
+                },
+              ]
+            : []),
           {
             name: "action",
             label: "イベント",
@@ -153,6 +157,7 @@ function AuditEventRow({
             <AuditTargetLink
               targetType={event.target_type}
               targetId={event.target_id}
+              organizationId={organizationId}
             />
           </span>
           <span className="cell-secondary">

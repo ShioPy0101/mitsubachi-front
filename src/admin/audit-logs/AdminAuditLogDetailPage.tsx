@@ -53,7 +53,9 @@ export function AdminAuditLogDetailPage() {
                   {
                     label: "ユーザー",
                     value: log.actor_user_id ? (
-                      <Link to={`/admin/users/${log.actor_user_id}`}>
+                      <Link
+                        to={adminUiPath(organizationId, `/users/${log.actor_user_id}`)}
+                      >
                         {log.actor_email ?? `ID: ${log.actor_user_id}`}
                       </Link>
                     ) : (
@@ -70,13 +72,16 @@ export function AdminAuditLogDetailPage() {
                 items={[
                   {
                     label: "組織",
-                    value: log.organization_id ? (
-                      <Link to={`/admin/organizations/${log.organization_id}`}>
-                        {log.organization_name ?? `ID: ${log.organization_id}`}
-                      </Link>
-                    ) : (
-                      "—"
-                    ),
+                    value:
+                      log.organization_id && organizationId === null ? (
+                        <Link to={`/system-admin/organizations/${log.organization_id}`}>
+                          {log.organization_name ?? `ID: ${log.organization_id}`}
+                        </Link>
+                      ) : log.organization_id ? (
+                        (log.organization_name ?? `ID: ${log.organization_id}`)
+                      ) : (
+                        "—"
+                      ),
                   },
                 ]}
               />
@@ -92,6 +97,7 @@ export function AdminAuditLogDetailPage() {
                       <AuditTargetLink
                         targetType={log.target_type}
                         targetId={log.target_id}
+                        organizationId={organizationId}
                       />
                     ),
                   },

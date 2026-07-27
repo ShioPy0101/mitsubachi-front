@@ -1,7 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
-
-import { useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   adminKeys,
   adminOrganizationIdFromParam,
@@ -28,7 +26,9 @@ export function AdminUsersPage() {
       <AdminSearch
         fields={[
           { name: "q", label: "検索" },
-          { name: "organization_id", label: "組織ID" },
+          ...(organizationId === null
+            ? [{ name: "organization_id", label: "組織ID" }]
+            : []),
           {
             name: "role",
             label: "Role",

@@ -7,6 +7,7 @@ import {
   formatAuditAction,
   formatAuditOutcome,
   summarizeChangeSet,
+  targetHref,
 } from "./auditFormat";
 
 describe("audit format helpers", () => {
@@ -54,5 +55,12 @@ describe("audit format helpers", () => {
     expect(formatAuditOutcome("failure")).toBe("失敗");
     expect(formatAuditOutcome("denied")).toBe("拒否");
     expect(formatAuditOutcome("other")).toBe("other");
+  });
+
+  it("generates system and organization admin target links separately", () => {
+    expect(targetHref("User", 10, null)).toBe("/system-admin/users/10");
+    expect(targetHref("User", 10, 7)).toBe("/organizations/7/admin/users/10");
+    expect(targetHref("Organization", 7, null)).toBe("/system-admin/organizations/7");
+    expect(targetHref("Organization", 7, 7)).toBeNull();
   });
 });

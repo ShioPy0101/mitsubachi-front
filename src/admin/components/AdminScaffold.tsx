@@ -1,5 +1,13 @@
 import type { UseQueryResult } from "@tanstack/react-query";
-import { NavLink, Outlet, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Outlet,
+  useLocation,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
 import { ApiError } from "../../api/errors";
 import type { AdminMeta, CurrentUser } from "../../api/schemas";
@@ -8,19 +16,60 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingIndicator } from "../../components/LoadingIndicator";
 import { Pagination } from "../../components/Pagination";
-import { canUseSystemAdmin } from "../../auth/permissions";
+import { canUseAdmin, canUseSystemAdmin } from "../../auth/permissions";
 import { adminOrganizationIdFromParam, adminUiPath } from "../api";
 import { useAuth } from "../../auth/useAuth";
 
 export function AdminLayout() {
   const auth = useAuth();
   const organizationId = adminOrganizationIdFromParam(useParams().organizationId);
+  const systemAdminContext = organizationId === null;
+  const currentOrganizationMembership = auth.user?.memberships.find(
+    (membership) => membership.organization.id === organizationId,
+  );
+  const currentOrganization = currentOrganizationMembership?.organization;
+
+  if (systemAdminContext && !canUseSystemAdmin(auth.user)) {
+    return <Navigate to="/403" replace />;
+  }
+
+  if (!systemAdminContext && !canUseAdmin(auth.user, organizationId)) {
+    return <Navigate to={`/organizations/${organizationId}/drive`} replace />;
+  }
+
   return (
-    <div className="admin-shell">
+    <div
+      className={`admin-shell ${
+        systemAdminContext ? "system-admin-shell" : "organization-admin-shell"
+      }`}
+    >
       <header className="admin-header">
         <div className="admin-header-inner">
-          <p className="admin-header-kicker">Mitsubachi</p>
-          <h1>管理画面</h1>
+          <p className="admin-header-kicker">
+            {systemAdminContext ? "システム全体" : "組織管理"}
+          </p>
+          <h1>{systemAdminContext ? "システム管理" : "組織管理"}</h1>
+          {systemAdminContext ? (
+            <p className="admin-context-label">システム全体を管理しています</p>
+          ) : (
+            <div className="admin-organization-context">
+              <span className="admin-organization-mark" aria-hidden="true">
+                {currentOrganization?.name.slice(0, 1) ?? "O"}
+              </span>
+              <div>
+                <strong>
+                  {currentOrganization?.name ?? `Organization ${organizationId}`}
+                </strong>
+                <span>この組織を管理しています</span>
+              </div>
+              <Link
+                className="button button-secondary"
+                to={`/organizations/${organizationId}/drive`}
+              >
+                共有ドライブへ戻る
+              </Link>
+            </div>
+          )}
         </div>
       </header>
       <div className="admin-page">
@@ -28,23 +77,57 @@ export function AdminLayout() {
           <NavLink to={adminUiPath(organizationId, "/dashboard")}>
             ダッシュボード
           </NavLink>
-          <NavLink to="/admin/organizations">組織</NavLink>
+          {systemAdminContext ? (
+            <NavLink to="/system-admin/organizations">組織</NavLink>
+          ) : null}
           <NavLink to={adminUiPath(organizationId, "/users")}>ユーザー</NavLink>
           <NavLink to={adminUiPath(organizationId, "/drive-items")}>ファイル</NavLink>
           <NavLink to={adminUiPath(organizationId, "/audit-logs")}>操作履歴</NavLink>
           <NavLink to={adminUiPath(organizationId, "/audit-events")}>
             システムイベント
           </NavLink>
-          {canUseSystemAdmin(auth.user) ? (
-            <NavLink to="/admin/organizations/new">組織作成</NavLink>
+          {systemAdminContext ? (
+            <NavLink to="/system-admin/organizations/new">組織作成</NavLink>
           ) : null}
         </nav>
+        <AdminBreadcrumbs systemAdminContext={systemAdminContext} />
         <main className="admin-main">
           <Outlet />
         </main>
       </div>
     </div>
   );
+}
+
+function AdminBreadcrumbs({ systemAdminContext }: { systemAdminContext: boolean }) {
+  const location = useLocation();
+  const params = useParams();
+  const organizationId = adminOrganizationIdFromParam(params.organizationId);
+  const root = systemAdminContext ? "システム管理" : "組織管理";
+  const rootPath = adminUiPath(organizationId, "/dashboard");
+  const label = adminSectionLabel(location.pathname);
+
+  return (
+    <nav className="admin-breadcrumbs" aria-label="パンくず">
+      <Link to={rootPath}>{root}</Link>
+      {label ? (
+        <>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page">{label}</span>
+        </>
+      ) : null}
+    </nav>
+  );
+}
+
+function adminSectionLabel(pathname: string) {
+  if (pathname.includes("/organizations")) return "組織";
+  if (pathname.includes("/users")) return "ユーザー";
+  if (pathname.includes("/drive-items")) return "ファイル";
+  if (pathname.includes("/audit-logs")) return "操作履歴";
+  if (pathname.includes("/audit-events")) return "システムイベント";
+  if (pathname.includes("/dashboard")) return "ダッシュボード";
+  return "";
 }
 
 export function AdminFrame({

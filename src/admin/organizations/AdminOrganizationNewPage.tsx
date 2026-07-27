@@ -19,7 +19,9 @@ export function AdminOrganizationNewPage() {
     onSuccess: async (organization) => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.organizations("") });
       toast.show({ tone: "success", message: "組織を作成しました。" });
-      void navigate(`/admin/organizations/${organization.id}`, { replace: true });
+      void navigate(`/system-admin/organizations/${organization.id}`, {
+        replace: true,
+      });
     },
     onError: (error) => toast.show({ tone: "danger", message: errorMessage(error) }),
   });
