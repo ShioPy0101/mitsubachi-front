@@ -9,6 +9,7 @@ import {
   streamUrl,
   uploadFile,
   downloadDriveItem,
+  contentDispositionFilename,
 } from "./api";
 
 describe("drive api", () => {
@@ -142,7 +143,23 @@ describe("drive api", () => {
     expect(form.get("operation_id")).toBe("operation-123");
   });
 
-  it("uses native browser download for single downloads", () => {
+  it("downloads a folder ZIP using the UTF-8 filename from Content-Disposition", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(new Blob(["zip-content"], { type: "application/zip" }), {
+            headers: {
+              "Content-Type": "application/zip",
+              "Content-Disposition":
+                "attachment; filename=folder.zip; filename*=UTF-8''%E8%B3%87%E6%96%99%20%E9%9B%86.zip",
+            },
+          }),
+        ),
+      ),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:folder");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const append = vi.spyOn(document.body, "append");
     const click = vi.fn();
     const remove = vi.fn();
@@ -153,14 +170,49 @@ describe("drive api", () => {
     } as unknown as HTMLAnchorElement;
     vi.spyOn(document, "createElement").mockReturnValue(anchor);
 
-    downloadDriveItem(7, 10);
+    await downloadDriveItem(7, 10);
 
     expect(append).toHaveBeenCalled();
     expect(click).toHaveBeenCalled();
     expect(remove).toHaveBeenCalled();
-    expect(anchor.href).toBe(
+    expect(anchor.href).toBe("blob:folder");
+    expect(anchor.download).toBe("資料 集.zip");
+    expect(fetch).toHaveBeenCalledWith(
       `${API_BASE_URL}/api/v1/organizations/7/drive_items/10/download`,
+      expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("does not save a JSON download error as a Blob", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ error: { code: "not_found", message: "見つかりません" } }),
+            { status: 404, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      ),
+    );
+    const createObjectURL = vi.spyOn(URL, "createObjectURL");
+
+    await expect(downloadDriveItem(7, 10)).rejects.toMatchObject({
+      status: 404,
+      message: "見つかりません",
+    });
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("prefers filename* and falls back safely for malformed encoding", () => {
+    expect(
+      contentDispositionFilename(
+        "attachment; filename=plain.zip; filename*=UTF-8''folder%20name.zip",
+      ),
+    ).toBe("folder name.zip");
+    expect(
+      contentDispositionFilename("attachment; filename*=UTF-8''broken%ZZ.zip"),
+    ).toBe("broken%ZZ.zip");
   });
 
   it("uses DELETE for irreversible trash purge", async () => {

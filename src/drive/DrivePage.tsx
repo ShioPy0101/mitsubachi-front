@@ -242,6 +242,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const [restoreSubmitting, setRestoreSubmitting] = useState(false);
   const [nameConflictMessage, setNameConflictMessage] = useState<string | null>(null);
   const [lastError, setLastError] = useState<AppError | null>(null);
+  const [downloadingItemId, setDownloadingItemId] = useState<number | null>(null);
   const [draggingIds, setDraggingIds] = useState<number[]>([]);
   const [dragOverFolderId, setDragOverFolderId] = useState<number | null>(null);
   const [dragOverBreadcrumbId, setDragOverBreadcrumbId] = useState<number | null>(null);
@@ -408,6 +409,21 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     setCreatedShare(null);
     setDialog("externalShare");
   }, []);
+  const downloadItem = useCallback(
+    async (id: number) => {
+      if (downloadingItemId !== null) return;
+      setDownloadingItemId(id);
+      setLastError(null);
+      try {
+        await downloadDriveItem(organizationId, id);
+      } catch (error) {
+        captureError(error, "ダウンロード");
+      } finally {
+        setDownloadingItemId(null);
+      }
+    },
+    [captureError, downloadingItemId, organizationId],
+  );
 
   const openMoveDialog = useCallback((movingItems: DriveItem[]) => {
     if (movingItems.length === 0) return;
@@ -1835,7 +1851,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }}
           onMove={(item) => openMoveDialog([item])}
           onExternalShare={(item) => openExternalShareDialog([item])}
-          onDownload={(id) => downloadDriveItem(organizationId, id)}
+          onDownload={(id) => void downloadItem(id)}
+          downloadingItemId={downloadingItemId}
           onDragStart={startItemDrag}
           onDragEnd={endItemDrag}
           onDropToFolder={(event, item) => {
@@ -2153,6 +2170,7 @@ function FileTable({
   onOpenParent,
   draggingIds,
   dragOverFolderId,
+  downloadingItemId,
 }: {
   items: DriveItem[];
   selectedIds: number[];
@@ -2171,6 +2189,7 @@ function FileTable({
   onOpenParent: (parentId: number | null) => void;
   draggingIds: number[];
   dragOverFolderId: number | null;
+  downloadingItemId: number | null;
 }) {
   const listViewportRef = useRef<HTMLDivElement>(null);
   const [openMenu, setOpenMenu] = useState<{
@@ -2376,7 +2395,12 @@ function FileTable({
                         <>
                           <IconButton
                             data-no-drag
-                            label={`${item.name}をダウンロード`}
+                            label={
+                              downloadingItemId === item.id
+                                ? `${item.name}をダウンロード中`
+                                : `${item.name}をダウンロード`
+                            }
+                            disabled={downloadingItemId !== null}
                             onClick={() => onDownload(item.id)}
                           >
                             <Download size={16} aria-hidden="true" />
