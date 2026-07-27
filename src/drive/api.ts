@@ -449,25 +449,22 @@ export async function bulkDownload(
    * 現行APIはPOSTレスポンスでZIP本体を返すため、暫定的にBlobへ展開する。
    * 大容量ZIPではブラウザメモリを消費するので、GET用download_url方式が必要。
    */
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = contentDispositionFilename(
-    response.headers.get("Content-Disposition"),
-  );
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  await saveDownloadResponse(response, "mitsubachi-download.zip");
 }
 
-export function downloadDriveItem(organizationId: number | null, id: number) {
-  const anchor = document.createElement("a");
-  anchor.href = apiUrl(drivePath(organizationId, `/${id}/download`));
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
+export async function downloadDriveItem(organizationId: number | null, id: number) {
+  const path = drivePath(organizationId, `/${id}/download`);
+  const response = await apiFetch(path, {
+    headers: { Accept: "application/zip, application/octet-stream, */*" },
+  });
+  const contentType = response.headers.get("Content-Type") ?? "";
+
+  if (!response.ok || contentType.includes("application/json")) {
+    const body: unknown = await response.json().catch(() => null);
+    throw parseApiError(response.status, body, apiUrl(path));
+  }
+
+  await saveDownloadResponse(response, "download");
 }
 
 export function previewUrl(organizationId: number | null, id: number) {
@@ -478,12 +475,43 @@ export function streamUrl(organizationId: number | null, id: number) {
   return apiUrl(drivePath(organizationId, `/${id}/stream`));
 }
 
-function contentDispositionFilename(value: string | null) {
-  const fallback = "mitsubachi-download.zip";
+export function contentDispositionFilename(
+  value: string | null,
+  fallback = "mitsubachi-download.zip",
+) {
   if (!value) return fallback;
-  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(value);
-  if (!match?.[1]) return fallback;
-  return decodeURIComponent(match[1]).replace(/[\\/:*?"<>|]/g, "_");
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(value)?.[1]?.trim();
+  const plain = /filename=(?:"([^"]+)"|([^;]+))/i.exec(value);
+  const candidate = encoded
+    ? decodeFilename(encoded)
+    : (plain?.[1] ?? plain?.[2]?.trim());
+  return candidate ? candidate.replace(/[\\/:*?"<>|]/g, "_") : fallback;
+}
+
+function decodeFilename(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+async function saveDownloadResponse(response: Response, fallback: string) {
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = contentDispositionFilename(
+      response.headers.get("Content-Disposition"),
+      fallback,
+    );
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function restoreRequestItemsBody(items: RestorePreviewRequestItem[]) {

@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => ({
   purgeDriveItem: vi.fn(),
   restorePreview: vi.fn(),
   restoreDriveItem: vi.fn(),
+  downloadDriveItem: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -70,7 +71,7 @@ vi.mock("./api", () => ({
   createDirectory: mocks.createDirectory,
   deleteDriveItem: vi.fn(),
   purgeDriveItem: mocks.purgeDriveItem,
-  downloadDriveItem: vi.fn(),
+  downloadDriveItem: mocks.downloadDriveItem,
   previewUrl: vi.fn((_organizationId: number | null, id: number) => `/preview/${id}`),
   renameDriveItem: vi.fn(),
   moveDriveItem: mocks.moveDriveItem,
@@ -139,6 +140,7 @@ describe("DrivePage drag and drop upload", () => {
       generated_password: "N3wPassw0rdValue",
     });
     mocks.purgeDriveItem.mockResolvedValue({ message: "完全削除しました" });
+    mocks.downloadDriveItem.mockResolvedValue(undefined);
     mocks.restoreDriveItem.mockResolvedValue({
       id: 77,
       parent_id: 42,
@@ -2218,6 +2220,53 @@ describe("DrivePage drag and drop upload", () => {
     view.unmount();
 
     expect(pause).toHaveBeenCalledTimes(2);
+  });
+
+  it("downloads a folder once and disables download controls while pending", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 9, parent_id: null, name: "資料", item_type: "directory" },
+    ]);
+    let finishDownload: (() => void) | undefined;
+    mocks.downloadDriveItem.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDownload = resolve;
+        }),
+    );
+    renderDrivePage("/organizations/7/drive");
+
+    const button = await screen.findByRole("button", {
+      name: "資料をダウンロード",
+    });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(mocks.downloadDriveItem).toHaveBeenCalledTimes(1);
+    expect(mocks.downloadDriveItem).toHaveBeenCalledWith(7, 9);
+    expect(screen.getByRole("button", { name: "資料をダウンロード中" })).toBeDisabled();
+
+    finishDownload?.();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "資料をダウンロード" })).toBeEnabled(),
+    );
+  });
+
+  it("shows the existing error UI when a download fails", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 3, parent_id: null, name: "broken", item_type: "file" },
+    ]);
+    mocks.downloadDriveItem.mockRejectedValue(
+      new ApiError(500, "ZIPファイルを作成できませんでした"),
+    );
+    renderDrivePage("/drive");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "brokenをダウンロード" }),
+    );
+
+    expect(
+      await screen.findAllByText("ZIPファイルを作成できませんでした"),
+    ).not.toHaveLength(0);
   });
 });
 
