@@ -131,7 +131,7 @@ export function adminPath(organizationId: number | null, suffix: string) {
 }
 
 export function adminUiPath(organizationId: number | null, suffix: string) {
-  if (organizationId === null) return `/admin${suffix}`;
+  if (organizationId === null) return `/system-admin${suffix}`;
 
   return `/organizations/${organizationId}/admin${suffix}`;
 }

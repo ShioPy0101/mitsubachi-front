@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 
+import { adminUiPath } from "../api";
+
 const sensitiveKeyPattern =
   /password|password_confirmation|token|access_token|refresh_token|csrf_token|authenticity_token|authorization|cookie|session|secret|api_key|invite_code|magic_link|private_key/i;
 
@@ -162,20 +164,30 @@ export function AuditMetadataView({
 export function AuditTargetLink({
   targetType,
   targetId,
+  organizationId = null,
 }: {
   targetType?: string | null;
   targetId?: number | null;
+  organizationId?: number | null;
 }) {
   if (!targetType || !targetId) return <>{formatAuditTargetType(targetType)}</>;
-  const href = targetHref(targetType, targetId);
+  const href = targetHref(targetType, targetId, organizationId);
   const label = `${formatAuditTargetType(targetType)} ${targetId}`;
   return href ? <Link to={href}>{label}</Link> : <>{label}</>;
 }
 
-export function targetHref(targetType: string, targetId: number) {
-  if (targetType === "User") return `/admin/users/${targetId}`;
-  if (targetType === "Organization") return `/admin/organizations/${targetId}`;
-  if (targetType === "DriveItem") return `/admin/drive-items/${targetId}`;
+export function targetHref(
+  targetType: string,
+  targetId: number,
+  organizationId: number | null = null,
+) {
+  if (targetType === "User") return adminUiPath(organizationId, `/users/${targetId}`);
+  if (targetType === "Organization" && organizationId === null) {
+    return `/system-admin/organizations/${targetId}`;
+  }
+  if (targetType === "DriveItem") {
+    return adminUiPath(organizationId, `/drive-items/${targetId}`);
+  }
   return null;
 }
 

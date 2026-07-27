@@ -34,7 +34,9 @@ export function AdminAuditLogsPage() {
       <AdminSearch
         fields={[
           { name: "actor_user_id", label: "操作者ID" },
-          { name: "organization_id", label: "組織ID" },
+          ...(organizationId === null
+            ? [{ name: "organization_id", label: "組織ID" }]
+            : []),
           { name: "action", label: "操作" },
           { name: "target_type", label: "対象種別" },
           { name: "created_from", label: "開始日時", type: "datetime-local" },
@@ -68,6 +70,7 @@ export function AdminAuditLogsPage() {
                     <AuditTargetLink
                       targetType={log.target_type}
                       targetId={log.target_id}
+                      organizationId={organizationId}
                     />
                   </td>
                   <td>{summarizeChangeSet(log.change_set)}</td>

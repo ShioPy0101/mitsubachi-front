@@ -24,7 +24,7 @@ export function AdminOrganizationsPage() {
       title="組織"
       actions={
         canUseSystemAdmin(auth.user) ? (
-          <Link className="button button-primary" to="/admin/organizations/new">
+          <Link className="button button-primary" to="/system-admin/organizations/new">
             組織作成
           </Link>
         ) : null
@@ -71,7 +71,9 @@ export function AdminOrganizationsPage() {
                   <td>{organization.users_count ?? "—"}</td>
                   <td>{organization.storage_bytes ?? "—"}</td>
                   <td>
-                    <Link to={`/admin/organizations/${organization.id}`}>詳細</Link>
+                    <Link to={`/system-admin/organizations/${organization.id}`}>
+                      詳細
+                    </Link>
                   </td>
                 </tr>
               ))}
