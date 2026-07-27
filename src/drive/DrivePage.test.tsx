@@ -1572,6 +1572,46 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
+  it("opens a directory with the organization from the current URL", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      {
+        id: 9,
+        organization_id: 7,
+        parent_id: null,
+        name: "素材",
+        item_type: "directory",
+      },
+    ]);
+    renderDrivePage("/organizations/7/drive");
+
+    await screen.findByText("素材");
+    clickCentralArea("素材");
+
+    await waitFor(() => {
+      expect(mocks.fetchDriveItem).toHaveBeenCalledWith(7, 9);
+    });
+  });
+
+  it("does not switch organization from a folder detail response", async () => {
+    mocks.fetchDriveItem.mockResolvedValue({
+      id: 9,
+      organization_id: 3,
+      parent_id: null,
+      name: "素材",
+      item_type: "directory",
+      breadcrumbs: [
+        { id: null, name: "共有ドライブ" },
+        { id: 9, name: "素材" },
+      ],
+    });
+
+    renderDrivePage("/organizations/7/drive/folder/9");
+
+    await screen.findByRole("heading", { name: "素材" });
+    expect(mocks.fetchDriveItem).toHaveBeenCalledWith(7, 9);
+    expect(mocks.fetchDriveItems).toHaveBeenCalledWith(7, 9);
+  });
+
   it("does not open preview after a central-area drag is activated", async () => {
     mocks.fetchDriveItems.mockResolvedValue([
       {
@@ -1660,6 +1700,48 @@ describe("DrivePage drag and drop upload", () => {
     await waitFor(() => {
       expect(mocks.bulkMove).toHaveBeenCalledWith(null, [1], 2);
     });
+  });
+
+  it("invalidates source and destination organization drive caches after move", async () => {
+    mocks.bulkMove.mockResolvedValueOnce({
+      message: "移動しました",
+      organization_id: 8,
+    });
+    mocks.fetchDriveItems.mockResolvedValue([
+      {
+        id: 1,
+        organization_id: 7,
+        parent_id: null,
+        name: "before",
+        item_type: "directory",
+      },
+      {
+        id: 2,
+        organization_id: 8,
+        parent_id: null,
+        name: "after",
+        item_type: "directory",
+      },
+    ]);
+    const { queryClient } = renderDrivePage("/organizations/7/drive");
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    await screen.findByText("before");
+    const source = driveItemDragAreaByName("before");
+    const target = screen.getByText("after").closest("tr");
+    if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+      throw new Error("rows were not rendered");
+    }
+
+    const dataTransfer = driveItemDataTransfer();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    await waitFor(() => {
+      expect(mocks.bulkMove).toHaveBeenCalledWith(7, [1], 2);
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["drive-items", 7] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["drive-items", 8] });
   });
 
   it("moves selected files together by drag and drop", async () => {
@@ -2147,7 +2229,7 @@ function renderDrivePage(initialEntry: string) {
     },
   });
 
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <MemoryRouter initialEntries={[initialEntry]}>
@@ -2155,11 +2237,25 @@ function renderDrivePage(initialEntry: string) {
             <Route path="/drive" element={<DrivePage />} />
             <Route path="/drive/folder/:folderId" element={<DrivePage />} />
             <Route path="/trash" element={<DrivePage mode="trash" />} />
+            <Route
+              path="/organizations/:organizationId/drive"
+              element={<DrivePage />}
+            />
+            <Route
+              path="/organizations/:organizationId/drive/folder/:folderId"
+              element={<DrivePage />}
+            />
+            <Route
+              path="/organizations/:organizationId/trash"
+              element={<DrivePage mode="trash" />}
+            />
           </Routes>
         </MemoryRouter>
       </ToastProvider>
     </QueryClientProvider>,
   );
+
+  return { ...view, queryClient };
 }
 
 function driveDropTarget(container: HTMLElement) {

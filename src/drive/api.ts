@@ -404,10 +404,13 @@ export function bulkMove(
   ids: number[],
   parentId: number | null,
 ) {
-  return apiRequest<{ message?: string }>(drivePath(organizationId, "/bulk_move"), {
-    method: "POST",
-    body: { drive_item_ids: ids, parent_id: parentId },
-  });
+  return apiRequest<{ message?: string; organization_id?: number }>(
+    drivePath(organizationId, "/bulk_move"),
+    {
+      method: "POST",
+      body: { drive_item_ids: ids, parent_id: parentId },
+    },
+  );
 }
 
 export async function bulkDownload(
