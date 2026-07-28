@@ -1726,27 +1726,46 @@ th:last-child,
   border: 1px solid var(--color-border);
 }
 
-.access-log-table-wrapper {
+.access-log-table-wrapper,
+.operation-log-table-wrapper {
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 
-.access-log-table {
+.access-log-table,
+.operation-log-table {
   width: 100%;
-  min-width: 1292px;
   table-layout: fixed;
   border: 0;
 }
 
-.access-log-table th,
-.access-log-table td {
-  height: 48px;
-  vertical-align: middle;
+.access-log-table {
+  min-width: 1362px;
 }
 
-.access-log-table th {
+.access-log-table th,
+.access-log-table td,
+.operation-log-table th,
+.operation-log-table td {
+  height: 48px;
+  vertical-align: middle;
+  border-right: 1px solid var(--color-border);
+}
+
+.access-log-table th:last-child,
+.access-log-table td:last-child,
+.operation-log-table th:last-child,
+.operation-log-table td:last-child {
+  border-right: 0;
+}
+
+.access-log-table th,
+.operation-log-table th {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -1759,72 +1778,51 @@ th:last-child,
 }
 
 .access-log-col-actor {
-  width: 180px;
+  width: 220px;
 }
 
 .access-log-col-organization {
-  width: 140px;
+  width: 160px;
 }
 
 .access-log-col-action {
   width: 130px;
 }
 
+.access-log-col-file {
+  width: 240px;
+}
+
 .access-log-col-size {
   width: 100px;
 }
 
-.access-log-col-content-type,
-.access-log-col-ip {
+.access-log-col-content-type {
   width: 140px;
+}
+
+.access-log-col-ip {
+  width: 150px;
 }
 
 .access-log-col-detail {
   width: 72px;
 }
 
-.access-log-truncate {
+.access-log-truncate,
+.operation-log-truncate {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.access-log-nowrap {
+.access-log-nowrap,
+.operation-log-nowrap {
   white-space: nowrap;
-}
-
-.operation-log-table-wrapper {
-  max-width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
 }
 
 .operation-log-table {
-  width: 100%;
   min-width: 1362px;
-  table-layout: fixed;
-  border: 0;
-}
-
-.operation-log-table th,
-.operation-log-table td {
-  height: 48px;
-  vertical-align: middle;
-  border-right: 1px solid var(--color-border);
-}
-
-.operation-log-table th:last-child,
-.operation-log-table td:last-child {
-  border-right: 0;
-}
-
-.operation-log-table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--color-surface-subtle);
-  white-space: nowrap;
 }
 
 .operation-log-col-time {
@@ -1857,16 +1855,6 @@ th:last-child,
 
 .operation-log-col-detail {
   width: 72px;
-}
-
-.operation-log-truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.operation-log-nowrap {
-  white-space: nowrap;
 }
 
 .metric {
@@ -2288,19 +2276,6 @@ th:last-child,
     width: auto;
   }
 
-  @media (max-width: 390px) {
-    .mobile-selection-bar .selection-action-label {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-  }
-
   .drive-toolbar > span {
     grid-column: 1 / -1;
   }
@@ -2475,6 +2450,19 @@ th:last-child,
 
   .log-events-table {
     min-width: 1080px;
+  }
+}
+
+@media (max-width: 390px) {
+  .mobile-selection-bar .selection-action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 
