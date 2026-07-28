@@ -39,7 +39,7 @@ export function AdminAuditEventsPage() {
           {
             name: "actor_user_id",
             label: "実行者ID",
-            placeholder: "実行したユーザーID",
+            placeholder: "すべて（ユーザーIDを入力）",
           },
           ...(organizationId === null
             ? [
@@ -139,8 +139,11 @@ function AuditEventRow({
       </td>
       <td title={event.actor_email ?? undefined}>
         <CellStack
-          primary={event.actor_email ?? "未認証/システム"}
-          secondary={event.actor_user_id ? `User #${event.actor_user_id}` : "IDなし"}
+          primary={event.actor_name ?? event.actor_email ?? "未認証/システム"}
+          secondary={
+            event.actor_email ??
+            (event.actor_user_id ? `User #${event.actor_user_id}` : "IDなし")
+          }
         />
       </td>
       <td title={event.organization_name ?? undefined}>

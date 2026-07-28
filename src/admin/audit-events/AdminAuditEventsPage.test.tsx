@@ -22,6 +22,17 @@ describe("AdminAuditEventsPage", () => {
     );
   });
 
+  it("starts with the actor filter set to all and sends no actor parameter", async () => {
+    mockAuditEvents();
+
+    renderAdminRoute("/system-admin/audit-events");
+
+    const actorFilter = await screen.findByLabelText("実行者ID");
+    expect(actorFilter).toHaveValue("");
+    expect(actorFilter).toHaveAttribute("placeholder", "すべて（ユーザーIDを入力）");
+    expect(lastAuditEventsUrl()).not.toContain("actor_user_id");
+  });
+
   it("passes filters to the API request and can reset them", async () => {
     mockAuditEvents();
 
@@ -51,9 +62,10 @@ describe("AdminAuditEventsPage", () => {
     });
 
     expect(within(row).getByText("成功")).toHaveClass("status-success");
+    expect(within(row).getByText("Other User")).toHaveClass("cell-primary");
     expect(
       within(row).getByText("very-long-admin-email-address@example.com"),
-    ).toHaveClass("cell-primary");
+    ).toHaveClass("cell-secondary");
     expect(within(row).getByText("Very Long Organization Name")).toHaveClass(
       "cell-primary",
     );
@@ -161,6 +173,7 @@ function auditEvent() {
     action: "drive_item.create",
     outcome: "success",
     actor_user_id: 42,
+    actor_name: "Other User",
     actor_email: "very-long-admin-email-address@example.com",
     organization_id: 7,
     organization_name: "Very Long Organization Name",

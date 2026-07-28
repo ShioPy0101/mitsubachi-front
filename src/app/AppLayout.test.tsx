@@ -62,6 +62,10 @@ describe("AppLayout organization navigation", () => {
       "href",
       "/system-admin/organizations",
     );
+    expect(screen.getByRole("link", { name: "監査ログ" })).toHaveAttribute(
+      "href",
+      "/system-admin/audit-events",
+    );
   });
 
   it("toggles and persists the color mode", () => {
