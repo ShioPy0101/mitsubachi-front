@@ -1706,20 +1706,24 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                 <Button
                   type="button"
                   variant="secondary"
+                  aria-label="ファイルアップロード"
                   loading={isUploading}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <FilePlus size={16} aria-hidden="true" />
-                  ファイルアップロード
+                  <span className="desktop-action-label">ファイルアップロード</span>
+                  <span className="mobile-action-label">ファイル</span>
                 </Button>
                 <Button
                   type="button"
                   variant="secondary"
+                  aria-label="フォルダーアップロード"
                   loading={isUploading}
                   onClick={() => directoryInputRef.current?.click()}
                 >
                   <UploadCloud size={16} aria-hidden="true" />
-                  フォルダーアップロード
+                  <span className="desktop-action-label">フォルダーアップロード</span>
+                  <span className="mobile-action-label">フォルダー</span>
                 </Button>
               </>
             ) : null}

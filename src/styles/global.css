@@ -2089,6 +2089,10 @@ th:last-child,
   display: none;
 }
 
+.mobile-action-label {
+  display: none;
+}
+
 .drawer-layer {
   position: fixed;
   inset: 0;
@@ -2133,6 +2137,14 @@ th:last-child,
 
   .mobile-only {
     display: inline-grid;
+  }
+
+  .desktop-action-label {
+    display: none;
+  }
+
+  .mobile-action-label {
+    display: inline;
   }
 
   .app-brand {
