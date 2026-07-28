@@ -1730,6 +1730,51 @@ describe("DrivePage drag and drop upload", () => {
     expect(container.querySelector(".file-list-viewport")).toBeInTheDocument();
   });
 
+  it("keeps mobile row position height and scroll offset while selection changes", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 401, parent_id: null, name: "first", item_type: "file" },
+      { id: 402, parent_id: null, name: "second", item_type: "file" },
+    ]);
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 420 });
+    renderDrivePage("/drive");
+
+    const firstCheckbox = await screen.findByLabelText("firstを選択");
+    const firstRow = firstCheckbox.closest(".file-row");
+    if (!(firstRow instanceof HTMLTableRowElement)) throw new Error("row missing");
+    vi.spyOn(firstRow, "getBoundingClientRect").mockReturnValue(
+      domRect({ top: 180, left: 0, right: 320, bottom: 256, width: 320, height: 76 }),
+    );
+    Object.defineProperty(firstRow, "offsetHeight", {
+      configurable: true,
+      value: 76,
+    });
+    const beforeRect = firstRow.getBoundingClientRect();
+    const beforeScrollY = window.scrollY;
+    const beforeHeight = firstRow.offsetHeight;
+
+    fireEvent.click(firstCheckbox);
+    expect(
+      await screen.findByRole("region", { name: "選択中の項目を操作" }),
+    ).toHaveClass("mobile-selection-bar");
+    fireEvent.click(screen.getByLabelText("secondを選択"));
+    expect(screen.getByText("2件選択中")).toBeInTheDocument();
+
+    expect(firstCheckbox.closest(".file-row")).toBe(firstRow);
+    expect(firstRow.getBoundingClientRect().top).toBe(beforeRect.top);
+    expect(firstRow.offsetHeight).toBe(beforeHeight);
+    expect(window.scrollY).toBe(beforeScrollY);
+
+    fireEvent.click(screen.getByRole("button", { name: "選択解除" }));
+    expect(
+      screen.queryByRole("region", { name: "選択中の項目を操作" }),
+    ).not.toBeInTheDocument();
+    expect(firstCheckbox.closest(".file-row")).toBe(firstRow);
+    expect(firstRow.getBoundingClientRect().top).toBe(beforeRect.top);
+    expect(firstRow.offsetHeight).toBe(beforeHeight);
+    expect(window.scrollY).toBe(beforeScrollY);
+  });
+
   it("opens a file with Enter and Space from the central information area", async () => {
     mocks.fetchDriveItems.mockResolvedValue([
       {

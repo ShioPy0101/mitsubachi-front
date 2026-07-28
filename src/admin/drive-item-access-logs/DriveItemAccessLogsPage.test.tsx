@@ -46,8 +46,22 @@ describe("DriveItemAccessLogsPage", () => {
                   batch_id: null,
                   occurred_at: "2026-07-28T01:00:00Z",
                 },
+                {
+                  id: 11,
+                  organization_id: 1,
+                  organization_name: "長い名称を持つOrganization株式会社",
+                  actor: { kind: "user", id: 2, display_name: email },
+                  action: "stream",
+                  drive_item: { id: 4, filename: "配信用動画.mp4" },
+                  metadata: { file_size: 322122547, content_type: "video/mp4" },
+                  ip_address: "192.0.2.1",
+                  user_agent: null,
+                  request_id: "req-11",
+                  batch_id: null,
+                  occurred_at: "2026-07-28T02:00:00Z",
+                },
               ],
-              meta: { current_page: 1, per_page: 20, total_pages: 1, total_count: 2 },
+              meta: { current_page: 1, per_page: 20, total_pages: 1, total_count: 3 },
             }),
             { headers: { "Content-Type": "application/json" } },
           ),
@@ -68,10 +82,16 @@ describe("DriveItemAccessLogsPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByTitle(email)).toHaveTextContent(email);
+    expect((await screen.findAllByTitle(email))[0]).toHaveTextContent(email);
     expect(screen.getByTitle(filename)).toHaveTextContent(filename);
-    expect(screen.getByTitle("長い名称を持つOrganization株式会社")).toBeInTheDocument();
+    expect(
+      screen.getAllByTitle("長い名称を持つOrganization株式会社")[0],
+    ).toBeInTheDocument();
     expect(screen.getByText("2.4 MB")).toBeInTheDocument();
+    expect(screen.getByTitle("ダウンロード")).toBeInTheDocument();
+    expect(screen.getByTitle("プレビュー")).toBeInTheDocument();
+    expect(screen.getByTitle("ストリーミング")).toBeInTheDocument();
+    expect(screen.getByText("307 MB")).toBeInTheDocument();
     expect(screen.getAllByTitle("—").length).toBeGreaterThan(0);
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", { name: "詳細" })[0]).toHaveAttribute(

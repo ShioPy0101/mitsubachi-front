@@ -450,6 +450,21 @@ a {
   border-radius: var(--radius-md);
 }
 
+.has-selection .drive-toolbar {
+  display: none;
+}
+
+.selection-summary,
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.selection-summary {
+  justify-content: space-between;
+}
+
 .button,
 .icon-button {
   border: 1px solid transparent;
@@ -1711,27 +1726,46 @@ th:last-child,
   border: 1px solid var(--color-border);
 }
 
-.access-log-table-wrapper {
+.access-log-table-wrapper,
+.operation-log-table-wrapper {
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 
-.access-log-table {
+.access-log-table,
+.operation-log-table {
   width: 100%;
-  min-width: 1292px;
   table-layout: fixed;
   border: 0;
 }
 
-.access-log-table th,
-.access-log-table td {
-  height: 48px;
-  vertical-align: middle;
+.access-log-table {
+  min-width: 1362px;
 }
 
-.access-log-table th {
+.access-log-table th,
+.access-log-table td,
+.operation-log-table th,
+.operation-log-table td {
+  height: 48px;
+  vertical-align: middle;
+  border-right: 1px solid var(--color-border);
+}
+
+.access-log-table th:last-child,
+.access-log-table td:last-child,
+.operation-log-table th:last-child,
+.operation-log-table td:last-child {
+  border-right: 0;
+}
+
+.access-log-table th,
+.operation-log-table th {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -1744,72 +1778,51 @@ th:last-child,
 }
 
 .access-log-col-actor {
-  width: 180px;
+  width: 220px;
 }
 
 .access-log-col-organization {
-  width: 140px;
+  width: 160px;
 }
 
 .access-log-col-action {
   width: 130px;
 }
 
+.access-log-col-file {
+  width: 240px;
+}
+
 .access-log-col-size {
   width: 100px;
 }
 
-.access-log-col-content-type,
-.access-log-col-ip {
+.access-log-col-content-type {
   width: 140px;
+}
+
+.access-log-col-ip {
+  width: 150px;
 }
 
 .access-log-col-detail {
   width: 72px;
 }
 
-.access-log-truncate {
+.access-log-truncate,
+.operation-log-truncate {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.access-log-nowrap {
+.access-log-nowrap,
+.operation-log-nowrap {
   white-space: nowrap;
-}
-
-.operation-log-table-wrapper {
-  max-width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
 }
 
 .operation-log-table {
-  width: 100%;
   min-width: 1362px;
-  table-layout: fixed;
-  border: 0;
-}
-
-.operation-log-table th,
-.operation-log-table td {
-  height: 48px;
-  vertical-align: middle;
-  border-right: 1px solid var(--color-border);
-}
-
-.operation-log-table th:last-child,
-.operation-log-table td:last-child {
-  border-right: 0;
-}
-
-.operation-log-table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--color-surface-subtle);
-  white-space: nowrap;
 }
 
 .operation-log-col-time {
@@ -1842,16 +1855,6 @@ th:last-child,
 
 .operation-log-col-detail {
   width: 72px;
-}
-
-.operation-log-truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.operation-log-nowrap {
-  white-space: nowrap;
 }
 
 .metric {
@@ -2234,6 +2237,45 @@ th:last-child,
     padding: var(--space-2);
   }
 
+  .has-selection .drive-toolbar {
+    display: grid;
+  }
+
+  .drive-page {
+    padding-bottom: calc(140px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-selection-bar {
+    position: fixed;
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+    z-index: 50;
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-2);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-menu);
+  }
+
+  .mobile-selection-bar .selection-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .mobile-selection-bar .selection-actions .button {
+    min-width: 0;
+    padding-inline: var(--space-1);
+  }
+
+  .mobile-selection-bar .selection-summary .button {
+    width: auto;
+  }
+
   .drive-toolbar > span {
     grid-column: 1 / -1;
   }
@@ -2265,17 +2307,24 @@ th:last-child,
 
   .file-list tr {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) 88px;
-    align-items: stretch;
+    grid-template-columns: 40px 32px minmax(0, 1fr) 44px 44px;
+    grid-template-rows: minmax(28px, auto) 22px;
+    align-items: center;
+    column-gap: var(--space-1);
+    row-gap: 2px;
     width: 100%;
     min-width: 0;
-    min-height: 72px;
-    padding: 0;
+    min-height: 76px;
+    padding: var(--space-2) 0;
     border-bottom: 1px solid var(--color-border);
   }
 
   .file-list-trash tr {
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 40px 32px minmax(0, 1fr);
+  }
+
+  .file-list tr.selected {
+    box-shadow: inset 0 0 0 2px var(--color-primary);
   }
 
   .file-list-viewport tbody tr.virtual-row {
@@ -2294,20 +2343,47 @@ th:last-child,
 
   .file-list .file-select-cell {
     display: grid;
+    grid-column: 1;
+    grid-row: 1 / span 2;
     width: 40px;
     min-width: 40px;
     place-items: center;
   }
 
   .drive-item-drag-cell {
+    grid-column: 2 / 4;
+    grid-row: 1 / span 2;
     min-width: 0;
   }
 
   .drive-item-info-action {
-    display: block;
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    grid-template-rows: minmax(28px, auto) 22px;
+    align-items: center;
+    column-gap: var(--space-1);
+    row-gap: 2px;
     min-width: 0;
-    min-height: 72px;
-    padding: var(--space-2) 0;
+    min-height: 60px;
+    padding: 0;
+  }
+
+  .file-row-main,
+  .file-name-content {
+    display: contents;
+  }
+
+  .file-name-content > svg {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: center;
+  }
+
+  .file-name {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
   }
 
   .drive-item-owner,
@@ -2318,8 +2394,11 @@ th:last-child,
 
   .file-list .file-actions-cell {
     display: block;
+    grid-column: 4 / 6;
+    grid-row: 1 / span 2;
     width: 88px;
     min-width: 88px;
+    height: 100%;
   }
 
   .file-list .row-actions {
@@ -2340,16 +2419,22 @@ th:last-child,
   .file-name-content {
     width: 100%;
     min-width: 0;
-    min-height: 28px;
   }
 
   .mobile-meta {
     display: block;
+    grid-column: 1 / 3;
+    grid-row: 2;
+    width: 100%;
     min-width: 0;
-    margin-left: 28px;
+    margin-left: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .file-location {
+    display: none;
   }
 
   .file-list-viewport {
@@ -2365,6 +2450,19 @@ th:last-child,
 
   .log-events-table {
     min-width: 1080px;
+  }
+}
+
+@media (max-width: 390px) {
+  .mobile-selection-bar .selection-action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 
