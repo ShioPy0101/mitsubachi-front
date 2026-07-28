@@ -6,6 +6,18 @@ const sensitiveKeyPattern =
   /password|password_confirmation|token|access_token|refresh_token|csrf_token|authenticity_token|authorization|cookie|session|secret|api_key|invite_code|magic_link|private_key/i;
 
 const actionLabels: Record<string, string> = {
+  "organization.created": "組織を作成",
+  "organization.settings_updated": "組織設定を更新",
+  "user.profile_updated": "ユーザー情報を更新",
+  "user.suspended": "ユーザーを停止",
+  "user.unsuspended": "ユーザーの停止を解除",
+  "drive_item.created": "ファイルを作成",
+  "drive_item.updated": "ファイルを更新",
+  "drive_item.moved": "ファイルを移動",
+  "drive_item.deleted": "ファイルを削除",
+  "drive_item.restored": "ファイルを復元",
+  "drive_item.purged": "ファイルを完全削除",
+  "external_share.created": "外部共有を作成",
   "organization.create": "組織を作成",
   "organization.update": "組織を更新",
   "organization_invite.create": "招待コードを発行",
@@ -28,9 +40,6 @@ const actionLabels: Record<string, string> = {
   "auth.verify": "ログイン認証",
   "auth.failure": "ログイン失敗",
   "authorization.denied": "アクセス拒否",
-  "audit_log.index": "管理監査ログを閲覧",
-  "audit_log.show": "管理監査ログ詳細を閲覧",
-  "admin.audit_log.view": "監査ログを閲覧",
 };
 
 const targetLabels: Record<string, string> = {
@@ -38,7 +47,6 @@ const targetLabels: Record<string, string> = {
   Organization: "組織",
   DriveItem: "ファイル",
   OrganizationInvite: "招待コード",
-  AdminAuditLog: "管理監査ログ",
 };
 
 const outcomeLabels: Record<string, string> = {

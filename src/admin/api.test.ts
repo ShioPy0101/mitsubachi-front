@@ -8,10 +8,10 @@ import {
   createOrganization,
   createOrganizationInvite,
   fetchAdminDriveItem,
-  fetchAuditEvent,
-  fetchAuditEvents,
-  fetchAuditLog,
-  fetchAuditLogs,
+  fetchDriveItemAccessLog,
+  fetchOperationLog,
+  fetchOperationLogs,
+  fetchSystemEvent,
   fetchDashboard,
   fetchOrganization,
   fetchUser,
@@ -85,7 +85,7 @@ describe("admin api", () => {
     });
   });
 
-  it("parses Rails audit log target and change_set fields", async () => {
+  it("parses operation log actor, target and change_set fields", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -95,12 +95,17 @@ describe("admin api", () => {
               data: [
                 {
                   id: 1,
-                  actor_user_id: 2,
-                  actor_email: "admin@example.com",
-                  action: "user.suspend",
-                  target_type: "User",
-                  target_id: 3,
+                  organization_id: 1,
+                  actor: { kind: "user", id: 2, display_name: "Admin" },
+                  operation_type: "user.suspended",
+                  result: "success",
+                  target: { type: "User", id: 3, display_name: "User" },
                   change_set: { suspended: [false, true] },
+                  metadata: {},
+                  ip_address: null,
+                  user_agent: null,
+                  request_id: "req",
+                  occurred_at: "2026-07-28T00:00:00Z",
                 },
               ],
               meta: {
@@ -115,11 +120,10 @@ describe("admin api", () => {
       ),
     );
 
-    await expect(fetchAuditLogs("?page=1")).resolves.toMatchObject({
+    await expect(fetchOperationLogs("?page=1")).resolves.toMatchObject({
       data: [
         {
-          target_type: "User",
-          target_id: 3,
+          target: { type: "User", id: 3 },
           change_set: { suspended: [false, true] },
         },
       ],
@@ -141,16 +145,18 @@ describe("admin api", () => {
             data: { id: 5, parent_id: null, name: "File", item_type: "file" },
           });
         }
-        if (url === `${API_BASE_URL}/api/v1/admin/audit_logs/7`) {
+        if (url === `${API_BASE_URL}/api/v1/admin/operation_logs/7`) {
           return jsonResponse({
-            data: { id: 7, action: "user.update", change_set: { name: ["a", "b"] } },
+            data: operationLogJson(7),
           });
         }
-        if (url === `${API_BASE_URL}/api/v1/admin/audit_events/8`) {
+        if (url === `${API_BASE_URL}/api/v1/admin/drive_item_access_logs/8`) {
           return jsonResponse({
-            data: { id: 8, action: "auth.login", outcome: "success" },
+            data: driveItemAccessLogJson(8),
           });
         }
+        if (url === `${API_BASE_URL}/api/v1/system_admin/system_events/9`)
+          return jsonResponse({ data: systemEventJson(9) });
         return jsonResponse({});
       }),
     );
@@ -158,38 +164,17 @@ describe("admin api", () => {
     await fetchOrganization(12);
     await fetchUser(10);
     await fetchAdminDriveItem(5);
-    await fetchAuditLog(7);
-    await fetchAuditEvent(8);
+    await fetchOperationLog(7);
+    await fetchDriveItemAccessLog(8);
+    await fetchSystemEvent(9);
 
     const urls = vi.mocked(fetch).mock.calls.map(([url]) => url);
     expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/organizations/12`);
     expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/users/10`);
     expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/drive_items/5`);
-    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/audit_logs/7`);
-    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/audit_events/8`);
-  });
-
-  it("parses audit events separately from audit logs", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        jsonResponse({
-          data: [
-            {
-              id: 8,
-              action: "auth.login_link.create",
-              outcome: "failure",
-              metadata: { reason: "invalid" },
-            },
-          ],
-          meta: { current_page: 1, per_page: 20, total_pages: 1, total_count: 1 },
-        }),
-      ),
-    );
-
-    await expect(fetchAuditEvents("?outcome=failure")).resolves.toMatchObject({
-      data: [{ outcome: "failure", metadata: { reason: "invalid" } }],
-    });
+    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/operation_logs/7`);
+    expect(urls).toContain(`${API_BASE_URL}/api/v1/admin/drive_item_access_logs/8`);
+    expect(urls).toContain(`${API_BASE_URL}/api/v1/system_admin/system_events/9`);
   });
 
   it("posts organization creation requests to the system admin endpoint", async () => {
@@ -333,5 +318,51 @@ function userJson(id: number) {
     email: `user${id}@example.com`,
     name: `User ${id}`,
     role: "member",
+  };
+}
+
+function operationLogJson(id: number) {
+  return {
+    id,
+    organization_id: 1,
+    actor: { kind: "user", id: 2, display_name: "Admin" },
+    operation_type: "user.profile_updated",
+    result: "success",
+    target: { type: "User", id: 2, display_name: "Admin" },
+    change_set: {},
+    metadata: {},
+    ip_address: null,
+    user_agent: null,
+    request_id: "req",
+    occurred_at: "2026-07-28T00:00:00Z",
+  };
+}
+
+function driveItemAccessLogJson(id: number) {
+  return {
+    id,
+    organization_id: 1,
+    actor: { kind: "user", id: 2, display_name: "Admin" },
+    action: "preview",
+    drive_item: { id: 3, filename: "file.pdf" },
+    metadata: {},
+    ip_address: null,
+    user_agent: null,
+    request_id: "req",
+    batch_id: null,
+    occurred_at: "2026-07-28T00:00:00Z",
+  };
+}
+
+function systemEventJson(id: number) {
+  return {
+    id,
+    organization_id: 1,
+    event_type: "storage.file_missing",
+    severity: "error",
+    source: "storage",
+    target: { type: "DriveItem", id: 3 },
+    request_id: "req",
+    occurred_at: "2026-07-28T00:00:00Z",
   };
 }

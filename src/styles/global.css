@@ -1770,7 +1770,7 @@ th:last-child,
   outline-offset: 2px;
 }
 
-.audit-events-table {
+.log-events-table {
   width: 100%;
   min-width: 1100px;
   border: 0;
@@ -1778,7 +1778,7 @@ th:last-child,
   table-layout: fixed;
 }
 
-.audit-events-table caption {
+.log-events-table caption {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1787,24 +1787,24 @@ th:last-child,
   white-space: nowrap;
 }
 
-.audit-events-table th,
-.audit-events-table td {
+.log-events-table th,
+.log-events-table td {
   height: 56px;
   vertical-align: middle;
 }
 
-.audit-events-table th {
+.log-events-table th {
   background: var(--color-surface-subtle);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 
-.audit-events-table tbody tr:nth-child(even) {
+.log-events-table tbody tr:nth-child(even) {
   background: color-mix(in srgb, var(--color-surface-subtle) 45%, transparent);
 }
 
-.audit-events-table tbody tr:hover {
+.log-events-table tbody tr:hover {
   background: var(--color-surface-hover);
 }
 
@@ -2107,12 +2107,12 @@ th:last-child,
     margin-left: 28px;
   }
 
-  .admin-table:not(.audit-events-table) {
+  .admin-table:not(.log-events-table) {
     display: block;
     overflow-x: auto;
   }
 
-  .audit-events-table {
+  .log-events-table {
     min-width: 1080px;
   }
 }

@@ -254,10 +254,10 @@ pages:
       - "DELETE /api/v1/admin/drive_items/:id/purge"
       - "PATCH /api/v1/admin/drive_items/:id/restore"
 
-  - id: admin_audit_logs
-    path: "/admin/audit-logs"
-    name: "Admin audit logs"
-    component: "src/admin/audit-logs/AdminAuditLogsPage.tsx"
+  - id: admin_operation_logs
+    path: "/system-admin/operation-logs"
+    name: "操作履歴"
+    component: "src/admin/operation-logs/OperationLogsPage.tsx"
     layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
     auth:
       allowed_roles: ["organization_admin", "system_admin"]
@@ -267,64 +267,63 @@ pages:
         "per_page",
         "actor_user_id",
         "organization_id",
-        "action",
+        "operation_type",
+        "result",
         "target_type",
-        "created_from",
-        "created_to",
-      ]
-    apis:
-      - "GET /api/v1/me"
-      - "GET /api/v1/admin/audit_logs"
-    response_contracts:
-      - "Audit logs use target_type, target_id, and change_set."
-      - "change_set is { field: [before, after] } in Rails."
-
-  - id: admin_audit_log_detail
-    path: "/admin/audit-logs/:auditLogId"
-    name: "Admin audit log detail"
-    component: "src/admin/audit-logs/AdminAuditLogDetailPage.tsx"
-    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
-    auth:
-      allowed_roles: ["organization_admin", "system_admin"]
-    apis:
-      - "GET /api/v1/me"
-      - "GET /api/v1/admin/audit_logs/:id"
-
-  - id: admin_audit_events
-    path: "/admin/audit-events"
-    name: "Admin audit events"
-    component: "src/admin/audit-events/AdminAuditEventsPage.tsx"
-    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
-    auth:
-      allowed_roles: ["organization_admin", "system_admin"]
-    query_params:
-      [
-        "page",
-        "per_page",
-        "actor_user_id",
-        "organization_id",
-        "action",
-        "outcome",
-        "target_type",
+        "request_id",
         "occurred_from",
         "occurred_to",
       ]
     apis:
       - "GET /api/v1/me"
-      - "GET /api/v1/admin/audit_events"
-    response_contracts:
-      - "Audit events are separate from audit logs and include outcome, metadata, request_id, and occurred_at when present."
+      - "GET /api/v1/admin/operation_logs"
 
-  - id: admin_audit_event_detail
-    path: "/admin/audit-events/:auditEventId"
-    name: "Admin audit event detail"
-    component: "src/admin/audit-events/AdminAuditEventDetailPage.tsx"
+  - id: admin_file_access_logs
+    path: "/system-admin/file-access-logs"
+    name: "ファイルアクセス履歴"
+    component: "src/admin/drive-item-access-logs/DriveItemAccessLogsPage.tsx"
     layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
     auth:
       allowed_roles: ["organization_admin", "system_admin"]
     apis:
       - "GET /api/v1/me"
-      - "GET /api/v1/admin/audit_events/:id"
+      - "GET /api/v1/admin/drive_item_access_logs"
+
+  - id: admin_system_events
+    path: "/system-admin/system-events"
+    name: "システムイベント"
+    component: "src/admin/system-events/SystemEventsPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    query_params:
+      [
+        "page",
+        "per_page",
+        "organization_id",
+        "severity",
+        "source",
+        "event_type",
+        "request_id",
+        "job_id",
+        "trace_id",
+        "occurred_from",
+        "occurred_to",
+      ]
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/system_admin/system_events"
+
+  - id: admin_system_event_detail
+    path: "/system-admin/system-events/:systemEventId"
+    name: "システムイベント詳細"
+    component: "src/admin/system-events/SystemEventDetailPage.tsx"
+    layout: "src/admin/components/AdminScaffold.tsx:AdminLayout"
+    auth:
+      allowed_roles: ["organization_admin", "system_admin"]
+    apis:
+      - "GET /api/v1/me"
+      - "GET /api/v1/system_admin/system_events/:id"
 
   - id: forbidden
     path: "/403"
