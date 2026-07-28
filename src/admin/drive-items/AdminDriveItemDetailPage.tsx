@@ -25,7 +25,7 @@ import {
   QueryState,
   errorMessage,
 } from "../components/AdminScaffold";
-import { formatCompactDateTime } from "../components/auditFormat";
+import { formatCompactDateTime } from "../components/logFormat";
 
 export function AdminDriveItemDetailPage() {
   const params = useParams();

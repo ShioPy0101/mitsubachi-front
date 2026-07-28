@@ -8,9 +8,9 @@ import {
   formatAuditOutcome,
   summarizeChangeSet,
   targetHref,
-} from "./auditFormat";
+} from "./logFormat";
 
-describe("audit format helpers", () => {
+describe("log format helpers", () => {
   it("keeps unknown actions visible while formatting known actions", () => {
     expect(formatAuditAction("organization.create")).toBe("組織を作成");
     expect(formatAuditAction("custom.unknown")).toBe("custom.unknown");
@@ -50,7 +50,7 @@ describe("audit format helpers", () => {
     expect(screen.getAllByText(/[*]{8}/)).toHaveLength(2);
   });
 
-  it("formats known audit event outcomes with text", () => {
+  it("formats known operation results with text", () => {
     expect(formatAuditOutcome("success")).toBe("成功");
     expect(formatAuditOutcome("failure")).toBe("失敗");
     expect(formatAuditOutcome("denied")).toBe("拒否");

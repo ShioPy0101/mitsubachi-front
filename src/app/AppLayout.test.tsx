@@ -62,9 +62,9 @@ describe("AppLayout organization navigation", () => {
       "href",
       "/system-admin/organizations",
     );
-    expect(screen.getByRole("link", { name: "監査ログ" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "操作履歴" })).toHaveAttribute(
       "href",
-      "/system-admin/audit-events",
+      "/system-admin/operation-logs",
     );
   });
 

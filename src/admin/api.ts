@@ -23,14 +23,18 @@ export const adminKeys = {
     [...adminKeys.all, organizationId, "drive-items", query] as const,
   driveItem: (organizationId: number | null, id: number) =>
     [...adminKeys.all, organizationId, "drive-items", id] as const,
-  auditLogs: (organizationId: number | null, query: string) =>
-    [...adminKeys.all, organizationId, "audit-logs", query] as const,
-  auditLog: (organizationId: number | null, id: number) =>
-    [...adminKeys.all, organizationId, "audit-logs", id] as const,
-  auditEvents: (organizationId: number | null, query: string) =>
-    [...adminKeys.all, organizationId, "audit-events", query] as const,
-  auditEvent: (organizationId: number | null, id: number) =>
-    [...adminKeys.all, organizationId, "audit-events", id] as const,
+  operationLogs: (organizationId: number | null, query: string) =>
+    [...adminKeys.all, organizationId, "operation-logs", query] as const,
+  operationLog: (organizationId: number | null, id: number) =>
+    [...adminKeys.all, organizationId, "operation-logs", id] as const,
+  driveItemAccessLogs: (organizationId: number | null, query: string) =>
+    [...adminKeys.all, organizationId, "drive-item-access-logs", query] as const,
+  driveItemAccessLog: (organizationId: number | null, id: number) =>
+    [...adminKeys.all, organizationId, "drive-item-access-logs", id] as const,
+  systemEvents: (organizationId: number | null, query: string) =>
+    [...adminKeys.all, organizationId, "system-events", query] as const,
+  systemEvent: (organizationId: number | null, id: number) =>
+    [...adminKeys.all, organizationId, "system-events", id] as const,
 };
 
 export const adminOrganizationSchema = organizationSchema.extend({
@@ -48,39 +52,63 @@ export const adminDriveItemSchema = driveItemSchema.extend({
   uploaded_at: z.string().nullable().optional(),
 });
 
-export const auditLogSchema = z.object({
-  id: z.number(),
-  action: z.string(),
-  actor_user_id: z.number().nullable().optional(),
-  actor_email: z.string().nullable().optional(),
-  organization_id: z.number().nullable().optional(),
-  organization_name: z.string().nullable().optional(),
-  target_type: z.string().nullable().optional(),
-  target_id: z.number().nullable().optional(),
-  change_set: z.record(z.string(), z.tuple([z.unknown(), z.unknown()])).optional(),
-  ip_address: z.string().nullable().optional(),
-  user_agent: z.string().nullable().optional(),
-  created_at: z.string().optional(),
+const actorSchema = z.object({
+  kind: z.enum(["user", "external_share", "anonymous"]),
+  id: z.number().nullable(),
+  display_name: z.string().nullable(),
 });
 
-export const auditEventSchema = z.object({
+const targetSchema = z.object({
+  type: z.string().nullable(),
+  id: z.number().nullable(),
+  display_name: z.string().nullable().optional(),
+});
+
+export const operationLogSchema = z.object({
   id: z.number(),
-  organization_id: z.number().nullable().optional(),
-  organization_name: z.string().nullable().optional(),
-  actor_user_id: z.number().nullable().optional(),
-  actor_name: z.string().nullable().optional(),
-  actor_email: z.string().nullable().optional(),
+  organization_id: z.number().nullable(),
+  actor: actorSchema,
+  operation_type: z.string(),
+  result: z.enum(["success", "failure", "denied"]),
+  target: targetSchema,
+  change_set: z.record(z.string(), z.unknown()),
+  metadata: z.record(z.string(), z.unknown()),
+  ip_address: z.string().nullable(),
+  user_agent: z.string().nullable(),
+  request_id: z.string().nullable(),
+  occurred_at: z.string(),
+});
+
+export const driveItemAccessLogSchema = z.object({
+  id: z.number(),
+  organization_id: z.number(),
+  actor: actorSchema,
   action: z.string(),
-  outcome: z.string(),
-  target_type: z.string().nullable().optional(),
-  target_id: z.number().nullable().optional(),
-  change_set: z.record(z.string(), z.tuple([z.unknown(), z.unknown()])).optional(),
+  drive_item: z.object({ id: z.number().nullable(), filename: z.string().nullable() }),
+  metadata: z.record(z.string(), z.unknown()),
+  ip_address: z.string().nullable(),
+  user_agent: z.string().nullable(),
+  request_id: z.string().nullable(),
+  batch_id: z.string().nullable(),
+  occurred_at: z.string(),
+});
+
+export const systemEventSchema = z.object({
+  id: z.number(),
+  organization_id: z.number().nullable(),
+  event_type: z.string(),
+  severity: z.enum(["info", "warning", "error", "critical"]),
+  source: z.string(),
+  target: targetSchema,
+  related_user_id: z.number().nullable().optional(),
+  request_id: z.string().nullable(),
+  job_id: z.string().nullable().optional(),
+  trace_id: z.string().nullable().optional(),
+  error_class: z.string().nullable().optional(),
+  error_message: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
-  ip_address: z.string().nullable().optional(),
-  user_agent: z.string().nullable().optional(),
-  request_id: z.string().nullable().optional(),
-  occurred_at: z.string().optional(),
-  created_at: z.string().optional(),
+  summary: z.string().optional(),
+  occurred_at: z.string(),
 });
 
 export const organizationInviteSchema = z.object({
@@ -105,7 +133,7 @@ export const dashboardSchema = z.object({
   files_count: z.number().optional(),
   directories_count: z.number().optional(),
   total_storage_bytes: z.number().optional(),
-  audit_logs_count: z.number().optional(),
+  operation_logs_count: z.number().optional(),
   recent_users: z.array(userSchema).optional(),
   recent_drive_items: z.array(driveItemSchema).optional(),
 });
@@ -113,8 +141,9 @@ export const dashboardSchema = z.object({
 export type AdminOrganization = z.infer<typeof adminOrganizationSchema>;
 export type AdminUser = z.infer<typeof userSchema>;
 export type AdminDriveItem = z.infer<typeof adminDriveItemSchema>;
-export type AuditLog = z.infer<typeof auditLogSchema>;
-export type AuditEvent = z.infer<typeof auditEventSchema>;
+export type OperationLog = z.infer<typeof operationLogSchema>;
+export type DriveItemAccessLog = z.infer<typeof driveItemAccessLogSchema>;
+export type SystemEvent = z.infer<typeof systemEventSchema>;
 export type OrganizationInvite = z.infer<typeof organizationInviteSchema>;
 export type Dashboard = z.infer<typeof dashboardSchema>;
 export type AdminList<T> = { data: T[]; meta: AdminMeta };
@@ -352,42 +381,73 @@ export function adminDriveItemStreamUrl(
   return apiUrl(adminPath(organizationId, `/drive_items/${id}/stream`));
 }
 
-export async function fetchAuditLogs(
+export async function fetchOperationLogs(
   query: string,
   organizationId: number | null = null,
-): Promise<AdminList<AuditLog>> {
+): Promise<AdminList<OperationLog>> {
   return parseAdminList(
-    auditLogSchema,
-    await apiRequest<unknown>(`${adminPath(organizationId, "/audit_logs")}${query}`),
+    operationLogSchema,
+    await apiRequest<unknown>(
+      `${adminPath(organizationId, "/operation_logs")}${query}`,
+    ),
   );
 }
 
-export async function fetchAuditLog(
+export async function fetchOperationLog(
   id: number,
   organizationId: number | null = null,
-): Promise<AuditLog> {
+): Promise<OperationLog> {
   return parseEnvelope(
-    auditLogSchema,
-    await apiRequest<unknown>(adminPath(organizationId, `/audit_logs/${id}`)),
+    operationLogSchema,
+    await apiRequest<unknown>(adminPath(organizationId, `/operation_logs/${id}`)),
   );
 }
 
-export async function fetchAuditEvents(
+export async function fetchDriveItemAccessLogs(
   query: string,
   organizationId: number | null = null,
-): Promise<AdminList<AuditEvent>> {
+): Promise<AdminList<DriveItemAccessLog>> {
   return parseAdminList(
-    auditEventSchema,
-    await apiRequest<unknown>(`${adminPath(organizationId, "/audit_events")}${query}`),
+    driveItemAccessLogSchema,
+    await apiRequest<unknown>(
+      `${adminPath(organizationId, "/drive_item_access_logs")}${query}`,
+    ),
   );
 }
 
-export async function fetchAuditEvent(
+export async function fetchDriveItemAccessLog(
   id: number,
   organizationId: number | null = null,
-): Promise<AuditEvent> {
+): Promise<DriveItemAccessLog> {
   return parseEnvelope(
-    auditEventSchema,
-    await apiRequest<unknown>(adminPath(organizationId, `/audit_events/${id}`)),
+    driveItemAccessLogSchema,
+    await apiRequest<unknown>(
+      adminPath(organizationId, `/drive_item_access_logs/${id}`),
+    ),
   );
+}
+
+export async function fetchSystemEvents(
+  query: string,
+  organizationId: number | null = null,
+): Promise<AdminList<SystemEvent>> {
+  const path =
+    organizationId === null
+      ? "/api/v1/system_admin/system_events"
+      : adminPath(organizationId, "/system_events");
+  return parseAdminList(
+    systemEventSchema,
+    await apiRequest<unknown>(`${path}${query}`),
+  );
+}
+
+export async function fetchSystemEvent(
+  id: number,
+  organizationId: number | null = null,
+): Promise<SystemEvent> {
+  const path =
+    organizationId === null
+      ? `/api/v1/system_admin/system_events/${id}`
+      : adminPath(organizationId, `/system_events/${id}`);
+  return parseEnvelope(systemEventSchema, await apiRequest<unknown>(path));
 }

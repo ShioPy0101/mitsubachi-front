@@ -17,7 +17,7 @@ import {
   QueryState,
   errorMessage,
 } from "../components/AdminScaffold";
-import { formatDateTime } from "../components/auditFormat";
+import { formatDateTime } from "../components/logFormat";
 
 export function AdminOrganizationInviteNewPage() {
   const organizationId = Number(useParams().organizationId);

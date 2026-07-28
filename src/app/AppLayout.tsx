@@ -265,8 +265,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <NavLink to="/system-admin/drive-items" onClick={onNavigate}>
             ファイル
           </NavLink>
-          <NavLink to="/system-admin/audit-events" onClick={onNavigate}>
-            監査ログ
+          <NavLink to="/system-admin/operation-logs" onClick={onNavigate}>
+            操作履歴
           </NavLink>
         </div>
       ) : null}

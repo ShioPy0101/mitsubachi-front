@@ -8,10 +8,12 @@ import {
 import { QueryClientProvider } from "@tanstack/react-query";
 
 import { createAppQueryClient } from "../api/queryClient";
-import { AdminAuditEventDetailPage } from "../admin/audit-events/AdminAuditEventDetailPage";
-import { AdminAuditEventsPage } from "../admin/audit-events/AdminAuditEventsPage";
-import { AdminAuditLogDetailPage } from "../admin/audit-logs/AdminAuditLogDetailPage";
-import { AdminAuditLogsPage } from "../admin/audit-logs/AdminAuditLogsPage";
+import { DriveItemAccessLogDetailPage } from "../admin/drive-item-access-logs/DriveItemAccessLogDetailPage";
+import { DriveItemAccessLogsPage } from "../admin/drive-item-access-logs/DriveItemAccessLogsPage";
+import { OperationLogDetailPage } from "../admin/operation-logs/OperationLogDetailPage";
+import { OperationLogsPage } from "../admin/operation-logs/OperationLogsPage";
+import { SystemEventDetailPage } from "../admin/system-events/SystemEventDetailPage";
+import { SystemEventsPage } from "../admin/system-events/SystemEventsPage";
 import { AdminLayout } from "../admin/components/AdminScaffold";
 import { AdminDashboardPage } from "../admin/dashboard/AdminDashboardPage";
 import { AdminDriveItemDetailPage } from "../admin/drive-items/AdminDriveItemDetailPage";
@@ -121,23 +123,30 @@ const router = createBrowserRouter([
                 element: <AdminDriveItemDetailPage />,
               },
               {
-                path: "/organizations/:organizationId/admin/audit-logs",
-                element: <AdminAuditLogsPage />,
+                path: "/organizations/:organizationId/admin/operation-logs",
+                element: <OperationLogsPage />,
               },
               {
-                path: "/organizations/:organizationId/admin/audit-logs/:auditLogId",
-                element: <AdminAuditLogDetailPage />,
+                path: "/organizations/:organizationId/admin/operation-logs/:operationLogId",
+                element: <OperationLogDetailPage />,
               },
               {
-                path: "/organizations/:organizationId/admin/audit-events",
-                element: <AdminAuditEventsPage />,
+                path: "/organizations/:organizationId/admin/file-access-logs",
+                element: <DriveItemAccessLogsPage />,
               },
               {
-                path: "/organizations/:organizationId/admin/audit-events/:auditEventId",
-                element: <AdminAuditEventDetailPage />,
+                path: "/organizations/:organizationId/admin/file-access-logs/:driveItemAccessLogId",
+                element: <DriveItemAccessLogDetailPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/system-events",
+                element: <SystemEventsPage />,
+              },
+              {
+                path: "/organizations/:organizationId/admin/system-events/:systemEventId",
+                element: <SystemEventDetailPage />,
               },
               { path: "/admin", element: <Navigate to="/system-admin" replace /> },
-              { path: "/admin/*", element: <NavigateLegacyAdminPath /> },
               { path: "/system-admin", element: <Navigate to="dashboard" replace /> },
               { path: "/system-admin/dashboard", element: <AdminDashboardPage /> },
               {
@@ -175,20 +184,25 @@ const router = createBrowserRouter([
                 element: <AdminDriveItemDetailPage />,
               },
               {
-                path: "/system-admin/audit-logs",
-                element: <Navigate to="/system-admin/audit-events" replace />,
+                path: "/system-admin/operation-logs",
+                element: <OperationLogsPage />,
               },
               {
-                path: "/system-admin/audit-logs/:auditLogId",
-                element: <AdminAuditLogDetailPage />,
+                path: "/system-admin/operation-logs/:operationLogId",
+                element: <OperationLogDetailPage />,
               },
               {
-                path: "/system-admin/audit-events",
-                element: <AdminAuditEventsPage />,
+                path: "/system-admin/file-access-logs",
+                element: <DriveItemAccessLogsPage />,
               },
               {
-                path: "/system-admin/audit-events/:auditEventId",
-                element: <AdminAuditEventDetailPage />,
+                path: "/system-admin/file-access-logs/:driveItemAccessLogId",
+                element: <DriveItemAccessLogDetailPage />,
+              },
+              { path: "/system-admin/system-events", element: <SystemEventsPage /> },
+              {
+                path: "/system-admin/system-events/:systemEventId",
+                element: <SystemEventDetailPage />,
               },
             ],
           },
@@ -227,11 +241,6 @@ function NavigateToDrive() {
       replace
     />
   );
-}
-
-function NavigateLegacyAdminPath() {
-  const params = useParams();
-  return <Navigate to={`/system-admin/${params["*"] ?? "dashboard"}`} replace />;
 }
 
 function StatePage({ title, message }: { title: string; message: string }) {

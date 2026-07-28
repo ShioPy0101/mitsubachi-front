@@ -82,8 +82,13 @@ export function AdminLayout() {
           ) : null}
           <NavLink to={adminUiPath(organizationId, "/users")}>ユーザー</NavLink>
           <NavLink to={adminUiPath(organizationId, "/drive-items")}>ファイル</NavLink>
-          <NavLink to={adminUiPath(organizationId, "/audit-logs")}>操作履歴</NavLink>
-          <NavLink to={adminUiPath(organizationId, "/audit-events")}>
+          <NavLink to={adminUiPath(organizationId, "/operation-logs")}>
+            操作履歴
+          </NavLink>
+          <NavLink to={adminUiPath(organizationId, "/file-access-logs")}>
+            ファイルアクセス履歴
+          </NavLink>
+          <NavLink to={adminUiPath(organizationId, "/system-events")}>
             システムイベント
           </NavLink>
           {systemAdminContext ? (
@@ -124,8 +129,9 @@ function adminSectionLabel(pathname: string) {
   if (pathname.includes("/organizations")) return "組織";
   if (pathname.includes("/users")) return "ユーザー";
   if (pathname.includes("/drive-items")) return "ファイル";
-  if (pathname.includes("/audit-logs")) return "操作履歴";
-  if (pathname.includes("/audit-events")) return "システムイベント";
+  if (pathname.includes("/operation-logs")) return "操作履歴";
+  if (pathname.includes("/file-access-logs")) return "ファイルアクセス履歴";
+  if (pathname.includes("/system-events")) return "システムイベント";
   if (pathname.includes("/dashboard")) return "ダッシュボード";
   return "";
 }
