@@ -1743,7 +1743,7 @@ describe("DrivePage drag and drop upload", () => {
     const firstRow = firstCheckbox.closest(".file-row");
     if (!(firstRow instanceof HTMLTableRowElement)) throw new Error("row missing");
     vi.spyOn(firstRow, "getBoundingClientRect").mockReturnValue(
-      domRect({ top: 180, bottom: 256, height: 76 }),
+      domRect({ top: 180, left: 0, right: 320, bottom: 256, width: 320, height: 76 }),
     );
     Object.defineProperty(firstRow, "offsetHeight", {
       configurable: true,
