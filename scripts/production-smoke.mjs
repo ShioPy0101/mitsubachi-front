@@ -146,8 +146,7 @@ export async function runSmoke(env = process.env) {
     await check("new API: readiness", async () => {
       const response = await sessions.system_admin.request("/api/health/ready");
       assertStatus(response, 200, "readiness");
-      if (parseJson(response, "readiness").status !== "ready")
-        throw new Error("readiness body is not ready");
+      assertReadyStatus(parseJson(response, "readiness"));
     });
 
     const frontend = new SmokeClient(frontendBaseUrl, frontendHost);
@@ -229,6 +228,12 @@ export function assertStatusIn(response, expected, label) {
     throw new Error(
       `${label}: expected HTTP ${expected.join(" or ")}, got ${response.status}`,
     );
+  }
+}
+
+export function assertReadyStatus(body) {
+  if (body.status !== "ready") {
+    throw new Error(`readiness body has unexpected status: ${body.status}`);
   }
 }
 

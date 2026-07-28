@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
 
-import { assertStatusIn, parseCredentials, SmokeClient } from "./production-smoke.mjs";
+import {
+  assertReadyStatus,
+  assertStatusIn,
+  parseCredentials,
+  SmokeClient,
+} from "./production-smoke.mjs";
+
+test("新releaseのreadinessはreadyだけを許容する", () => {
+  assert.doesNotThrow(() => assertReadyStatus({ status: "ready" }));
+  assert.throws(() => assertReadyStatus({ status: "ok" }), /unexpected status: ok/);
+  assert.throws(
+    () => assertReadyStatus({ status: "unavailable" }),
+    /unexpected status: unavailable/,
+  );
+});
 
 test("権限外APIは403または404を拒否結果として扱う", () => {
   assert.doesNotThrow(() =>
