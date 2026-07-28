@@ -2265,17 +2265,24 @@ th:last-child,
 
   .file-list tr {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) 88px;
-    align-items: stretch;
+    grid-template-columns: 40px 32px minmax(0, 1fr) 44px 44px;
+    grid-template-rows: minmax(28px, auto) 22px;
+    align-items: center;
+    column-gap: var(--space-1);
+    row-gap: 2px;
     width: 100%;
     min-width: 0;
-    min-height: 72px;
-    padding: 0;
+    min-height: 76px;
+    padding: var(--space-2) 0;
     border-bottom: 1px solid var(--color-border);
   }
 
   .file-list-trash tr {
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 40px 32px minmax(0, 1fr);
+  }
+
+  .file-list tr.selected {
+    box-shadow: inset 0 0 0 2px var(--color-primary);
   }
 
   .file-list-viewport tbody tr.virtual-row {
@@ -2294,20 +2301,47 @@ th:last-child,
 
   .file-list .file-select-cell {
     display: grid;
+    grid-column: 1;
+    grid-row: 1 / span 2;
     width: 40px;
     min-width: 40px;
     place-items: center;
   }
 
   .drive-item-drag-cell {
+    grid-column: 2 / 4;
+    grid-row: 1 / span 2;
     min-width: 0;
   }
 
   .drive-item-info-action {
-    display: block;
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    grid-template-rows: minmax(28px, auto) 22px;
+    align-items: center;
+    column-gap: var(--space-1);
+    row-gap: 2px;
     min-width: 0;
-    min-height: 72px;
-    padding: var(--space-2) 0;
+    min-height: 60px;
+    padding: 0;
+  }
+
+  .file-row-main,
+  .file-name-content {
+    display: contents;
+  }
+
+  .file-name-content > svg {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: center;
+  }
+
+  .file-name {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
   }
 
   .drive-item-owner,
@@ -2318,8 +2352,11 @@ th:last-child,
 
   .file-list .file-actions-cell {
     display: block;
+    grid-column: 4 / 6;
+    grid-row: 1 / span 2;
     width: 88px;
     min-width: 88px;
+    height: 100%;
   }
 
   .file-list .row-actions {
@@ -2340,16 +2377,22 @@ th:last-child,
   .file-name-content {
     width: 100%;
     min-width: 0;
-    min-height: 28px;
   }
 
   .mobile-meta {
     display: block;
+    grid-column: 1 / 3;
+    grid-row: 2;
+    width: 100%;
     min-width: 0;
-    margin-left: 28px;
+    margin-left: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .file-location {
+    display: none;
   }
 
   .file-list-viewport {
