@@ -67,6 +67,7 @@ const targetSchema = z.object({
 export const operationLogSchema = z.object({
   id: z.number(),
   organization_id: z.number().nullable(),
+  organization_name: z.string().nullable().optional(),
   actor: actorSchema,
   operation_type: z.string(),
   result: z.enum(["success", "failure", "denied"]),
@@ -82,6 +83,7 @@ export const operationLogSchema = z.object({
 export const driveItemAccessLogSchema = z.object({
   id: z.number(),
   organization_id: z.number(),
+  organization_name: z.string().nullable().optional(),
   actor: actorSchema,
   action: z.string(),
   drive_item: z.object({ id: z.number().nullable(), filename: z.string().nullable() }),

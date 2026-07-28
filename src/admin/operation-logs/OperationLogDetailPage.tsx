@@ -39,11 +39,41 @@ export function OperationLogDetailPage() {
                 value: `${formatAuditAction(log.operation_type)} (${log.operation_type})`,
               },
               { label: "結果", value: formatAuditOutcome(log.result) },
-              { label: "操作者", value: log.actor.display_name ?? log.actor.kind },
+              {
+                label: "操作者",
+                value:
+                  log.actor.display_name ??
+                  metadataText(log.metadata, "actor_display_name") ??
+                  metadataText(log.metadata, "actor_email") ??
+                  log.actor.kind,
+              },
+              {
+                label: "Organization",
+                value:
+                  log.organization_name ??
+                  metadataText(log.metadata, "organization_name") ??
+                  "削除済みOrganization",
+              },
               {
                 label: "対象",
                 value:
-                  log.target.display_name ?? `${log.target.type} #${log.target.id}`,
+                  log.target.display_name ??
+                  metadataText(log.metadata, "target_name") ??
+                  `${log.target.type ?? metadataText(log.metadata, "target_type") ?? "対象"} #${log.target.id ?? metadataText(log.metadata, "target_id") ?? "不明"}（削除済み）`,
+              },
+              {
+                label: "エラーコード",
+                value: metadataText(log.metadata, "error_code"),
+              },
+              {
+                label: "エラーメッセージ",
+                value: metadataText(log.metadata, "error_message"),
+              },
+              {
+                label: "HTTP status",
+                value:
+                  metadataText(log.metadata, "http_status") ??
+                  metadataText(log.metadata, "status"),
               },
               { label: "Request ID", value: log.request_id },
               { label: "User-Agent", value: log.user_agent },
@@ -61,4 +91,9 @@ export function OperationLogDetailPage() {
       </QueryState>
     </AdminFrame>
   );
+}
+
+function metadataText(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" || typeof value === "number" ? String(value) : null;
 }
