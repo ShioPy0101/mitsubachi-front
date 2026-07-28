@@ -2273,7 +2273,7 @@ function FileTable({
   };
 
   return (
-    <div className="file-list">
+    <div className={`file-list${trash ? " file-list-trash" : ""}`}>
       <div ref={listViewportRef} className="file-list-viewport">
         <table>
           <thead>
@@ -2290,6 +2290,12 @@ function FileTable({
             {virtualRows.map((virtualRow) => {
               const item = items[virtualRow.index];
               if (!item) return null;
+              const itemName = displayName(item);
+              const mobileMetadata = `${item.owner_display_name ?? "不明"} ・ ${formatDate(
+                item.updated_at,
+              )} ・ ${formatSize(item.file_size)}${
+                searchMode && item.parent_name ? ` ・ ${item.parent_name}` : ""
+              }`;
               return (
                 <tr
                   key={item.id}
@@ -2300,6 +2306,7 @@ function FileTable({
                   }}
                   className={[
                     "virtual-row",
+                    "file-row",
                     selectedIds.includes(item.id) ? "selected" : "",
                     item.item_type === "directory" ? "directory-row" : "",
                     draggingIds.includes(item.id) ? "dragging-row" : "",
@@ -2339,7 +2346,7 @@ function FileTable({
                       className="drive-item-info-action"
                       role="button"
                       tabIndex={trash ? -1 : 0}
-                      aria-label={`${displayName(item)}を開く`}
+                      aria-label={`${itemName}を開く`}
                       draggable={!trash}
                       onPointerDown={(event) => handleCentralPointerDown(event, item)}
                       onPointerUp={(event) => handleCentralPointerUp(event, item)}
@@ -2355,17 +2362,15 @@ function FileTable({
                       }}
                       onDragEnd={onDragEnd}
                     >
-                      <div className="file-name-cell">
+                      <div className="file-name-cell file-row-main">
                         <span className="file-name-content">
                           <FileTypeIcon item={item} />
-                          <span className="file-name">{displayName(item)}</span>
+                          <span className="file-name" title={itemName}>
+                            {itemName}
+                          </span>
                         </span>
-                        <span className="mobile-meta">
-                          {item.owner_display_name ?? "不明"} ・{" "}
-                          {formatDate(item.updated_at)} ・ {formatSize(item.file_size)}
-                          {searchMode && item.parent_name
-                            ? ` ・ ${item.parent_name}`
-                            : ""}
+                        <span className="mobile-meta" title={mobileMetadata}>
+                          {mobileMetadata}
                         </span>
                         {searchMode && item.parent_name ? (
                           <button
@@ -2403,7 +2408,7 @@ function FileTable({
                             disabled={downloadingItemId !== null}
                             onClick={() => onDownload(item.id)}
                           >
-                            <Download size={16} aria-hidden="true" />
+                            <Download size={20} aria-hidden="true" />
                           </IconButton>
                           <IconButton
                             data-no-drag
@@ -2420,7 +2425,7 @@ function FileTable({
                               );
                             }}
                           >
-                            <MoreVertical size={16} aria-hidden="true" />
+                            <MoreVertical size={20} aria-hidden="true" />
                           </IconButton>
                           {openMenu?.id === item.id ? (
                             <ItemActionMenu
