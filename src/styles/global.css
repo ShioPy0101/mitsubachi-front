@@ -1773,6 +1773,82 @@ th:last-child,
   white-space: nowrap;
 }
 
+.operation-log-table-wrapper {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.operation-log-table {
+  width: 100%;
+  min-width: 1362px;
+  table-layout: fixed;
+  border: 0;
+}
+
+.operation-log-table th,
+.operation-log-table td {
+  height: 48px;
+  vertical-align: middle;
+  border-right: 1px solid var(--color-border);
+}
+
+.operation-log-table th:last-child,
+.operation-log-table td:last-child {
+  border-right: 0;
+}
+
+.operation-log-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface-subtle);
+  white-space: nowrap;
+}
+
+.operation-log-col-time {
+  width: 150px;
+}
+
+.operation-log-col-actor {
+  width: 260px;
+}
+
+.operation-log-col-organization {
+  width: 180px;
+}
+
+.operation-log-col-action {
+  width: 220px;
+}
+
+.operation-log-col-result {
+  width: 90px;
+}
+
+.operation-log-col-target {
+  width: 240px;
+}
+
+.operation-log-col-ip {
+  width: 150px;
+}
+
+.operation-log-col-detail {
+  width: 72px;
+}
+
+.operation-log-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operation-log-nowrap {
+  white-space: nowrap;
+}
+
 .metric {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -2174,7 +2250,7 @@ th:last-child,
     margin-left: 28px;
   }
 
-  .admin-table:not(.log-events-table):not(.access-log-table) {
+  .admin-table:not(.log-events-table):not(.access-log-table):not(.operation-log-table) {
     display: block;
     overflow-x: auto;
   }
