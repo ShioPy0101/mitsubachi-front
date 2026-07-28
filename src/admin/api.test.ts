@@ -164,7 +164,9 @@ describe("admin api", () => {
     await fetchOrganization(12);
     await fetchUser(10);
     await fetchAdminDriveItem(5);
-    await fetchOperationLog(7);
+    await expect(fetchOperationLog(7)).resolves.toMatchObject({
+      organization_name: "Org",
+    });
     await expect(fetchDriveItemAccessLog(8)).resolves.toMatchObject({
       organization_name: "Org",
     });
@@ -327,6 +329,7 @@ function operationLogJson(id: number) {
   return {
     id,
     organization_id: 1,
+    organization_name: "Org",
     actor: { kind: "user", id: 2, display_name: "Admin" },
     operation_type: "user.profile_updated",
     result: "success",

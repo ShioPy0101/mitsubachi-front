@@ -67,6 +67,7 @@ const targetSchema = z.object({
 export const operationLogSchema = z.object({
   id: z.number(),
   organization_id: z.number().nullable(),
+  organization_name: z.string().nullable().optional(),
   actor: actorSchema,
   operation_type: z.string(),
   result: z.enum(["success", "failure", "denied"]),
