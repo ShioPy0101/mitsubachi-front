@@ -1631,7 +1631,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           </label>
         </form>
       ) : null}
-      <div className="toolbar">
+      <div className="toolbar drive-toolbar">
         {selectedIds.length > 0 ? (
           <>
             <span>{selectedIds.length}件選択中</span>

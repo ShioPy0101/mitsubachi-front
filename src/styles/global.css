@@ -2213,6 +2213,26 @@ th:last-child,
     min-height: 44px;
   }
 
+  .drive-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-2);
+  }
+
+  .drive-toolbar > span {
+    grid-column: 1 / -1;
+  }
+
+  .drive-toolbar .button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: var(--space-2);
+    white-space: nowrap;
+  }
+
   .file-list {
     width: 100%;
     min-width: 0;

@@ -1309,6 +1309,24 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
+  it("groups all primary mobile drive actions in one compact toolbar", async () => {
+    const { container } = renderDrivePage("/drive");
+
+    await screen.findByRole("heading", { name: "共有ドライブ" });
+    const toolbar = container.querySelector(".drive-toolbar");
+    expect(toolbar).toBeInTheDocument();
+    expect(toolbar).toContainElement(
+      screen.getByRole("button", { name: "新しいフォルダ" }),
+    );
+    expect(toolbar).toContainElement(
+      screen.getByRole("button", { name: "ファイルアップロード" }),
+    );
+    expect(toolbar).toContainElement(
+      screen.getByRole("button", { name: "フォルダーアップロード" }),
+    );
+    expect(toolbar).toContainElement(screen.getByRole("button", { name: "更新" }));
+  });
+
   it("keeps the folder form open without copy controls when the name already exists", async () => {
     mocks.createDirectory.mockRejectedValueOnce(
       new ApiError(
