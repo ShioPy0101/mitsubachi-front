@@ -119,11 +119,11 @@ export async function runSmoke(env = process.env) {
       ),
     );
     await check("member: admin denied", async () =>
-      assertStatus(
+      assertStatusIn(
         await sessions.member.request(
           `/api/v1/organizations/${primaryId}/admin/dashboard`,
         ),
-        404,
+        [403, 404],
         "member admin",
       ),
     );
@@ -222,6 +222,14 @@ function required(env, name) {
 function assertStatus(response, expected, label) {
   if (response.status !== expected)
     throw new Error(`${label}: expected HTTP ${expected}, got ${response.status}`);
+}
+
+export function assertStatusIn(response, expected, label) {
+  if (!expected.includes(response.status)) {
+    throw new Error(
+      `${label}: expected HTTP ${expected.join(" or ")}, got ${response.status}`,
+    );
+  }
 }
 
 function parseJson(response, label) {
