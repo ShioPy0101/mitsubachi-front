@@ -1699,9 +1699,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           <>
             {mode === "drive" ? (
               <>
-                <Button type="button" onClick={() => setDialog("folder")}>
+                <Button
+                  type="button"
+                  aria-label="新しいフォルダ"
+                  onClick={() => setDialog("folder")}
+                >
                   <FolderPlus size={16} aria-hidden="true" />
-                  新しいフォルダ
+                  <span className="desktop-action-label">新しいフォルダ</span>
+                  <span className="mobile-action-label">新規フォルダ</span>
                 </Button>
                 <Button
                   type="button"
