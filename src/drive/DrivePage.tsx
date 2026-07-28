@@ -2313,6 +2313,7 @@ function FileTable({
                   key={item.id}
                   ref={rowVirtualizer.measureElement}
                   data-index={virtualRow.index}
+                  data-selected={selectedIds.includes(item.id)}
                   style={{
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
