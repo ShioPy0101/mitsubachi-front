@@ -12,7 +12,8 @@
     "format:check": "prettier --check .",
     "prepare": "git config core.hooksPath .githooks || true",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke:production": "node scripts/production-smoke.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

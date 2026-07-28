@@ -26,8 +26,15 @@ export default tseslint.config(
     },
   },
   {
-    files: ["eslint.config.js"],
+    files: ["eslint.config.js", "scripts/**/*.mjs"],
     extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        process: "readonly",
+        URL: "readonly",
+      },
+    },
   },
   prettier,
 );
