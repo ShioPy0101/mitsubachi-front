@@ -1529,7 +1529,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
 
   return (
     <section
-      className={`drive-page ${isDraggingFiles ? "drag-active" : ""}`.trim()}
+      className={`drive-page ${isDraggingFiles ? "drag-active" : ""} ${
+        selectedIds.length > 0 ? "has-selection" : ""
+      }`.trim()}
       aria-busy={visibleQuery.isFetching || isUploading}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -1632,116 +1634,45 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         </form>
       ) : null}
       <div className="toolbar drive-toolbar">
-        {selectedIds.length > 0 ? (
+        {mode === "drive" ? (
           <>
-            <span>{selectedIds.length}件選択中</span>
-            {mode === "trash" ? (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={restorePreviewLoading || restoreSubmitting}
-                  onClick={() => void openRestorePreview()}
-                >
-                  <RotateCcw size={16} aria-hidden="true" />
-                  復元
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={() => setDialog("purge")}
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                  完全削除
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => openMoveDialog(selectedItems)}
-                >
-                  <Move size={16} aria-hidden="true" />
-                  移動
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => bulkDownloadMutation.mutate()}
-                >
-                  <Download size={16} aria-hidden="true" />
-                  ダウンロード
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => openExternalShareDialog(selectedItems)}
-                >
-                  <Share2 size={16} aria-hidden="true" />
-                  外部公開
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={() => setDialog("delete")}
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                  削除
-                </Button>
-              </>
-            )}
-            <Button type="button" variant="ghost" onClick={() => setSelectedIds([])}>
-              選択解除
-            </Button>
-          </>
-        ) : (
-          <>
-            {mode === "drive" ? (
-              <>
-                <Button
-                  type="button"
-                  aria-label="新しいフォルダ"
-                  onClick={() => setDialog("folder")}
-                >
-                  <FolderPlus size={16} aria-hidden="true" />
-                  <span className="desktop-action-label">新しいフォルダ</span>
-                  <span className="mobile-action-label">新規フォルダ</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  aria-label="ファイルアップロード"
-                  loading={isUploading}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <FilePlus size={16} aria-hidden="true" />
-                  <span className="desktop-action-label">ファイルアップロード</span>
-                  <span className="mobile-action-label">ファイル</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  aria-label="フォルダーアップロード"
-                  loading={isUploading}
-                  onClick={() => directoryInputRef.current?.click()}
-                >
-                  <UploadCloud size={16} aria-hidden="true" />
-                  <span className="desktop-action-label">フォルダーアップロード</span>
-                  <span className="mobile-action-label">フォルダー</span>
-                </Button>
-              </>
-            ) : null}
             <Button
               type="button"
-              variant="ghost"
-              onClick={() => void listQuery.refetch()}
+              aria-label="新しいフォルダ"
+              onClick={() => setDialog("folder")}
             >
-              <RefreshCw size={16} aria-hidden="true" />
-              更新
+              <FolderPlus size={16} aria-hidden="true" />
+              <span className="desktop-action-label">新しいフォルダ</span>
+              <span className="mobile-action-label">新規フォルダ</span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              aria-label="ファイルアップロード"
+              loading={isUploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <FilePlus size={16} aria-hidden="true" />
+              <span className="desktop-action-label">ファイルアップロード</span>
+              <span className="mobile-action-label">ファイル</span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              aria-label="フォルダーアップロード"
+              loading={isUploading}
+              onClick={() => directoryInputRef.current?.click()}
+            >
+              <UploadCloud size={16} aria-hidden="true" />
+              <span className="desktop-action-label">フォルダーアップロード</span>
+              <span className="mobile-action-label">フォルダー</span>
             </Button>
           </>
-        )}
+        ) : null}
+        <Button type="button" variant="ghost" onClick={() => void listQuery.refetch()}>
+          <RefreshCw size={16} aria-hidden="true" />
+          更新
+        </Button>
         <input
           ref={fileInputRef}
           className="visually-hidden"
@@ -1766,6 +1697,78 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           {...{ webkitdirectory: "" }}
         />
       </div>
+      {selectedIds.length > 0 ? (
+        <div
+          className="toolbar selection-toolbar mobile-selection-bar"
+          role="region"
+          aria-label="選択中の項目を操作"
+        >
+          <div className="selection-summary">
+            <strong>{selectedIds.length}件選択中</strong>
+            <Button type="button" variant="ghost" onClick={() => setSelectedIds([])}>
+              選択解除
+            </Button>
+          </div>
+          <div className="selection-actions">
+            {mode === "trash" ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={restorePreviewLoading || restoreSubmitting}
+                  onClick={() => void openRestorePreview()}
+                >
+                  <RotateCcw size={16} aria-hidden="true" />
+                  <span className="selection-action-label">復元</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => setDialog("purge")}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  <span className="selection-action-label">完全削除</span>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => openMoveDialog(selectedItems)}
+                >
+                  <Move size={16} aria-hidden="true" />
+                  <span className="selection-action-label">移動</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => bulkDownloadMutation.mutate()}
+                >
+                  <Download size={16} aria-hidden="true" />
+                  <span className="selection-action-label">ダウンロード</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => openExternalShareDialog(selectedItems)}
+                >
+                  <Share2 size={16} aria-hidden="true" />
+                  <span className="selection-action-label">外部公開</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => setDialog("delete")}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  <span className="selection-action-label">削除</span>
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
       {uploadTasks.length > 0 || uploadBatch ? (
         <UploadProgressPanel
           tasks={uploadTasks}
