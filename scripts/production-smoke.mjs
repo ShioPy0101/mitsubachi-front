@@ -232,7 +232,7 @@ export function assertStatusIn(response, expected, label) {
 }
 
 export function assertReadyStatus(body) {
-  if (!["ready", "ok"].includes(body.status)) {
+  if (body.status !== "ready") {
     throw new Error(`readiness body has unexpected status: ${body.status}`);
   }
 }

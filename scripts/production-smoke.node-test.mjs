@@ -9,9 +9,9 @@ import {
   SmokeClient,
 } from "./production-smoke.mjs";
 
-test("readinessは新旧backendのreadyとokを許容する", () => {
+test("新releaseのreadinessはreadyだけを許容する", () => {
   assert.doesNotThrow(() => assertReadyStatus({ status: "ready" }));
-  assert.doesNotThrow(() => assertReadyStatus({ status: "ok" }));
+  assert.throws(() => assertReadyStatus({ status: "ok" }), /unexpected status: ok/);
   assert.throws(
     () => assertReadyStatus({ status: "unavailable" }),
     /unexpected status: unavailable/,
