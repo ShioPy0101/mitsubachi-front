@@ -1710,6 +1710,7 @@ describe("DrivePage drag and drop upload", () => {
     expect(selection).toContainElement(screen.getByLabelText(`${longName}を選択`));
     expect(main).toContainElement(filename);
     expect(main?.querySelector("svg")).toBeInTheDocument();
+    expect(row).toHaveAttribute("data-selected", "false");
     expect(actions).toContainElement(
       screen.getByRole("button", { name: `${longName}をダウンロード` }),
     );
@@ -1720,6 +1721,7 @@ describe("DrivePage drag and drop upload", () => {
 
     fireEvent.click(screen.getByLabelText(`${longName}を選択`));
     expect(row).toHaveClass("selected");
+    expect(row).toHaveAttribute("data-selected", "true");
     fireEvent.click(screen.getByRole("button", { name: `${longName}をダウンロード` }));
     expect(mocks.downloadDriveItem).toHaveBeenCalledWith(null, 301);
     fireEvent.click(screen.getByRole("button", { name: `${longName}の操作メニュー` }));
