@@ -13,6 +13,14 @@ import {
 describe("log format helpers", () => {
   it("keeps unknown actions visible while formatting known actions", () => {
     expect(formatAuditAction("organization.create")).toBe("組織を作成");
+    expect(formatAuditAction("drive_item.rename")).toBe("名前を変更");
+    expect(formatAuditAction("drive_item.move")).toBe("移動");
+    expect(formatAuditAction("drive_item.purge")).toBe("完全削除");
+    expect(formatAuditAction("drive_item.download_folder")).toBe(
+      "フォルダをダウンロード",
+    );
+    expect(formatAuditAction("organization.update")).toBe("Organization設定を変更");
+    expect(formatAuditAction("audit_log.index")).toBe("操作履歴を閲覧");
     expect(formatAuditAction("custom.unknown")).toBe("custom.unknown");
   });
 
