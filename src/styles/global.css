@@ -1706,6 +1706,73 @@ th:last-child,
   border: 1px solid var(--color-border);
 }
 
+.access-log-table-wrapper {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.access-log-table {
+  width: 100%;
+  min-width: 1292px;
+  table-layout: fixed;
+  border: 0;
+}
+
+.access-log-table th,
+.access-log-table td {
+  height: 48px;
+  vertical-align: middle;
+}
+
+.access-log-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface-subtle);
+  white-space: nowrap;
+}
+
+.access-log-col-time {
+  width: 150px;
+}
+
+.access-log-col-actor {
+  width: 180px;
+}
+
+.access-log-col-organization {
+  width: 140px;
+}
+
+.access-log-col-action {
+  width: 130px;
+}
+
+.access-log-col-size {
+  width: 100px;
+}
+
+.access-log-col-content-type,
+.access-log-col-ip {
+  width: 140px;
+}
+
+.access-log-col-detail {
+  width: 72px;
+}
+
+.access-log-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-log-nowrap {
+  white-space: nowrap;
+}
+
 .metric {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -2107,7 +2174,7 @@ th:last-child,
     margin-left: 28px;
   }
 
-  .admin-table:not(.log-events-table) {
+  .admin-table:not(.log-events-table):not(.access-log-table) {
     display: block;
     overflow-x: auto;
   }
