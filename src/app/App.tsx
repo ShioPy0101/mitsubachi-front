@@ -174,7 +174,10 @@ const router = createBrowserRouter([
                 path: "/system-admin/drive-items/:driveItemId",
                 element: <AdminDriveItemDetailPage />,
               },
-              { path: "/system-admin/audit-logs", element: <AdminAuditLogsPage /> },
+              {
+                path: "/system-admin/audit-logs",
+                element: <Navigate to="/system-admin/audit-events" replace />,
+              },
               {
                 path: "/system-admin/audit-logs/:auditLogId",
                 element: <AdminAuditLogDetailPage />,

@@ -68,6 +68,7 @@ export const auditEventSchema = z.object({
   organization_id: z.number().nullable().optional(),
   organization_name: z.string().nullable().optional(),
   actor_user_id: z.number().nullable().optional(),
+  actor_name: z.string().nullable().optional(),
   actor_email: z.string().nullable().optional(),
   action: z.string(),
   outcome: z.string(),
