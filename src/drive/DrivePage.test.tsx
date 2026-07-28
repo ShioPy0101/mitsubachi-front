@@ -1309,6 +1309,24 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
+  it("groups all primary mobile drive actions in one compact toolbar", async () => {
+    const { container } = renderDrivePage("/drive");
+
+    await screen.findByRole("heading", { name: "共有ドライブ" });
+    const toolbar = container.querySelector(".drive-toolbar");
+    expect(toolbar).toBeInTheDocument();
+    expect(toolbar).toContainElement(
+      screen.getByRole("button", { name: "新しいフォルダ" }),
+    );
+    expect(toolbar).toContainElement(
+      screen.getByRole("button", { name: "ファイルアップロード" }),
+    );
+    expect(toolbar).toContainElement(
+      screen.getByRole("button", { name: "フォルダーアップロード" }),
+    );
+    expect(toolbar).toContainElement(screen.getByRole("button", { name: "更新" }));
+  });
+
   it("keeps the folder form open without copy controls when the name already exists", async () => {
     mocks.createDirectory.mockRejectedValueOnce(
       new ApiError(
@@ -1657,6 +1675,59 @@ describe("DrivePage drag and drop upload", () => {
 
     expect(screen.queryByRole("heading", { name: "clip" })).not.toBeInTheDocument();
     expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("keeps long mobile file content in separate selection main and action areas", async () => {
+    const longName =
+      "日本語と-english-and-a-very-long-extension-nameを含む共有資料の最終版";
+    const displayedName = `${longName}.extraordinarilylongextension`;
+    mocks.fetchDriveItems.mockResolvedValue([
+      {
+        id: 301,
+        parent_id: null,
+        name: longName,
+        item_type: "file",
+        extension: "extraordinarilylongextension",
+        owner_display_name: "しおまち",
+        updated_at: "2026-07-23T11:51:00.000Z",
+        file_size: 314_572_800,
+      },
+    ]);
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+    Object.defineProperty(document.documentElement, "clientWidth", {
+      configurable: true,
+      value: 320,
+    });
+    const { container } = renderDrivePage("/drive");
+
+    const filename = await screen.findByTitle(displayedName);
+    const row = filename.closest(".file-row");
+    if (!(row instanceof HTMLTableRowElement)) throw new Error("file row missing");
+    const selection = row.querySelector(".file-select-cell");
+    const main = row.querySelector(".file-row-main");
+    const actions = row.querySelector(".file-actions-cell");
+
+    expect(selection).toContainElement(screen.getByLabelText(`${longName}を選択`));
+    expect(main).toContainElement(filename);
+    expect(main?.querySelector("svg")).toBeInTheDocument();
+    expect(actions).toContainElement(
+      screen.getByRole("button", { name: `${longName}をダウンロード` }),
+    );
+    expect(actions).toContainElement(
+      screen.getByRole("button", { name: `${longName}の操作メニュー` }),
+    );
+    expect(screen.getByTitle(/しおまち.*300(?:\.0)? MB/)).toHaveClass("mobile-meta");
+
+    fireEvent.click(screen.getByLabelText(`${longName}を選択`));
+    expect(row).toHaveClass("selected");
+    fireEvent.click(screen.getByRole("button", { name: `${longName}をダウンロード` }));
+    expect(mocks.downloadDriveItem).toHaveBeenCalledWith(null, 301);
+    fireEvent.click(screen.getByRole("button", { name: `${longName}の操作メニュー` }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+      document.documentElement.clientWidth,
+    );
+    expect(container.querySelector(".file-list-viewport")).toBeInTheDocument();
   });
 
   it("opens a file with Enter and Space from the central information area", async () => {

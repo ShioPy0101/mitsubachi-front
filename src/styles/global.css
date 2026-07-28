@@ -165,6 +165,8 @@ a {
 }
 
 .app-shell {
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
 }
 
@@ -632,6 +634,9 @@ a {
 
 .drive-page {
   position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .drop-overlay {
@@ -2084,6 +2089,10 @@ th:last-child,
   display: none;
 }
 
+.mobile-action-label {
+  display: none;
+}
+
 .drawer-layer {
   position: fixed;
   inset: 0;
@@ -2099,15 +2108,30 @@ th:last-child,
 
 .mobile-drawer {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: min(304px, 86vw);
-  height: 100%;
+  height: 100dvh;
+  max-width: 100%;
   background: var(--color-surface);
   box-shadow: var(--shadow-menu);
 }
 
+.mobile-drawer-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding: var(--space-3) var(--space-3)
+    calc(var(--space-3) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+}
+
 @media (max-width: 767px) {
   .app-header {
+    display: grid;
+    grid-template-columns: 40px 32px minmax(0, 1fr);
     min-height: 56px;
+    gap: var(--space-2);
     padding: 0 var(--space-3);
   }
 
@@ -2115,16 +2139,39 @@ th:last-child,
     display: inline-grid;
   }
 
-  .app-brand span:last-child {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .desktop-action-label {
+    display: none;
+  }
+
+  .mobile-action-label {
+    display: inline;
+  }
+
+  .app-brand {
+    width: 32px;
+  }
+
+  .app-brand .brand-name {
+    display: none;
   }
 
   .header-user .org-name,
-  .header-user .role-chip {
+  .header-user .role-chip,
+  .header-user .user-chip,
+  .header-user > .icon-button {
     display: none;
+  }
+
+  .header-user {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .organization-switcher {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
   }
 
   .app-body {
@@ -2136,6 +2183,9 @@ th:last-child,
   }
 
   .app-main {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     padding: var(--space-3);
   }
 
@@ -2175,14 +2225,36 @@ th:last-child,
     min-height: 44px;
   }
 
+  .drive-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-2);
+  }
+
+  .drive-toolbar > span {
+    grid-column: 1 / -1;
+  }
+
+  .drive-toolbar .button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: var(--space-2);
+    white-space: nowrap;
+  }
+
   .file-list {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     border-radius: var(--radius-sm);
   }
 
   .file-list table,
   .file-list thead,
   .file-list tbody,
-  .file-list tr,
   .file-list td {
     display: block;
   }
@@ -2192,10 +2264,18 @@ th:last-child,
   }
 
   .file-list tr {
-    position: relative;
-    min-height: 64px;
-    padding: var(--space-2) 52px var(--space-2) 44px;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 88px;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+    min-height: 72px;
+    padding: 0;
     border-bottom: 1px solid var(--color-border);
+  }
+
+  .file-list-trash tr {
+    grid-template-columns: 40px minmax(0, 1fr);
   }
 
   .file-list-viewport tbody tr.virtual-row {
@@ -2206,16 +2286,17 @@ th:last-child,
   }
 
   .file-list td {
+    min-width: 0;
     height: auto;
     padding: 0;
     border: 0;
   }
 
   .file-list .file-select-cell {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    width: auto;
+    display: grid;
+    width: 40px;
+    min-width: 40px;
+    place-items: center;
   }
 
   .drive-item-drag-cell {
@@ -2224,8 +2305,9 @@ th:last-child,
 
   .drive-item-info-action {
     display: block;
-    min-height: 0;
-    padding: 0;
+    min-width: 0;
+    min-height: 72px;
+    padding: var(--space-2) 0;
   }
 
   .drive-item-owner,
@@ -2235,19 +2317,45 @@ th:last-child,
   }
 
   .file-list .file-actions-cell {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: auto;
+    display: block;
+    width: 88px;
+    min-width: 88px;
+  }
+
+  .file-list .row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 44px);
+    width: 88px;
+    min-width: 88px;
+    height: 100%;
+    align-items: center;
+  }
+
+  .file-list .row-actions .icon-button {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
   }
 
   .file-name-content {
+    width: 100%;
+    min-width: 0;
     min-height: 28px;
   }
 
   .mobile-meta {
     display: block;
+    min-width: 0;
     margin-left: 28px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-list-viewport {
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
   }
 
   .admin-table:not(.log-events-table):not(.access-log-table):not(.operation-log-table) {

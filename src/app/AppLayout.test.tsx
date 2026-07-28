@@ -28,6 +28,28 @@ describe("AppLayout organization navigation", () => {
     );
   });
 
+  it("keeps a long organization name in the flexible mobile header area", () => {
+    renderLayout({
+      user: authUser({
+        memberships: [
+          {
+            organization: {
+              id: 1,
+              name: "映像制作部と共同研究プロジェクトの非常に長いOrganization名",
+            },
+            role: "organization_admin",
+            status: "active",
+          },
+        ],
+      }),
+    });
+
+    const switcher = screen.getByLabelText("Organizationを切り替え");
+    expect(switcher).toHaveClass("organization-switcher");
+    expect(switcher).toHaveValue("1");
+    expect(screen.getByText("Mitsubachi Drive")).toHaveClass("brand-name");
+  });
+
   it("drops the previous folder id when switching organizations", () => {
     renderLayout({ initialEntry: "/organizations/1/drive/folder/99" });
 
