@@ -97,7 +97,7 @@ export function AppLayout() {
           <span className="brand-mark" aria-hidden="true">
             M
           </span>
-          <span>Mitsubachi Drive</span>
+          <span className="brand-name">Mitsubachi Drive</span>
         </div>
         <div className="header-user">
           {activeMemberships.length ? (
@@ -182,6 +182,26 @@ export function AppLayout() {
           />
           <aside className="mobile-drawer" aria-label="モバイルメニュー">
             <Sidebar onNavigate={() => setDrawerOpen(false)} />
+            <div className="mobile-drawer-actions">
+              <IconButton
+                label={colorModeLabel}
+                aria-pressed={colorMode === "dark"}
+                onClick={() => setColorMode(nextColorMode)}
+              >
+                {colorMode === "light" ? (
+                  <Moon size={18} aria-hidden="true" />
+                ) : (
+                  <Sun size={18} aria-hidden="true" />
+                )}
+              </IconButton>
+              <IconButton
+                label="ログアウト"
+                onClick={() => logoutMutation.mutate()}
+                disabled={logoutMutation.isPending}
+              >
+                <LogOut size={18} aria-hidden="true" />
+              </IconButton>
+            </div>
           </aside>
         </div>
       ) : null}
