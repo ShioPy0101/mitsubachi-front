@@ -2,7 +2,20 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
 
-import { parseCredentials, SmokeClient } from "./production-smoke.mjs";
+import { assertStatusIn, parseCredentials, SmokeClient } from "./production-smoke.mjs";
+
+test("権限外APIは403または404を拒否結果として扱う", () => {
+  assert.doesNotThrow(() =>
+    assertStatusIn({ status: 403 }, [403, 404], "member admin"),
+  );
+  assert.doesNotThrow(() =>
+    assertStatusIn({ status: 404 }, [403, 404], "member admin"),
+  );
+  assert.throws(
+    () => assertStatusIn({ status: 401 }, [403, 404], "member admin"),
+    /expected HTTP 403 or 404, got 401/,
+  );
+});
 
 test("単独実行用のKEY=value認証情報も読み取る", () => {
   const credentials = parseCredentials(`
