@@ -1,9 +1,4 @@
-import {
-  Navigate,
-  RouterProvider,
-  createBrowserRouter,
-  useParams,
-} from "react-router-dom";
+import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 

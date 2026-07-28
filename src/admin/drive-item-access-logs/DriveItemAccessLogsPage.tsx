@@ -71,8 +71,8 @@ export function DriveItemAccessLogsPage() {
                   <td>{log.organization_id}</td>
                   <td>{actionLabels[log.action] ?? log.action}</td>
                   <td>{log.drive_item.filename ?? "削除済みファイル"}</td>
-                  <td>{String(log.metadata.file_size ?? "—")}</td>
-                  <td>{String(log.metadata.content_type ?? "—")}</td>
+                  <td>{metadataText(log.metadata.file_size)}</td>
+                  <td>{metadataText(log.metadata.content_type)}</td>
                   <td>{log.ip_address ?? "—"}</td>
                   <td>
                     <Link
@@ -89,4 +89,8 @@ export function DriveItemAccessLogsPage() {
       </PaginatedState>
     </AdminFrame>
   );
+}
+
+function metadataText(value: unknown) {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "—";
 }
