@@ -35,6 +35,9 @@ export const adminKeys = {
     [...adminKeys.all, organizationId, "system-events", query] as const,
   systemEvent: (organizationId: number | null, id: number) =>
     [...adminKeys.all, organizationId, "system-events", id] as const,
+  uploadMetrics: (query: string) =>
+    [...adminKeys.all, "upload-metrics", query] as const,
+  uploadMetric: (id: string) => [...adminKeys.all, "upload-metrics", id] as const,
 };
 
 export const adminOrganizationSchema = organizationSchema.extend({
@@ -148,6 +151,105 @@ export type DriveItemAccessLog = z.infer<typeof driveItemAccessLogSchema>;
 export type SystemEvent = z.infer<typeof systemEventSchema>;
 export type OrganizationInvite = z.infer<typeof organizationInviteSchema>;
 export type Dashboard = z.infer<typeof dashboardSchema>;
+
+export const uploadMetricSchema = z.object({
+  upload_session_id: z.string(),
+  organization_id: z.number(),
+  organization_name: z.string(),
+  user_id: z.number(),
+  user_name: z.string(),
+  upload_kind: z.enum(["single", "multiple", "folder"]),
+  status: z.enum([
+    "in_progress",
+    "completed",
+    "completed_with_errors",
+    "failed",
+    "cancelled",
+    "abandoned",
+  ]),
+  started_at: z.string(),
+  completed_at: z.string().nullable(),
+  last_observed_at: z.string(),
+  total_files: z.number(),
+  total_bytes: z.number(),
+  completed_files: z.number(),
+  completed_bytes: z.number(),
+  failed_files: z.number(),
+  retried_files: z.number(),
+  retry_count: z.number(),
+  cancelled_files: z.number(),
+  max_concurrency: z.number(),
+  elapsed_ms: z.number(),
+  effective_throughput_bytes_per_second: z.number(),
+  min_file_size_bytes: z.number(),
+  max_file_size_bytes: z.number(),
+  average_file_size_bytes: z.number(),
+  max_relative_depth: z.number(),
+  under_1mb_count: z.number(),
+  between_1mb_and_100mb_count: z.number(),
+  between_100mb_and_1gb_count: z.number(),
+  over_1gb_count: z.number(),
+  progress_stall_count: z.number(),
+  long_task_count: z.number(),
+  long_task_total_duration_ms: z.number(),
+  long_task_max_duration_ms: z.number(),
+  background_duration_ms: z.number(),
+  frontend_version: z.string().nullable(),
+  backend_version: z.string().nullable(),
+  http_status_counts: z.record(z.string(), z.number()),
+  error_code_counts: z.record(z.string(), z.number()),
+  metadata: z.record(z.string(), z.unknown()),
+  needs_review: z.array(z.string()),
+  request_ids: z.array(z.string()).optional(),
+  related_operation_logs: z
+    .array(
+      z.object({
+        id: z.number(),
+        operation_type: z.string(),
+        result: z.string(),
+        request_id: z.string().nullable(),
+        occurred_at: z.string(),
+      }),
+    )
+    .optional(),
+});
+
+export const uploadMetricSummarySchema = z.object({
+  session_count: z.number(),
+  total_bytes: z.number(),
+  total_files: z.number(),
+  session_success_rate: z.number(),
+  failed_sessions: z.number(),
+  partial_failure_sessions: z.number(),
+  abandoned_sessions: z.number(),
+  file_failure_rate: z.number(),
+  retry_rate: z.number(),
+  retry_count: z.number(),
+  average_throughput_bytes_per_second: z.number(),
+  p50_throughput_bytes_per_second: z.number(),
+  p95_elapsed_ms: z.number(),
+  max_upload_bytes: z.number(),
+});
+
+export const uploadMetricTimeseriesSchema = z.object({
+  bucket: z.string(),
+  session_count: z.number(),
+  total_bytes: z.number(),
+  total_files: z.number(),
+  failed_sessions: z.number(),
+  partial_failure_sessions: z.number(),
+  abandoned_sessions: z.number(),
+  p50_throughput_bytes_per_second: z.number(),
+  p10_throughput_bytes_per_second: z.number(),
+  p50_elapsed_ms: z.number(),
+  p95_elapsed_ms: z.number(),
+  file_failure_rate: z.number(),
+  retry_rate: z.number(),
+});
+
+export type UploadMetric = z.infer<typeof uploadMetricSchema>;
+export type UploadMetricSummary = z.infer<typeof uploadMetricSummarySchema>;
+export type UploadMetricTimeseries = z.infer<typeof uploadMetricTimeseriesSchema>;
 export type AdminList<T> = { data: T[]; meta: AdminMeta };
 
 export function adminOrganizationIdFromParam(value: string | undefined): number | null {
@@ -452,4 +554,38 @@ export async function fetchSystemEvent(
       ? `/api/v1/system_admin/system_events/${id}`
       : adminPath(organizationId, `/system_events/${id}`);
   return parseEnvelope(systemEventSchema, await apiRequest<unknown>(path));
+}
+
+export async function fetchUploadMetrics(
+  query: string,
+): Promise<AdminList<UploadMetric>> {
+  return parseAdminList(
+    uploadMetricSchema,
+    await apiRequest<unknown>(`/api/v1/system_admin/upload_metrics${query}`),
+  );
+}
+
+export async function fetchUploadMetric(id: string): Promise<UploadMetric> {
+  return parseEnvelope(
+    uploadMetricSchema,
+    await apiRequest<unknown>(`/api/v1/system_admin/upload_metrics/${id}`),
+  );
+}
+
+export async function fetchUploadMetricSummary(
+  query: string,
+): Promise<UploadMetricSummary> {
+  return parseEnvelope(
+    uploadMetricSummarySchema,
+    await apiRequest<unknown>(`/api/v1/system_admin/upload_metrics/summary${query}`),
+  );
+}
+
+export async function fetchUploadMetricTimeseries(
+  query: string,
+): Promise<UploadMetricTimeseries[]> {
+  const response = await apiRequest<unknown>(
+    `/api/v1/system_admin/upload_metrics/timeseries${query}`,
+  );
+  return z.object({ data: z.array(uploadMetricTimeseriesSchema) }).parse(response).data;
 }

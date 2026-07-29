@@ -36,6 +36,8 @@ export async function fetchDriveItems(
 
 export async function searchDriveItems(input: {
   organizationId: number | null;
+  uploadSessionId?: string;
+  onRequestId?: (requestId: string) => void;
   query: string;
   parentId: number | null;
   scope: "current" | "organization";
@@ -76,9 +78,13 @@ export function createDirectory(input: {
   organizationId: number | null;
   name: string;
   parentId: number | null;
+  uploadSessionId?: string;
 }) {
   return apiRequest<DriveItem>(drivePath(input.organizationId), {
     method: "POST",
+    headers: input.uploadSessionId
+      ? { "X-Upload-Session-ID": input.uploadSessionId }
+      : undefined,
     body: {
       name: input.name,
       item_type: "directory",
@@ -181,6 +187,8 @@ export function uploadFile(input: {
   replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   organizationId: number | null;
+  uploadSessionId?: string;
+  onRequestId?: (requestId: string) => void;
   onProgress?: (progress: UploadProgress) => void;
 }) {
   if (!input.onProgress) {
@@ -202,6 +210,9 @@ export function uploadFile(input: {
       method: "POST",
       body: form,
       signal: input.signal,
+      headers: input.uploadSessionId
+        ? { "X-Upload-Session-ID": input.uploadSessionId }
+        : undefined,
     });
   }
 
@@ -220,7 +231,9 @@ async function uploadFileWithProgress(input: {
   replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   organizationId: number | null;
+  uploadSessionId?: string;
   onProgress: (progress: UploadProgress) => void;
+  onRequestId?: (requestId: string) => void;
 }): Promise<DriveItem> {
   const form = new FormData();
   form.append("name", input.name);
@@ -255,6 +268,8 @@ async function uploadFileWithProgress(input: {
     };
     xhr.onload = () => {
       input.signal?.removeEventListener("abort", abort);
+      const requestId = xhr.getResponseHeader("X-Request-ID");
+      if (requestId) input.onRequestId?.(requestId);
       const body = parseJson(xhr.responseText);
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(driveItemSchema.parse(body));
@@ -274,6 +289,9 @@ async function uploadFileWithProgress(input: {
     xhr.withCredentials = true;
     xhr.setRequestHeader("Accept", "application/json");
     xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+    if (input.uploadSessionId) {
+      xhr.setRequestHeader("X-Upload-Session-ID", input.uploadSessionId);
+    }
     xhr.send(form);
   });
 }
