@@ -9,6 +9,8 @@ import { OperationLogDetailPage } from "../admin/operation-logs/OperationLogDeta
 import { OperationLogsPage } from "../admin/operation-logs/OperationLogsPage";
 import { SystemEventDetailPage } from "../admin/system-events/SystemEventDetailPage";
 import { SystemEventsPage } from "../admin/system-events/SystemEventsPage";
+import { UploadMetricsPage } from "../admin/upload-metrics/UploadMetricsPage";
+import { UploadMetricDetailPage } from "../admin/upload-metrics/UploadMetricDetailPage";
 import { AdminLayout } from "../admin/components/AdminScaffold";
 import { AdminDashboardPage } from "../admin/dashboard/AdminDashboardPage";
 import { AdminDriveItemDetailPage } from "../admin/drive-items/AdminDriveItemDetailPage";
@@ -195,6 +197,11 @@ const router = createBrowserRouter([
                 element: <DriveItemAccessLogDetailPage />,
               },
               { path: "/system-admin/system-events", element: <SystemEventsPage /> },
+              { path: "/system-admin/upload-metrics", element: <UploadMetricsPage /> },
+              {
+                path: "/system-admin/upload-metrics/:uploadSessionId",
+                element: <UploadMetricDetailPage />,
+              },
               {
                 path: "/system-admin/system-events/:systemEventId",
                 element: <SystemEventDetailPage />,

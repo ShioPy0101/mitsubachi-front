@@ -3112,3 +3112,74 @@ th:last-child,
     gap: var(--space-1);
   }
 }
+
+.upload-metric-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+
+.upload-metric-card,
+.upload-metric-chart {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.upload-metric-card {
+  display: grid;
+  gap: var(--space-1);
+}
+.upload-metric-card span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+.upload-metric-card strong {
+  font-size: var(--font-size-lg);
+}
+.upload-metric-charts {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+.upload-metric-chart h3 {
+  margin-top: 0;
+}
+.upload-metric-bars {
+  display: grid;
+  gap: var(--space-2);
+}
+.upload-metric-bar-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.25fr) minmax(100px, 1fr) minmax(90px, auto);
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--font-size-sm);
+}
+.upload-metric-bar-row > div {
+  height: 10px;
+  overflow: hidden;
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-pill);
+}
+.upload-metric-bar-row i {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+}
+.admin-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .upload-metric-bar-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+  .upload-metric-bar-row > div {
+    width: 100%;
+  }
+}

@@ -80,6 +80,7 @@ import {
   type RestorePreviewRequestItem,
   type RestorePreviewResponse,
 } from "./api";
+import { UploadObservation } from "./uploadObservation";
 
 type DriveMode = "drive" | "trash";
 const DRIVE_ITEM_MIME = "application/x-mitsubachi-drive-items";
@@ -198,6 +199,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const uploadInProgressRef = useRef(false);
   const uploadProgressPatchesRef = useRef(new Map<string, Partial<UploadTask>>());
   const uploadProgressFlushTimerRef = useRef<number | null>(null);
+  const uploadObservationRef = useRef<UploadObservation | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -876,6 +878,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       });
 
       try {
+        uploadObservationRef.current?.begin(file, Boolean(options.sourceTaskId));
         await uploadFile({
           organizationId,
           file,
@@ -888,13 +891,29 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           allowTrashDuplicate: options.allowTrashDuplicate,
           replaceTrashedDriveItemId: options.replaceTrashedDriveItemId,
           signal: abortController.signal,
-          onProgress: (progress) => scheduleUploadProgress(taskId, progress),
+          uploadSessionId: uploadObservationRef.current?.uploadSessionId,
+          onRequestId: (requestId) =>
+            uploadObservationRef.current?.recordRequestId(requestId),
+          onProgress: (progress) => {
+            uploadObservationRef.current?.progress(file);
+            scheduleUploadProgress(taskId, progress);
+          },
         });
+        uploadObservationRef.current?.finish(file, 201);
         flushUploadProgress();
         updateUploadTask(taskId, { status: "processing", percent: 100 });
         updateUploadTask(taskId, { status: "done", message: "完了" });
         return "done";
       } catch (error) {
+        uploadObservationRef.current?.finish(
+          file,
+          error instanceof ApiError ? error.status : 0,
+          error instanceof DOMException && error.name === "AbortError"
+            ? "cancelled"
+            : error instanceof ApiError
+              ? error.code
+              : "network_error",
+        );
         flushUploadProgress();
         if (error instanceof DOMException && error.name === "AbortError") {
           updateUploadTask(taskId, {
@@ -1013,6 +1032,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       }
       uploadInProgressRef.current = true;
       setIsUploading(true);
+      const observation = new UploadObservation(
+        files,
+        UPLOAD_PARALLEL_LIMIT,
+        files.length === 1 ? "single" : "multiple",
+        organizationId,
+      );
+      uploadObservationRef.current = observation;
+      void observation.start();
       let succeeded = 0;
       let conflicted = 0;
 
@@ -1026,7 +1053,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           if (result === "conflict") conflicted += 1;
         });
 
-        if (succeeded > 0) await invalidateCurrent();
+        if (succeeded > 0) {
+          await invalidateCurrent();
+          for (const file of files) observation.reflected(file);
+        }
 
         toast.show({
           tone:
@@ -1045,6 +1075,16 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
                   : "アップロードに失敗しました。",
         });
       } finally {
+        if (conflicted === 0) {
+          void observation.complete(
+            succeeded === files.length
+              ? "completed"
+              : succeeded > 0
+                ? "completed_with_errors"
+                : "failed",
+          );
+          uploadObservationRef.current = null;
+        }
         uploadInProgressRef.current = false;
         setIsUploading(false);
       }
@@ -1057,6 +1097,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       toast,
       updateUploadBatch,
       uploadSingleFile,
+      organizationId,
     ],
   );
 
@@ -1275,6 +1316,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           organizationId,
           name: segment,
           parentId,
+          uploadSessionId: uploadObservationRef.current?.uploadSessionId,
         });
         parentId = created.id;
       }
@@ -1310,6 +1352,14 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       });
       uploadInProgressRef.current = true;
       setIsUploading(true);
+      const observation = new UploadObservation(
+        safeFiles,
+        UPLOAD_PARALLEL_LIMIT,
+        "folder",
+        organizationId,
+      );
+      uploadObservationRef.current = observation;
+      void observation.start();
       let succeeded = 0;
       let conflicted = 0;
       const directoryParentCache = new Map<string, Promise<number | null>>();
@@ -1332,7 +1382,10 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           if (result === "done") succeeded += 1;
           if (result === "conflict") conflicted += 1;
         });
-        if (succeeded > 0) await invalidateCurrent();
+        if (succeeded > 0) {
+          await invalidateCurrent();
+          for (const file of safeFiles) observation.reflected(file);
+        }
         toast.show({
           tone:
             succeeded === safeFiles.length
@@ -1346,6 +1399,16 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
               : `${succeeded} / ${safeFiles.length} 件アップロードしました。`,
         });
       } finally {
+        if (conflicted === 0) {
+          void observation.complete(
+            succeeded === safeFiles.length
+              ? "completed"
+              : succeeded > 0
+                ? "completed_with_errors"
+                : "failed",
+          );
+          uploadObservationRef.current = null;
+        }
         uploadInProgressRef.current = false;
         setIsUploading(false);
       }
@@ -1357,6 +1420,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       toast,
       updateUploadBatch,
       uploadSingleFile,
+      organizationId,
     ],
   );
 

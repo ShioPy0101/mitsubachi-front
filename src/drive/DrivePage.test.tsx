@@ -25,6 +25,7 @@ type CreateDirectoryInput = {
   organizationId: number | null;
   name: string;
   parentId: number | null;
+  uploadSessionId?: string;
 };
 
 const mocks = vi.hoisted(() => ({
@@ -1291,16 +1292,23 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.change(directoryInput(container), { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(mocks.createDirectory).toHaveBeenCalledWith({
-        organizationId: null,
-        name: "素材",
-        parentId: 42,
-      });
-      expect(mocks.createDirectory).toHaveBeenCalledWith({
-        organizationId: null,
-        name: "camera-a",
-        parentId: 100,
-      });
+      expect(mocks.createDirectory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: null,
+          name: "素材",
+          parentId: 42,
+        }),
+      );
+      expect(mocks.createDirectory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: null,
+          name: "camera-a",
+          parentId: 100,
+        }),
+      );
+      expect(mocks.createDirectory.mock.calls[0]?.[0].uploadSessionId).toBe(
+        mocks.createDirectory.mock.calls[1]?.[0].uploadSessionId,
+      );
       expect(mocks.uploadFile.mock.calls[0]?.[0]).toMatchObject({
         file,
         name: "clip001",

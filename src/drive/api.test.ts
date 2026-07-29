@@ -61,11 +61,15 @@ describe("drive api", () => {
       file: new File(["content"], "quarterly.report.pdf", { type: "application/pdf" }),
       name: "quarterly.report",
       parentId: null,
+      uploadSessionId: "123e4567-e89b-42d3-a456-426614174000",
     });
 
     const [, request] = vi.mocked(fetch).mock.calls[1];
     expect(request?.body).toBeInstanceOf(FormData);
     expect((request?.headers as Headers).get("Content-Type")).toBeNull();
+    expect((request?.headers as Headers).get("X-Upload-Session-ID")).toBe(
+      "123e4567-e89b-42d3-a456-426614174000",
+    );
   });
 
   it("sends trash duplicate resolution flags as explicit multipart fields", async () => {
