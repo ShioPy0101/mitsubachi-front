@@ -18,9 +18,70 @@ import {
   purgeAdminDriveItem,
   suspendUser,
   unsuspendUser,
+  uploadMetricSummarySchema,
+  uploadMetricTimeseriesSchema,
 } from "./api";
 
 describe("admin api", () => {
+  it("アップロード統計の率を数値文字列から正規化する", () => {
+    const summary = uploadMetricSummarySchema.parse({
+      session_count: 2,
+      total_bytes: 300,
+      total_files: 5,
+      session_success_rate: 0.5,
+      failed_sessions: 0,
+      partial_failure_sessions: 1,
+      abandoned_sessions: 0,
+      file_failure_rate: "0.2",
+      retry_rate: "0.4",
+      retry_count: 2,
+      average_throughput_bytes_per_second: 10,
+      p50_throughput_bytes_per_second: 10,
+      p95_elapsed_ms: 300,
+      max_upload_bytes: 200,
+    });
+    const timeseries = uploadMetricTimeseriesSchema.parse({
+      bucket: "2026-07-30T00:00:00Z",
+      session_count: 2,
+      total_bytes: 300,
+      total_files: 5,
+      failed_sessions: 0,
+      partial_failure_sessions: 1,
+      abandoned_sessions: 0,
+      p50_throughput_bytes_per_second: 10,
+      p10_throughput_bytes_per_second: 5,
+      p50_elapsed_ms: 100,
+      p95_elapsed_ms: 300,
+      file_failure_rate: "0.2",
+      retry_rate: "0.4",
+    });
+
+    expect(summary.file_failure_rate).toBe(0.2);
+    expect(summary.retry_rate).toBe(0.4);
+    expect(timeseries.file_failure_rate).toBe(0.2);
+    expect(timeseries.retry_rate).toBe(0.4);
+  });
+
+  it("アップロード統計の不正な率は拒否する", () => {
+    expect(() =>
+      uploadMetricTimeseriesSchema.parse({
+        bucket: "2026-07-30T00:00:00Z",
+        session_count: 1,
+        total_bytes: 1,
+        total_files: 1,
+        failed_sessions: 0,
+        partial_failure_sessions: 0,
+        abandoned_sessions: 0,
+        p50_throughput_bytes_per_second: 1,
+        p10_throughput_bytes_per_second: 1,
+        p50_elapsed_ms: 1,
+        p95_elapsed_ms: 1,
+        file_failure_rate: "invalid",
+        retry_rate: "0",
+      }),
+    ).toThrow();
+  });
+
   it("builds file access URLs from the existing drive delivery API", () => {
     expect(adminDriveItemPreviewUrl(5)).toBe(
       `${API_BASE_URL}/api/v1/admin/drive_items/5/preview`,
