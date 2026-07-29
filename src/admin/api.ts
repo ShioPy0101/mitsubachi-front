@@ -214,6 +214,11 @@ export const uploadMetricSchema = z.object({
     .optional(),
 });
 
+const uploadMetricRateSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() !== "" ? Number(value) : value),
+  z.number().finite(),
+);
+
 export const uploadMetricSummarySchema = z.object({
   session_count: z.number(),
   total_bytes: z.number(),
@@ -222,8 +227,8 @@ export const uploadMetricSummarySchema = z.object({
   failed_sessions: z.number(),
   partial_failure_sessions: z.number(),
   abandoned_sessions: z.number(),
-  file_failure_rate: z.number(),
-  retry_rate: z.number(),
+  file_failure_rate: uploadMetricRateSchema,
+  retry_rate: uploadMetricRateSchema,
   retry_count: z.number(),
   average_throughput_bytes_per_second: z.number(),
   p50_throughput_bytes_per_second: z.number(),
@@ -243,8 +248,8 @@ export const uploadMetricTimeseriesSchema = z.object({
   p10_throughput_bytes_per_second: z.number(),
   p50_elapsed_ms: z.number(),
   p95_elapsed_ms: z.number(),
-  file_failure_rate: z.number(),
-  retry_rate: z.number(),
+  file_failure_rate: uploadMetricRateSchema,
+  retry_rate: uploadMetricRateSchema,
 });
 
 export type UploadMetric = z.infer<typeof uploadMetricSchema>;
