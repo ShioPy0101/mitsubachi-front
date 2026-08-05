@@ -363,7 +363,7 @@ export function PrivacyPolicyPage() {
           <ul>
             <li>サービス名：Mitsubachi</li>
             <li>運営者：丸山拓真</li>
-            <li>お問い合わせ先：maruyamaconnection+privacy@gmail.com</li>
+            <li>お問い合わせ先：mitsubachiunit@gmail.com</li>
             <li>所在地：請求があった場合、法令に従い遅滞なく開示します。</li>
             <li>受付方法：電子メール</li>
           </ul>
