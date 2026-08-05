@@ -1228,11 +1228,37 @@ th:last-child,
   gap: var(--space-2);
 }
 
-.legal-section h2 {
+.legal-section h2,
+.legal-section h3 {
   margin: 0;
   color: var(--color-text-primary);
-  font-size: var(--font-size-xl);
   line-height: 1.35;
+}
+
+.legal-section h2 {
+  font-size: var(--font-size-xl);
+}
+
+.legal-section h3 {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-base);
+}
+
+.legal-section ol,
+.legal-section ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--color-text-secondary);
+}
+
+.legal-section li {
+  padding-left: var(--space-1);
+}
+
+.legal-section li > ul {
+  margin-top: var(--space-2);
 }
 
 .text-button {
