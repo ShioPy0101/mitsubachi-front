@@ -22,7 +22,7 @@ describe("PrivacyPolicyPage", () => {
     expect(screen.getByText("第2条（取得する情報）")).toBeInTheDocument();
     expect(screen.getByText("第18条（準拠法および管轄裁判所）")).toBeInTheDocument();
     expect(
-      screen.getByText("mitsubachiunit@gmail.com", { exact: false }),
+      screen.getByText("mitsubachiunit+privacy@gmail.com", { exact: false }),
     ).toBeInTheDocument();
   });
 });
