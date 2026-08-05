@@ -40,6 +40,7 @@ import {
   OrganizationInvitationJoinedPage,
   OrganizationInvitationPage,
 } from "../organizationInvitations/OrganizationInvitationPage";
+import { PrivacyPolicyPage } from "../PrivacyPolicyPage";
 import { UserSettingsPage } from "../UserSettingsPage";
 import { AppLayout } from "./AppLayout";
 
@@ -47,6 +48,7 @@ const queryClient = createAppQueryClient();
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  { path: "/privacy", element: <PrivacyPolicyPage /> },
   { path: "/auth/verify", element: <VerifyPage /> },
   { path: "/settings/email-change/verify", element: <EmailChangeVerifyPage /> },
   { path: "/share/:token", element: <PublicSharePage /> },

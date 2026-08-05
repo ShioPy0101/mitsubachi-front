@@ -153,6 +153,9 @@ export function LoginPage() {
         <Link to="/drive" className="muted-link">
           ログイン済みの場合はドライブへ
         </Link>
+        <Link to="/privacy" className="muted-link">
+          プライバシーポリシー
+        </Link>
       </section>
     </main>
   );
