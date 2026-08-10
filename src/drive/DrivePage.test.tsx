@@ -796,6 +796,17 @@ describe("DrivePage drag and drop upload", () => {
     expect(within(list).getByText("自動リネーム: alpha（1）")).toBeInTheDocument();
     expect(within(list).getByText("自動リネーム: bravo（1）")).toBeInTheDocument();
     expect(within(list).getByText("自動リネーム: charlie（1）")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "同名をすべてスキップ" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "アップロード名の重複" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText("名前が重複しているファイルが0件あります。"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows only unresolved name conflicts after bulk content allow", async () => {

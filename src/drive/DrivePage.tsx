@@ -2235,7 +2235,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         ) : null}
       </Modal>
       <Modal
-        open={dialog === "nameConflictBatch"}
+        open={dialog === "nameConflictBatch" && nameConflictSnapshots.length > 0}
         title="アップロード名の重複"
         onClose={() => {
           for (const snapshot of nameConflictSnapshots) {
@@ -2244,32 +2244,34 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           setDialog(null);
         }}
       >
-        <NameConflictBatchDialog
-          conflicts={nameConflictSnapshots}
-          loading={isUploading}
-          onAutoRename={(snapshot) => void autoRenameNameConflictSnapshot(snapshot)}
-          onSkip={skipNameConflictSnapshot}
-          onAutoRenameAll={() => {
-            void Promise.all(
-              nameConflictSnapshots.map((snapshot) =>
-                autoRenameNameConflictSnapshot(snapshot),
-              ),
-            );
-          }}
-          onSkipAll={() => {
-            for (const snapshot of nameConflictSnapshots) {
-              skipNameConflictSnapshot(snapshot);
-            }
-          }}
-          onOpenDuplicateLocation={(parentId) => {
-            setDialog(null);
-            void navigate(
-              parentId === null
-                ? driveRootPath
-                : driveUiPath(organizationId, `/folder/${parentId}`),
-            );
-          }}
-        />
+        {nameConflictSnapshots.length > 0 ? (
+          <NameConflictBatchDialog
+            conflicts={nameConflictSnapshots}
+            loading={isUploading}
+            onAutoRename={(snapshot) => void autoRenameNameConflictSnapshot(snapshot)}
+            onSkip={skipNameConflictSnapshot}
+            onAutoRenameAll={() => {
+              void Promise.all(
+                nameConflictSnapshots.map((snapshot) =>
+                  autoRenameNameConflictSnapshot(snapshot),
+                ),
+              );
+            }}
+            onSkipAll={() => {
+              for (const snapshot of nameConflictSnapshots) {
+                skipNameConflictSnapshot(snapshot);
+              }
+            }}
+            onOpenDuplicateLocation={(parentId) => {
+              setDialog(null);
+              void navigate(
+                parentId === null
+                  ? driveRootPath
+                  : driveUiPath(organizationId, `/folder/${parentId}`),
+              );
+            }}
+          />
+        ) : null}
       </Modal>
       <Modal
         open={dialog === "restorePreview"}
