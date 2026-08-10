@@ -79,12 +79,11 @@ export function createDirectory(input: {
   name: string;
   parentId: number | null;
   uploadSessionId?: string;
+  clientUploadId?: string;
 }) {
   return apiRequest<DriveItem>(drivePath(input.organizationId), {
     method: "POST",
-    headers: input.uploadSessionId
-      ? { "X-Upload-Session-ID": input.uploadSessionId }
-      : undefined,
+    headers: uploadHeaders(input),
     body: {
       name: input.name,
       item_type: "directory",
@@ -98,6 +97,17 @@ export type UploadProgress = {
   total?: number;
   percent?: number;
 };
+
+export type UploadResolutionPolicy =
+  | {
+      category:
+        "active_content_duplicate" | "trash_content_duplicate" | "duplicate_name";
+      resolution: "upload_anyway" | "skip" | "auto_rename" | "restore" | "replace";
+      scope: "item" | "batch";
+      itemKey?: string;
+      operationId?: string;
+    }
+  | Record<string, "upload_anyway" | "skip" | "auto_rename" | "restore" | "replace">;
 
 export type RestoreConflictResolution =
   | "restore"
@@ -182,12 +192,13 @@ export function uploadFile(input: {
   allowDuplicateContent?: boolean;
   duplicateContentAction?: "upload_anyway";
   nameConflictAction?: "auto_rename";
+  uploadPolicy?: UploadResolutionPolicy;
   operationId?: string;
-  allowTrashDuplicate?: boolean;
   replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   organizationId: number | null;
   uploadSessionId?: string;
+  clientUploadId?: string;
   onRequestId?: (requestId: string) => void;
   onProgress?: (progress: UploadProgress) => void;
 }) {
@@ -196,9 +207,7 @@ export function uploadFile(input: {
     form.append("name", input.name);
     form.append("item_type", "file");
     if (input.parentId !== null) form.append("parent_id", String(input.parentId));
-    if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
     appendUploadResolutionFields(form, input);
-    if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
     if (input.replaceTrashedDriveItemId !== undefined) {
       form.append(
         "replace_trashed_drive_item_id",
@@ -210,9 +219,7 @@ export function uploadFile(input: {
       method: "POST",
       body: form,
       signal: input.signal,
-      headers: input.uploadSessionId
-        ? { "X-Upload-Session-ID": input.uploadSessionId }
-        : undefined,
+      headers: uploadHeaders(input),
     });
   }
 
@@ -226,12 +233,13 @@ async function uploadFileWithProgress(input: {
   allowDuplicateContent?: boolean;
   duplicateContentAction?: "upload_anyway";
   nameConflictAction?: "auto_rename";
+  uploadPolicy?: UploadResolutionPolicy;
   operationId?: string;
-  allowTrashDuplicate?: boolean;
   replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   organizationId: number | null;
   uploadSessionId?: string;
+  clientUploadId?: string;
   onProgress: (progress: UploadProgress) => void;
   onRequestId?: (requestId: string) => void;
 }): Promise<DriveItem> {
@@ -239,9 +247,7 @@ async function uploadFileWithProgress(input: {
   form.append("name", input.name);
   form.append("item_type", "file");
   if (input.parentId !== null) form.append("parent_id", String(input.parentId));
-  if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
   appendUploadResolutionFields(form, input);
-  if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
   if (input.replaceTrashedDriveItemId !== undefined) {
     form.append(
       "replace_trashed_drive_item_id",
@@ -292,20 +298,41 @@ async function uploadFileWithProgress(input: {
     if (input.uploadSessionId) {
       xhr.setRequestHeader("X-Upload-Session-ID", input.uploadSessionId);
     }
+    if (input.clientUploadId) {
+      xhr.setRequestHeader("X-Upload-ID", input.clientUploadId);
+    }
     xhr.send(form);
   });
+}
+
+function uploadHeaders(input: { uploadSessionId?: string; clientUploadId?: string }) {
+  const headers: Record<string, string> = {};
+  if (input.uploadSessionId) headers["X-Upload-Session-ID"] = input.uploadSessionId;
+  if (input.clientUploadId) headers["X-Upload-ID"] = input.clientUploadId;
+  return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
 function appendUploadResolutionFields(
   form: FormData,
   input: {
+    allowDuplicateContent?: boolean;
     duplicateContentAction?: "upload_anyway";
     nameConflictAction?: "auto_rename";
+    uploadPolicy?: UploadResolutionPolicy;
     operationId?: string;
   },
 ) {
+  if (input.allowDuplicateContent !== undefined) {
+    form.append(
+      "allow_duplicate_content",
+      input.allowDuplicateContent ? "true" : "false",
+    );
+  }
   if (input.duplicateContentAction) {
     form.append("duplicate_content_action", input.duplicateContentAction);
+  }
+  if (input.uploadPolicy) {
+    form.append("upload_policy", JSON.stringify(input.uploadPolicy));
   }
   if (input.nameConflictAction) {
     form.append("name_conflict_action", input.nameConflictAction);

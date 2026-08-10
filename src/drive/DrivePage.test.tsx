@@ -12,11 +12,9 @@ type UploadFileInput = {
   file: File;
   name: string;
   parentId: number | null;
-  allowDuplicateContent?: boolean;
   duplicateContentAction?: "upload_anyway";
   nameConflictAction?: "auto_rename";
   operationId?: string;
-  allowTrashDuplicate?: boolean;
   replaceTrashedDriveItemId?: number;
   onProgress?: (progress: { loaded: number; total?: number; percent?: number }) => void;
 };
@@ -564,32 +562,15 @@ describe("DrivePage drag and drop upload", () => {
     expect(dialog.queryByText("名前を変更して再試行")).not.toBeInTheDocument();
     expect(dialog.queryByText("エラー内容をコピー")).not.toBeInTheDocument();
 
-    fireEvent.click(dialog.getByRole("button", { name: "同じ内容でもアップロード" }));
-
-    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
-    expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
-      allowDuplicateContent: true,
-      duplicateContentAction: "upload_anyway",
-      file,
-      nameConflictAction: "auto_rename",
-      parentId: 42,
-    });
-    expect(mocks.uploadFile.mock.calls[1]?.[0].operationId).toMatch(
-      /^duplicate-content-single-/,
-    );
+    expect(
+      dialog.getByRole("button", { name: "同じ内容でもアップロード" }),
+    ).toBeInTheDocument();
   });
 
-  it("bulk uploads unresolved duplicate content items with auto rename", async () => {
+  it("bulk excludes unresolved duplicate content items", async () => {
     mocks.uploadFile
       .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
-      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
-      .mockResolvedValueOnce({
-        id: 11,
-        parent_id: 42,
-        name: "first",
-        item_type: "file",
-      })
-      .mockRejectedValueOnce(new Error("容量が不足しています。"));
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"));
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
 
@@ -600,7 +581,10 @@ describe("DrivePage drag and drop upload", () => {
     });
 
     expect(
-      await screen.findByRole("button", {
+      await screen.findByRole("button", { name: "同じ内容の項目をすべて除外（2件）" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
         name: "同じ内容でもすべてアップロード（2件）",
       }),
     ).toBeInTheDocument();
@@ -608,40 +592,13 @@ describe("DrivePage drag and drop upload", () => {
       screen.queryByRole("heading", { name: "同じ内容のファイルがあります" }),
     ).not.toBeInTheDocument();
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "同じ内容でもすべてアップロード（2件）",
-      }),
+      screen.getByRole("button", { name: "同じ内容の項目をすべて除外（2件）" }),
     );
 
-    const confirm = within(openDialog("同じ内容でもすべてアップロード"));
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
     expect(
-      confirm.getByText(
-        /同じ内容のファイルがすでに存在する2件を、新しいファイルとしてアップロードします/,
-      ),
+      await screen.findByText("2件のアップロード処理が完了しました"),
     ).toBeInTheDocument();
-    fireEvent.click(confirm.getByRole("button", { name: "2件をアップロード" }));
-
-    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(4));
-    const firstRetry = mocks.uploadFile.mock.calls[2]?.[0];
-    const secondRetry = mocks.uploadFile.mock.calls[3]?.[0];
-    expect(firstRetry).toMatchObject({
-      file: first,
-      allowDuplicateContent: true,
-      duplicateContentAction: "upload_anyway",
-      nameConflictAction: "auto_rename",
-    });
-    expect(secondRetry).toMatchObject({
-      file: second,
-      allowDuplicateContent: true,
-      duplicateContentAction: "upload_anyway",
-      nameConflictAction: "auto_rename",
-    });
-    expect(firstRetry?.operationId).toMatch(/^duplicate-content-bulk-/);
-    expect(secondRetry?.operationId).toBe(firstRetry?.operationId);
-    expect(
-      await screen.findByText(/一括処理結果: 完了: 1件 \/ 失敗: 1件/),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("容量が不足しています。").length).toBeGreaterThan(0);
     expect(
       screen.queryByRole("button", {
         name: "同じ内容でもすべてアップロード（2件）",
@@ -694,18 +651,18 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
-  it("bulk retry of duplicate content reuses the same queue items", async () => {
+  it("bulk allows unresolved active content duplicates with a batch policy", async () => {
     mocks.uploadFile
       .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
       .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
       .mockResolvedValueOnce({
-        id: 51,
+        id: 41,
         parent_id: 42,
         name: "first",
         item_type: "file",
       })
       .mockResolvedValueOnce({
-        id: 52,
+        id: 42,
         parent_id: 42,
         name: "second",
         item_type: "file",
@@ -713,59 +670,238 @@ describe("DrivePage drag and drop upload", () => {
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
 
+    const first = new File(["same-a"], "first.txt", { type: "text/plain" });
+    const second = new File(["same-b"], "second.txt", { type: "text/plain" });
     fireEvent.drop(driveDropTarget(container), {
-      dataTransfer: dataTransferWithFiles([
-        new File(["same-a"], "first.txt", { type: "text/plain" }),
-        new File(["same-b"], "second.txt", { type: "text/plain" }),
-      ]),
+      dataTransfer: dataTransferWithFiles([first, second]),
     });
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "同じ内容でもすべてアップロード（2件）",
-      }),
-    );
-    fireEvent.click(
-      within(openDialog("同じ内容でもすべてアップロード")).getByRole("button", {
-        name: "2件をアップロード",
-      }),
-    );
+    const uploadAll = await screen.findByRole("button", {
+      name: "同じ内容でもすべてアップロード（2件）",
+    });
+    fireEvent.click(uploadAll);
 
     await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(4));
-    expect(container.querySelectorAll(".upload-progress li")).toHaveLength(2);
+    expect(mocks.uploadFile.mock.calls[2]?.[0]).toMatchObject({
+      file: first,
+      duplicateContentAction: "upload_anyway",
+      allowDuplicateContent: true,
+      uploadPolicy: {
+        category: "active_content_duplicate",
+        resolution: "upload_anyway",
+        scope: "batch",
+      },
+    });
+    expect(mocks.uploadFile.mock.calls[3]?.[0]).toMatchObject({
+      file: second,
+      duplicateContentAction: "upload_anyway",
+      allowDuplicateContent: true,
+      uploadPolicy: {
+        category: "active_content_duplicate",
+        resolution: "upload_anyway",
+        scope: "batch",
+      },
+    });
     expect(
-      await screen.findByText(/一括処理結果: 完了: 2件 \/ 失敗: 0件/),
+      await screen.findByText("2件のアップロード処理が完了しました"),
     ).toBeInTheDocument();
   });
 
-  it("excludes all unresolved duplicate content items without retrying other errors", async () => {
+  it("keeps duplicate content batch allow separate from name conflicts", async () => {
     mocks.uploadFile
       .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
-      .mockRejectedValueOnce(new Error("容量が不足しています。"));
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(nameConflictError("同じ名前のファイルがあります。"))
+      .mockResolvedValueOnce({
+        id: 45,
+        parent_id: 42,
+        name: "same",
+        item_type: "file",
+      });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const same = new File(["same"], "same.txt", { type: "text/plain" });
+    const report = new File(["report"], "report.txt", { type: "text/plain" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([same, report]),
+    });
+
+    const uploadAll = await screen.findByRole("button", {
+      name: "同じ内容でもすべてアップロード（2件）",
+    });
+    fireEvent.click(uploadAll);
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(4));
+    expect(
+      await screen.findByRole("heading", { name: "アップロード名の重複" }),
+    ).toBeInTheDocument();
+    expect(mocks.uploadFile.mock.calls[2]?.[0]).not.toHaveProperty(
+      "nameConflictAction",
+      "auto_rename",
+    );
+  });
+
+  it("collects name conflicts after bulk duplicate content allow into a stable list", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(
+        nameConflictError(
+          "同じ名前のファイルがあります。",
+          "alpha.txt",
+          "alpha（1）.txt",
+        ),
+      )
+      .mockRejectedValueOnce(
+        nameConflictError(
+          "同じ名前のファイルがあります。",
+          "bravo.txt",
+          "bravo（1）.txt",
+        ),
+      )
+      .mockRejectedValueOnce(
+        nameConflictError(
+          "同じ名前のファイルがあります。",
+          "charlie.txt",
+          "charlie（1）.txt",
+        ),
+      );
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
 
     fireEvent.drop(driveDropTarget(container), {
       dataTransfer: dataTransferWithFiles([
-        new File(["same"], "same.txt", { type: "text/plain" }),
-        new File(["large"], "large.zip", { type: "application/zip" }),
+        new File(["same-a"], "alpha.txt", { type: "text/plain" }),
+        new File(["same-b"], "bravo.txt", { type: "text/plain" }),
+        new File(["same-c"], "charlie.txt", { type: "text/plain" }),
       ]),
     });
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "同じ内容の項目をすべて除外（1件）",
+        name: "同じ内容でもすべてアップロード（3件）",
       }),
     );
 
-    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
-    const detailsButton = screen.queryAllByRole("button", { name: "詳細を表示" })[0];
-    if (detailsButton) fireEvent.click(detailsButton);
-    expect(screen.getByText("同じ内容のため除外しました")).toBeInTheDocument();
-    expect(screen.getAllByText("容量が不足しています。").length).toBeGreaterThan(0);
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(6));
+    expect(
+      await screen.findByText("名前が重複しているファイルが3件あります。"),
+    ).toBeInTheDocument();
+    const list = screen.getByLabelText("名前が重複しているファイル");
+    expect(within(list).getByText("alpha.txt")).toBeInTheDocument();
+    expect(within(list).getByText("bravo.txt")).toBeInTheDocument();
+    expect(within(list).getByText("charlie.txt")).toBeInTheDocument();
+    expect(within(list).getByText("自動リネーム: alpha（1）")).toBeInTheDocument();
+    expect(within(list).getByText("自動リネーム: bravo（1）")).toBeInTheDocument();
+    expect(within(list).getByText("自動リネーム: charlie（1）")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "同名をすべてスキップ" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "アップロード名の重複" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText("名前が重複しているファイルが0件あります。"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows only unresolved name conflicts after bulk content allow", async () => {
+    for (let index = 0; index < 10; index += 1) {
+      mocks.uploadFile.mockRejectedValueOnce(
+        duplicateContentError("同じ内容のファイルです。"),
+      );
+    }
+    for (let index = 0; index < 4; index += 1) {
+      mocks.uploadFile.mockRejectedValueOnce(
+        nameConflictError(
+          "同じ名前のファイルがあります。",
+          `conflict-${index}.txt`,
+          `conflict-${index}（1）.txt`,
+        ),
+      );
+    }
+    for (let index = 0; index < 6; index += 1) {
+      mocks.uploadFile.mockResolvedValueOnce({
+        id: 60 + index,
+        parent_id: 42,
+        name: `resolved-${index}`,
+        item_type: "file",
+      });
+    }
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles(
+        Array.from(
+          { length: 10 },
+          (_, index) =>
+            new File([`same-${index}`], `file-${index}.txt`, {
+              type: "text/plain",
+            }),
+        ),
+      ),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "同じ内容でもすべてアップロード（10件）",
+      }),
+    );
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(20));
+    expect(
+      await screen.findByText("名前が重複しているファイルが4件あります。"),
+    ).toBeInTheDocument();
+    const list = screen.getByLabelText("名前が重複しているファイル");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(4);
+    expect(
+      screen.queryByText("名前が重複しているファイルが10件あります。"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("counts only active content duplicate warnings for the batch allow action", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockResolvedValueOnce({
+        id: 51,
+        parent_id: 42,
+        name: "purged-a",
+        item_type: "file",
+      })
+      .mockResolvedValueOnce({
+        id: 52,
+        parent_id: 42,
+        name: "purged-b",
+        item_type: "file",
+      });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([
+        new File(["active-1"], "active-1.txt", { type: "text/plain" }),
+        new File(["active-2"], "active-2.txt", { type: "text/plain" }),
+        new File(["active-3"], "active-3.txt", { type: "text/plain" }),
+        new File(["purged-1"], "purged-1.txt", { type: "text/plain" }),
+        new File(["purged-2"], "purged-2.txt", { type: "text/plain" }),
+      ]),
+    });
+
+    expect(
+      await screen.findByRole("button", {
+        name: "同じ内容でもすべてアップロード（3件）",
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
-        name: "同じ内容でもすべてアップロード（1件）",
+        name: "同じ内容でもすべてアップロード（5件）",
       }),
     ).not.toBeInTheDocument();
   });
@@ -980,7 +1116,6 @@ describe("DrivePage drag and drop upload", () => {
         replaceTrashedDriveItemId: 99,
       });
     });
-    expect(mocks.uploadFile.mock.calls[1]?.[0].allowTrashDuplicate).toBeUndefined();
   });
 
   it("returns from purge confirmation without losing the original file object", async () => {
@@ -2918,6 +3053,29 @@ function duplicateContentError(message: string) {
         deleted: false,
       },
     ],
+  );
+}
+
+function nameConflictError(
+  message: string,
+  filename = "report.txt",
+  suggestedFilename = "report（1）.txt",
+) {
+  const suggestedName = suggestedFilename.replace(/\.[^.]+$/, "");
+  return new ApiError(
+    409,
+    message,
+    [],
+    "duplicate_name",
+    "/api/v1/drive_items",
+    "name",
+    filename,
+    "request-name-409",
+    {
+      duplicate_kind: "name",
+      suggested_name: suggestedName,
+      suggested_filename: suggestedFilename,
+    },
   );
 }
 
