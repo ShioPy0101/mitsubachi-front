@@ -214,6 +214,148 @@ describe("PublicSharePage password unlock", () => {
       `${API_BASE_URL}/api/v1/public/shares/raw-token/items/21/preview`,
     );
   });
+
+  it("shows a folder share list and opens a subfolder", async () => {
+    clearCsrfToken();
+    const fetchMock = mockPublicShare(folderShare(), {
+      root: itemsResponse([
+        folderItem({ id: 30, name: "documents" }),
+        fileItem({
+          id: 31,
+          name: "movie.mp4",
+          extension: "mp4",
+          content_type: "video/mp4",
+        }),
+      ]),
+      byParent: {
+        30: itemsResponse(
+          [fileItem({ id: 32, parent_id: 30, name: "spec.pdf" })],
+          [
+            folderItem({ id: 12, name: "shared-folder" }),
+            folderItem({ id: 30, name: "documents" }),
+          ],
+        ),
+      },
+    });
+
+    renderPublicSharePage();
+
+    expect(await screen.findByText("documents")).toBeInTheDocument();
+    expect(screen.getByText("movie.mp4")).toBeInTheDocument();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "documents を開く" }),
+    );
+
+    expect(await screen.findByText("spec.pdf")).toBeInTheDocument();
+    expect(screen.queryByText("movie.mp4")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE_URL}/api/v1/public/shares/raw-token/items?parent_id=30`,
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("navigates back only inside the shared root breadcrumbs", async () => {
+    clearCsrfToken();
+    mockPublicShare(folderShare(), {
+      root: itemsResponse([folderItem({ id: 30, name: "documents" })]),
+      byParent: {
+        30: itemsResponse(
+          [fileItem({ id: 32, parent_id: 30, name: "spec.pdf" })],
+          [
+            folderItem({ id: 12, name: "shared-folder" }),
+            folderItem({ id: 30, name: "documents" }),
+          ],
+        ),
+      },
+    });
+
+    renderPublicSharePage();
+
+    expect(await screen.findByRole("button", { name: "共有ルート" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "root" })).not.toBeInTheDocument();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "documents を開く" }),
+    );
+    expect(await screen.findByText("spec.pdf")).toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole("button", { name: "共有ルート" }));
+    expect(await screen.findByText("documents")).toBeInTheDocument();
+    expect(screen.queryByText("spec.pdf")).not.toBeInTheDocument();
+  });
+
+  it("opens a previewable file from the browser card", async () => {
+    clearCsrfToken();
+    mockPublicShare(folderShare(), {
+      root: itemsResponse([
+        fileItem({
+          id: 31,
+          name: "image.png",
+          extension: "png",
+          content_type: "image/png",
+        }),
+      ]),
+    });
+
+    renderPublicSharePage();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "image.png をプレビュー" }),
+    );
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "image.png" })).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/v1/public/shares/raw-token/items/31/preview`,
+    );
+  });
+
+  it("hides download actions when the share disallows downloads", async () => {
+    clearCsrfToken();
+    mockPublicShare(folderShare({ allow_download: false }), {
+      root: itemsResponse([fileItem({ id: 31, downloadable: false })]),
+    });
+
+    renderPublicSharePage();
+
+    expect(await screen.findByText("公開ファイル.pdf")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "ダウンロード" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows loading, error, and empty states for folder item loading", async () => {
+    clearCsrfToken();
+    let resolveItems: (response: Response) => void = () => undefined;
+    const fetchMock = mockPublicShare(folderShare(), {
+      root: new Promise<Response>((resolve) => {
+        resolveItems = resolve;
+      }),
+    });
+
+    renderPublicSharePage();
+
+    expect(await screen.findByText("フォルダを読み込んでいます")).toBeInTheDocument();
+    resolveItems(jsonResponse({ items: [] }));
+    expect(await screen.findByText("このフォルダは空です。")).toBeInTheDocument();
+
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token`) {
+        expect(init).toEqual(expect.objectContaining({ credentials: "include" }));
+        return Promise.resolve(jsonResponse(folderShare()));
+      }
+      if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token/items`) {
+        return Promise.resolve(jsonResponse({ error: { code: "not_found" } }, 404));
+      }
+      return Promise.resolve(jsonResponse({ error: "not found" }, 404));
+    });
+
+    renderPublicSharePage();
+    expect(
+      await screen.findByText("フォルダを読み込めませんでした。"),
+    ).toBeInTheDocument();
+  });
 });
 
 function renderPublicSharePage() {
@@ -256,6 +398,11 @@ function mockPasswordFlow({
       );
     }
 
+    if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token/items`) {
+      expect(init).toEqual(expect.objectContaining({ credentials: "include" }));
+      return Promise.resolve(itemsResponse(publicShareAfterUnlock().items));
+    }
+
     if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token/unlock`) {
       expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
       return Promise.resolve(unlockResponse);
@@ -267,17 +414,50 @@ function mockPasswordFlow({
   return fetchMock;
 }
 
-function mockPublicShare(share = publicShare()) {
+function mockPublicShare(
+  share = publicShare(),
+  itemResponses: {
+    root?: Response | Promise<Response>;
+    byParent?: Record<number, Response | Promise<Response>>;
+  } = {},
+) {
   const fetchMock = vi.fn((url: string, init?: RequestInit) => {
     if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token`) {
       expect(init).toEqual(expect.objectContaining({ credentials: "include" }));
       return Promise.resolve(jsonResponse(share));
     }
 
+    if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token/items`) {
+      expect(init).toEqual(expect.objectContaining({ credentials: "include" }));
+      return mockResponse(itemResponses.root ?? itemsResponse(publicShareItems(share)));
+    }
+
+    const parentMatch = url.match(
+      new RegExp(
+        `^${API_BASE_URL}/api/v1/public/shares/raw-token/items\\?parent_id=(\\d+)$`,
+      ),
+    );
+    if (parentMatch) {
+      expect(init).toEqual(expect.objectContaining({ credentials: "include" }));
+      const parentId = Number(parentMatch[1]);
+      return mockResponse(
+        itemResponses.byParent?.[parentId] ?? jsonResponse({ items: [] }),
+      );
+    }
+
     return Promise.resolve(jsonResponse({ error: "not found" }, 404));
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+function publicShareAfterUnlock() {
+  return publicShare();
+}
+
+function publicShareItems(share: Record<string, unknown>) {
+  const items = share.items;
+  return Array.isArray(items) ? (items as Record<string, unknown>[]) : [];
 }
 
 function publicShare(overrides: Record<string, unknown> = {}) {
@@ -300,6 +480,60 @@ function publicShare(overrides: Record<string, unknown> = {}) {
       },
     ],
   };
+}
+
+function folderShare(overrides: Record<string, unknown> = {}) {
+  return {
+    ...publicShare(overrides),
+    items: [],
+  };
+}
+
+function fileItem(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 21,
+    parent_id: null,
+    name: "公開ファイル.pdf",
+    kind: "file",
+    item_type: "file",
+    extension: "pdf",
+    content_type: "application/pdf",
+    file_size: 128,
+    size: 128,
+    previewable: true,
+    downloadable: true,
+    ...overrides,
+  };
+}
+
+function folderItem(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 30,
+    parent_id: null,
+    name: "documents",
+    kind: "folder",
+    item_type: "directory",
+    previewable: false,
+    downloadable: false,
+    ...overrides,
+  };
+}
+
+function itemsResponse(
+  items: Record<string, unknown>[],
+  breadcrumbs: Record<string, unknown>[] = [],
+) {
+  return jsonResponse({
+    current_folder: breadcrumbs.at(-1) ?? null,
+    breadcrumbs,
+    items,
+  });
+}
+
+function mockResponse(response: Response | Promise<Response>) {
+  if (response instanceof Response) return Promise.resolve(response.clone());
+
+  return response;
 }
 
 function jsonResponse(body: unknown, status = 200) {
