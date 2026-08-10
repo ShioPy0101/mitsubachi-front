@@ -3178,13 +3178,27 @@ th:last-child,
   align-items: center;
 }
 
-.public-share-actions a {
+.public-share-actions a,
+.public-share-preview-button {
   display: inline-flex;
   gap: var(--space-1);
   align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--color-primary);
   font-size: var(--font-size-sm);
+  font-weight: 500;
   text-decoration: none;
+  cursor: pointer;
+}
+
+.public-share-preview-modal {
+  width: min(92vw, 960px);
+}
+
+.public-share-preview-modal .modal-body {
+  min-height: min(70vh, 640px);
 }
 
 @media (max-width: 640px) {
