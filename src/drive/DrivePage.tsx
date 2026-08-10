@@ -49,6 +49,7 @@ import { useToast } from "../components/ToastProvider";
 import {
   createExternalShare,
   regenerateExternalSharePassword,
+  type CreateExternalShareInput,
   type ExternalShare,
 } from "../externalShares/api";
 import { normalizeAppError, type AppError } from "../errors/appError";
@@ -679,7 +680,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     onError: (error) => captureError(error, "一括ダウンロード"),
   });
   const externalShareMutation = useMutation({
-    mutationFn: createExternalShare,
+    mutationFn: (input: Omit<CreateExternalShareInput, "organizationId">) =>
+      createExternalShare({ ...input, organizationId }),
     onSuccess: (share) => {
       setCreatedShare(share);
       setLastError(null);
@@ -688,7 +690,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     onError: (error) => captureError(error, "外部公開"),
   });
   const regenerateExternalSharePasswordMutation = useMutation({
-    mutationFn: regenerateExternalSharePassword,
+    mutationFn: (id: number) => regenerateExternalSharePassword({ id, organizationId }),
     onSuccess: (share) => {
       setCreatedShare((current) => (current ? { ...current, ...share } : share));
       setLastError(null);

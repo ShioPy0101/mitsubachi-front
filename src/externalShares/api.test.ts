@@ -36,6 +36,7 @@ describe("external share api", () => {
     );
 
     const result: ExternalShare = await createExternalShare({
+      organizationId: 7,
       name: "納品データ",
       driveItemIds: [21, 35, 140],
       expiresAt: "2026-07-29T14:59:59.000Z",
@@ -47,6 +48,9 @@ describe("external share api", () => {
 
     expect(result.share_url).toBe("https://front.example/share/raw-token");
     expect(result.generated_password).toBe("G7mK9xT4pQ2wN8rC");
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
+      `${API_BASE_URL}/api/v1/organizations/7/external_shares`,
+    );
     const [, request] = vi.mocked(fetch).mock.calls[1];
     expect(JSON.parse(request?.body as string)).toMatchObject({
       external_share: {
@@ -81,11 +85,14 @@ describe("external share api", () => {
       }),
     );
 
-    const result = await regenerateExternalSharePassword(12);
+    const result = await regenerateExternalSharePassword({
+      organizationId: 7,
+      id: 12,
+    });
 
     expect(result.generated_password).toBe("nEwP4ssw0rd");
     expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
-      `${API_BASE_URL}/api/v1/external_shares/12/regenerate_password`,
+      `${API_BASE_URL}/api/v1/organizations/7/external_shares/12/regenerate_password`,
     );
   });
 

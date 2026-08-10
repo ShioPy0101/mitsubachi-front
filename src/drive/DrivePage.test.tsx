@@ -2634,7 +2634,10 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getByRole("button", { name: "パスワードを再発行" }));
 
     await waitFor(() => {
-      expect(mocks.regenerateExternalSharePassword.mock.calls[0]?.[0]).toBe(12);
+      expect(mocks.regenerateExternalSharePassword.mock.calls[0]?.[0]).toEqual({
+        organizationId: null,
+        id: 12,
+      });
     });
     expect(await screen.findByDisplayValue("N3wPassw0rdValue")).toBeInTheDocument();
   });
