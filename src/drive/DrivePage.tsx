@@ -150,6 +150,7 @@ type NameConflictState = {
   taskId: string;
   file: File;
   parentId: number | null;
+  uploadName: string;
   suggestedName: string;
   message: string;
   duplicateFiles: DuplicateContentFile[];
@@ -211,6 +212,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     | "purge"
     | "preview"
     | "conflict"
+    | "nameConflictBatch"
     | "restorePreview"
     | "move"
     | "externalShare"
@@ -234,6 +236,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     useState<UploadPanelPreference>("auto");
   const [isUploading, setIsUploading] = useState(false);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
+  const [nameConflictSnapshots, setNameConflictSnapshots] = useState<
+    NameConflictState[]
+  >([]);
   const [trashDuplicateResolution, setTrashDuplicateResolution] =
     useState<TrashDuplicateResolutionState>("choice");
   const [restorePreviewState, setRestorePreviewState] =
@@ -865,6 +870,8 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         operationId?: string;
         replaceTrashedDriveItemId?: number;
         suppressActiveContentDialog?: boolean;
+        suppressNameConflictDialog?: boolean;
+        onConflict?: (conflict: ConflictState) => void;
         taskId?: string;
         sourceTaskId?: string;
         batchId?: string;
@@ -967,27 +974,32 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         });
         if (isNameConflict(error)) {
           const suggestedName = suggestedUploadName(error, file, items, parentId);
-          setConflict({
+          const nameConflict: NameConflictState = {
             kind: "name",
             taskId,
             file,
             parentId,
+            uploadName,
             suggestedName,
             message: appError.message,
             duplicateFiles: error instanceof ApiError ? error.duplicateFiles : [],
-          });
-          setNameValue(suggestedName);
+          };
+          options.onConflict?.(nameConflict);
+          if (!options.suppressNameConflictDialog) {
+            setConflict(nameConflict);
+            setNameValue(suggestedName);
+            setDialog("conflict");
+          }
           setLastError(null);
           updateUploadTask(taskId, {
             status: "conflict",
             message: appError.message,
             error: appError,
           });
-          setDialog("conflict");
           return "conflict";
         }
         if (isActiveContentConflict(error)) {
-          setConflict({
+          const activeContentConflict: ActiveContentConflictState = {
             kind: "active_content",
             taskId,
             file,
@@ -995,7 +1007,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             uploadName,
             message: appError.message,
             duplicateFiles: error instanceof ApiError ? error.duplicateFiles : [],
-          });
+          };
+          options.onConflict?.(activeContentConflict);
+          setConflict(activeContentConflict);
           setLastError(null);
           updateUploadTask(taskId, {
             status: "conflict",
@@ -1010,7 +1024,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           error instanceof ApiError &&
           error.trashDuplicate
         ) {
-          setConflict({
+          const trashContentConflict: TrashContentConflictState = {
             kind: "trash_content",
             taskId,
             file,
@@ -1018,7 +1032,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             uploadName,
             message: appError.message,
             duplicate: error.trashDuplicate,
-          });
+          };
+          options.onConflict?.(trashContentConflict);
+          setConflict(trashContentConflict);
           setTrashDuplicateResolution("choice");
           setLastError(null);
           updateUploadTask(taskId, {
@@ -1307,9 +1323,58 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     [invalidateCurrent, uploadSingleFile],
   );
 
+  const dismissNameConflictSnapshot = useCallback((taskId: string) => {
+    let shouldClose = false;
+    setNameConflictSnapshots((current) => {
+      const next = current.filter((snapshot) => snapshot.taskId !== taskId);
+      shouldClose = next.length === 0;
+      return next;
+    });
+    if (shouldClose) setDialog(null);
+  }, []);
+
+  const skipNameConflictSnapshot = useCallback(
+    (snapshot: NameConflictState) => {
+      updateUploadTask(snapshot.taskId, {
+        status: "canceled",
+        message: "名前が重複しているため除外しました",
+        abortController: undefined,
+      });
+      dismissNameConflictSnapshot(snapshot.taskId);
+    },
+    [dismissNameConflictSnapshot, updateUploadTask],
+  );
+
+  const autoRenameNameConflictSnapshot = useCallback(
+    async (snapshot: NameConflictState) => {
+      const result = await uploadSingleFile(
+        snapshot.file,
+        snapshot.parentId,
+        snapshot.suggestedName,
+        {
+          taskId: snapshot.taskId,
+          duplicateContentAction: "upload_anyway",
+          uploadPolicy: {
+            category: "active_content_duplicate",
+            resolution: "upload_anyway",
+            scope: "item",
+            itemKey: snapshot.taskId,
+          },
+          suppressNameConflictDialog: true,
+        },
+      );
+      if (result === "done") {
+        dismissNameConflictSnapshot(snapshot.taskId);
+        await invalidateCurrent();
+      }
+    },
+    [dismissNameConflictSnapshot, invalidateCurrent, uploadSingleFile],
+  );
+
   const uploadDuplicateContentTasks = useCallback(
     async (tasks: UploadTask[]) => {
       if (tasks.length === 0) return;
+      setNameConflictSnapshots([]);
       const operationId = createUploadOperationId("duplicate-content-batch");
       const policy: UploadResolutionPolicy = {
         category: "active_content_duplicate",
@@ -1318,6 +1383,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         operationId,
       };
       let completed = 0;
+      const collectedNameConflicts = new Map<string, NameConflictState>();
       for (const task of tasks) {
         const result = await uploadSingleFile(
           task.file,
@@ -1330,9 +1396,20 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             uploadPolicy: policy,
             operationId,
             suppressActiveContentDialog: true,
+            suppressNameConflictDialog: true,
+            onConflict: (detectedConflict) => {
+              if (detectedConflict.kind === "name") {
+                collectedNameConflicts.set(detectedConflict.taskId, detectedConflict);
+              }
+            },
           },
         );
         if (result === "done") completed += 1;
+      }
+      const nameConflicts = Array.from(collectedNameConflicts.values());
+      if (nameConflicts.length > 0) {
+        setNameConflictSnapshots(nameConflicts);
+        setDialog("nameConflictBatch");
       }
       if (completed > 0) await invalidateCurrent();
       toast.show({
@@ -1340,7 +1417,9 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
         message:
           completed === tasks.length
             ? `同じ内容の${completed}件をアップロードしました。`
-            : `同じ内容の${completed}件をアップロードしました。未解決の項目があります。`,
+            : nameConflicts.length > 0
+              ? `同じ内容を許可しました。${nameConflicts.length}件の名前を確認してください。`
+              : `同じ内容の${completed}件をアップロードしました。未解決の項目があります。`,
       });
     },
     [invalidateCurrent, toast, uploadSingleFile],
@@ -2154,6 +2233,43 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             onCancel={() => cancelUploadConflict(conflict)}
           />
         ) : null}
+      </Modal>
+      <Modal
+        open={dialog === "nameConflictBatch"}
+        title="アップロード名の重複"
+        onClose={() => {
+          for (const snapshot of nameConflictSnapshots) {
+            skipNameConflictSnapshot(snapshot);
+          }
+          setDialog(null);
+        }}
+      >
+        <NameConflictBatchDialog
+          conflicts={nameConflictSnapshots}
+          loading={isUploading}
+          onAutoRename={(snapshot) => void autoRenameNameConflictSnapshot(snapshot)}
+          onSkip={skipNameConflictSnapshot}
+          onAutoRenameAll={() => {
+            void Promise.all(
+              nameConflictSnapshots.map((snapshot) =>
+                autoRenameNameConflictSnapshot(snapshot),
+              ),
+            );
+          }}
+          onSkipAll={() => {
+            for (const snapshot of nameConflictSnapshots) {
+              skipNameConflictSnapshot(snapshot);
+            }
+          }}
+          onOpenDuplicateLocation={(parentId) => {
+            setDialog(null);
+            void navigate(
+              parentId === null
+                ? driveRootPath
+                : driveUiPath(organizationId, `/folder/${parentId}`),
+            );
+          }}
+        />
       </Modal>
       <Modal
         open={dialog === "restorePreview"}
@@ -3315,6 +3431,98 @@ function NameForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+function NameConflictBatchDialog({
+  conflicts,
+  loading,
+  onAutoRename,
+  onSkip,
+  onAutoRenameAll,
+  onSkipAll,
+  onOpenDuplicateLocation,
+}: {
+  conflicts: NameConflictState[];
+  loading: boolean;
+  onAutoRename: (conflict: NameConflictState) => void;
+  onSkip: (conflict: NameConflictState) => void;
+  onAutoRenameAll: () => void;
+  onSkipAll: () => void;
+  onOpenDuplicateLocation: (parentId: number | null) => void;
+}) {
+  return (
+    <div className="form-stack">
+      <p className="form-message form-message-info">
+        名前が重複しているファイルが{conflicts.length}件あります。
+      </p>
+      <div className="upload-bulk-actions" aria-label="名前競合の一括操作">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={loading || conflicts.length === 0}
+          onClick={onAutoRenameAll}
+        >
+          同名をすべて自動リネーム
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={loading || conflicts.length === 0}
+          onClick={onSkipAll}
+        >
+          同名をすべてスキップ
+        </Button>
+      </div>
+      <div className="duplicate-files" aria-label="名前が重複しているファイル">
+        <ul>
+          {conflicts.map((conflict) => (
+            <li key={conflict.taskId}>
+              <div>
+                <strong>{conflict.file.name}</strong>
+                <span>アップロード名: {conflict.uploadName}</span>
+                <span>自動リネーム: {conflict.suggestedName}</span>
+                {conflict.duplicateFiles[0] ? (
+                  <span>競合先: {conflict.duplicateFiles[0].name}</span>
+                ) : null}
+              </div>
+              <div className="upload-conflict-row-actions">
+                {conflict.duplicateFiles[0] ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={loading}
+                    onClick={() =>
+                      onOpenDuplicateLocation(
+                        conflict.duplicateFiles[0]?.parent_id ?? null,
+                      )
+                    }
+                  >
+                    保存先を開く
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loading}
+                  onClick={() => onAutoRename(conflict)}
+                >
+                  自動リネーム
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={loading}
+                  onClick={() => onSkip(conflict)}
+                >
+                  スキップ
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 

@@ -734,12 +734,123 @@ describe("DrivePage drag and drop upload", () => {
 
     await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(4));
     expect(
-      await screen.findByRole("heading", { name: "名前の重複" }),
+      await screen.findByRole("heading", { name: "アップロード名の重複" }),
     ).toBeInTheDocument();
     expect(mocks.uploadFile.mock.calls[2]?.[0]).not.toHaveProperty(
       "nameConflictAction",
       "auto_rename",
     );
+  });
+
+  it("collects name conflicts after bulk duplicate content allow into a stable list", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(
+        nameConflictError(
+          "同じ名前のファイルがあります。",
+          "alpha.txt",
+          "alpha（1）.txt",
+        ),
+      )
+      .mockRejectedValueOnce(
+        nameConflictError(
+          "同じ名前のファイルがあります。",
+          "bravo.txt",
+          "bravo（1）.txt",
+        ),
+      )
+      .mockRejectedValueOnce(
+        nameConflictError(
+          "同じ名前のファイルがあります。",
+          "charlie.txt",
+          "charlie（1）.txt",
+        ),
+      );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([
+        new File(["same-a"], "alpha.txt", { type: "text/plain" }),
+        new File(["same-b"], "bravo.txt", { type: "text/plain" }),
+        new File(["same-c"], "charlie.txt", { type: "text/plain" }),
+      ]),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "同じ内容でもすべてアップロード（3件）",
+      }),
+    );
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(6));
+    expect(
+      await screen.findByText("名前が重複しているファイルが3件あります。"),
+    ).toBeInTheDocument();
+    const list = screen.getByLabelText("名前が重複しているファイル");
+    expect(within(list).getByText("alpha.txt")).toBeInTheDocument();
+    expect(within(list).getByText("bravo.txt")).toBeInTheDocument();
+    expect(within(list).getByText("charlie.txt")).toBeInTheDocument();
+    expect(within(list).getByText("自動リネーム: alpha（1）")).toBeInTheDocument();
+    expect(within(list).getByText("自動リネーム: bravo（1）")).toBeInTheDocument();
+    expect(within(list).getByText("自動リネーム: charlie（1）")).toBeInTheDocument();
+  });
+
+  it("shows only unresolved name conflicts after bulk content allow", async () => {
+    for (let index = 0; index < 10; index += 1) {
+      mocks.uploadFile.mockRejectedValueOnce(
+        duplicateContentError("同じ内容のファイルです。"),
+      );
+    }
+    for (let index = 0; index < 4; index += 1) {
+      mocks.uploadFile.mockRejectedValueOnce(
+        nameConflictError(
+          "同じ名前のファイルがあります。",
+          `conflict-${index}.txt`,
+          `conflict-${index}（1）.txt`,
+        ),
+      );
+    }
+    for (let index = 0; index < 6; index += 1) {
+      mocks.uploadFile.mockResolvedValueOnce({
+        id: 60 + index,
+        parent_id: 42,
+        name: `resolved-${index}`,
+        item_type: "file",
+      });
+    }
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles(
+        Array.from(
+          { length: 10 },
+          (_, index) =>
+            new File([`same-${index}`], `file-${index}.txt`, {
+              type: "text/plain",
+            }),
+        ),
+      ),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "同じ内容でもすべてアップロード（10件）",
+      }),
+    );
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(20));
+    expect(
+      await screen.findByText("名前が重複しているファイルが4件あります。"),
+    ).toBeInTheDocument();
+    const list = screen.getByLabelText("名前が重複しているファイル");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(4);
+    expect(
+      screen.queryByText("名前が重複しているファイルが10件あります。"),
+    ).not.toBeInTheDocument();
   });
 
   it("counts only active content duplicate warnings for the batch allow action", async () => {
@@ -2934,7 +3045,12 @@ function duplicateContentError(message: string) {
   );
 }
 
-function nameConflictError(message: string) {
+function nameConflictError(
+  message: string,
+  filename = "report.txt",
+  suggestedFilename = "report（1）.txt",
+) {
+  const suggestedName = suggestedFilename.replace(/\.[^.]+$/, "");
   return new ApiError(
     409,
     message,
@@ -2942,12 +3058,12 @@ function nameConflictError(message: string) {
     "duplicate_name",
     "/api/v1/drive_items",
     "name",
-    "report.txt",
+    filename,
     "request-name-409",
     {
       duplicate_kind: "name",
-      suggested_name: "report（1）",
-      suggested_filename: "report（1）.txt",
+      suggested_name: suggestedName,
+      suggested_filename: suggestedFilename,
     },
   );
 }
