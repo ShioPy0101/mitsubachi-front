@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Folder, Lock, Package } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Download, Eye, Folder, Lock, Package } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiError, ApiNetworkError } from "../api/errors";
@@ -9,6 +9,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FileTypeIcon } from "../components/FileTypeIcon";
 import { LoadingIndicator } from "../components/LoadingIndicator";
+import { Modal } from "../components/Modal";
 import { useToast } from "../components/ToastProvider";
 import {
   bulkDownloadPublicShare,
@@ -26,6 +27,7 @@ export function PublicSharePage() {
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordErrorTone, setPasswordErrorTone] = useState<"warn" | "danger">("warn");
+  const [previewItem, setPreviewItem] = useState<PublicShareItem | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const query = useQuery({
     queryKey: ["public-share", token],
@@ -145,8 +147,17 @@ export function PublicSharePage() {
           token={token}
           items={share.items}
           allowDownload={share.allow_download}
+          onPreview={setPreviewItem}
         />
       )}
+      <Modal
+        open={previewItem !== null}
+        title={previewItem?.name ?? "プレビュー"}
+        className="public-share-preview-modal"
+        onClose={() => setPreviewItem(null)}
+      >
+        {previewItem ? <PublicSharePreview token={token} item={previewItem} /> : null}
+      </Modal>
     </main>
   );
 }
@@ -181,10 +192,12 @@ function PublicShareTree({
   token,
   items,
   allowDownload,
+  onPreview,
 }: {
   token: string;
   items: PublicShareItem[];
   allowDownload: boolean;
+  onPreview: (item: PublicShareItem) => void;
 }) {
   const roots = useMemo(() => items.filter((item) => !item.parent_id), [items]);
   return (
@@ -196,6 +209,7 @@ function PublicShareTree({
           item={item}
           allItems={items}
           allowDownload={allowDownload}
+          onPreview={onPreview}
           depth={0}
         />
       ))}
@@ -208,12 +222,14 @@ function PublicShareItemRow({
   item,
   allItems,
   allowDownload,
+  onPreview,
   depth,
 }: {
   token: string;
   item: PublicShareItem;
   allItems: PublicShareItem[];
   allowDownload: boolean;
+  onPreview: (item: PublicShareItem) => void;
   depth: number;
 }) {
   const children = allItems.filter((child) => child.parent_id === item.id);
@@ -234,13 +250,14 @@ function PublicShareItemRow({
         {item.item_type === "file" ? (
           <div className="public-share-actions">
             {safePreview(item) ? (
-              <a
-                href={publicPreviewUrl(token, item.id)}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                className="public-share-preview-button"
+                onClick={() => onPreview(item)}
               >
+                <Eye size={15} aria-hidden="true" />
                 プレビュー
-              </a>
+              </button>
             ) : null}
             {allowDownload ? (
               <a href={publicDownloadUrl(token, item.id)}>
@@ -258,6 +275,7 @@ function PublicShareItemRow({
           item={child}
           allItems={allItems}
           allowDownload={allowDownload}
+          onPreview={onPreview}
           depth={depth + 1}
         />
       ))}
@@ -297,6 +315,67 @@ function safePreview(item: PublicShareItem) {
       "txt",
     ].includes(extension)
   );
+}
+
+function PublicSharePreview({ token, item }: { token: string; item: PublicShareItem }) {
+  const mediaRef = useRef<HTMLMediaElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      const media = mediaRef.current;
+      if (!media) return;
+      media.pause();
+      media.currentTime = 0;
+      media.removeAttribute("src");
+      media.load();
+    };
+  }, []);
+
+  if (item.content_type?.startsWith("image/")) {
+    return (
+      <img
+        className="preview-media"
+        src={publicPreviewUrl(token, item.id)}
+        alt={item.name}
+      />
+    );
+  }
+  if (item.content_type === "application/pdf" || item.content_type === "text/plain") {
+    return (
+      <iframe
+        className="preview-frame"
+        src={publicPreviewUrl(token, item.id)}
+        title={item.name}
+      />
+    );
+  }
+  if (item.content_type?.startsWith("video/")) {
+    return (
+      <video
+        ref={(element) => {
+          if (element) mediaRef.current = element;
+        }}
+        className="preview-media"
+        src={publicPreviewUrl(token, item.id)}
+        controls
+        preload="metadata"
+      />
+    );
+  }
+  if (item.content_type?.startsWith("audio/")) {
+    return (
+      <audio
+        ref={(element) => {
+          if (element) mediaRef.current = element;
+        }}
+        className="preview-media"
+        src={publicPreviewUrl(token, item.id)}
+        controls
+        preload="metadata"
+      />
+    );
+  }
+  return <p>このファイルはプレビューできません。ダウンロードして確認してください。</p>;
 }
 
 function formatDate(value?: string | null) {

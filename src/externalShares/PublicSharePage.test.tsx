@@ -2,11 +2,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API_BASE_URL, clearCsrfToken } from "../api/client";
 import { ToastProvider } from "../components/ToastProvider";
 import { PublicSharePage } from "./PublicSharePage";
+
+beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn(function showModal(
+    this: HTMLDialogElement,
+  ) {
+    this.open = true;
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function close(this: HTMLDialogElement) {
+    this.open = false;
+    this.dispatchEvent(new Event("close"));
+  });
+});
 
 describe("PublicSharePage password unlock", () => {
   it("shows share contents after a correct password", async () => {
@@ -186,6 +198,22 @@ describe("PublicSharePage password unlock", () => {
       }),
     );
   });
+
+  it("opens a file preview inside the public share page", async () => {
+    clearCsrfToken();
+    mockPublicShare(publicShare({ content_type: "image/jpeg", extension: "jpg" }));
+
+    renderPublicSharePage();
+
+    await screen.findByText("公開ファイル.pdf");
+    await userEvent.click(screen.getByRole("button", { name: "プレビュー" }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "公開ファイル.pdf" })).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/v1/public/shares/raw-token/items/21/preview`,
+    );
+  });
 });
 
 function renderPublicSharePage() {
@@ -239,7 +267,20 @@ function mockPasswordFlow({
   return fetchMock;
 }
 
-function publicShare() {
+function mockPublicShare(share = publicShare()) {
+  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+    if (url === `${API_BASE_URL}/api/v1/public/shares/raw-token`) {
+      expect(init).toEqual(expect.objectContaining({ credentials: "include" }));
+      return Promise.resolve(jsonResponse(share));
+    }
+
+    return Promise.resolve(jsonResponse({ error: "not found" }, 404));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function publicShare(overrides: Record<string, unknown> = {}) {
   return {
     id: 12,
     name: "公開",
@@ -255,6 +296,7 @@ function publicShare() {
         extension: "pdf",
         content_type: "application/pdf",
         file_size: 128,
+        ...overrides,
       },
     ],
   };
