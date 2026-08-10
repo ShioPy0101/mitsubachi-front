@@ -62,6 +62,7 @@ describe("drive api", () => {
       name: "quarterly.report",
       parentId: null,
       uploadSessionId: "123e4567-e89b-42d3-a456-426614174000",
+      clientUploadId: "123e4567-e89b-42d3-a456-426614174001",
     });
 
     const [, request] = vi.mocked(fetch).mock.calls[1];
@@ -70,9 +71,12 @@ describe("drive api", () => {
     expect((request?.headers as Headers).get("X-Upload-Session-ID")).toBe(
       "123e4567-e89b-42d3-a456-426614174000",
     );
+    expect((request?.headers as Headers).get("X-Upload-ID")).toBe(
+      "123e4567-e89b-42d3-a456-426614174001",
+    );
   });
 
-  it("sends trash duplicate resolution flags as explicit multipart fields", async () => {
+  it("does not send removed trash duplicate multipart field", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url) => {
@@ -98,17 +102,15 @@ describe("drive api", () => {
       file: new File(["content"], "report.txt", { type: "text/plain" }),
       name: "report",
       parentId: 42,
-      allowTrashDuplicate: true,
       replaceTrashedDriveItemId: 99,
     });
 
     const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
-    expect(form.get("allow_trash_duplicate")).toBe("true");
     expect(form.get("replace_trashed_drive_item_id")).toBe("99");
     expect(form.get("parent_id")).toBe("42");
   });
 
-  it("sends explicit duplicate content and name conflict actions", async () => {
+  it("sends active content duplicate policy fields", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url) => {
@@ -137,12 +139,26 @@ describe("drive api", () => {
       allowDuplicateContent: true,
       duplicateContentAction: "upload_anyway",
       nameConflictAction: "auto_rename",
+      uploadPolicy: {
+        category: "active_content_duplicate",
+        resolution: "upload_anyway",
+        scope: "batch",
+        operationId: "operation-123",
+      },
       operationId: "operation-123",
     });
 
     const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
     expect(form.get("allow_duplicate_content")).toBe("true");
     expect(form.get("duplicate_content_action")).toBe("upload_anyway");
+    const uploadPolicy = form.get("upload_policy");
+    expect(typeof uploadPolicy).toBe("string");
+    expect(JSON.parse(uploadPolicy as string)).toEqual({
+      category: "active_content_duplicate",
+      resolution: "upload_anyway",
+      scope: "batch",
+      operationId: "operation-123",
+    });
     expect(form.get("name_conflict_action")).toBe("auto_rename");
     expect(form.get("operation_id")).toBe("operation-123");
   });
