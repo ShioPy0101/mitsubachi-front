@@ -328,6 +328,43 @@ describe("DrivePage drag and drop upload", () => {
     ).toBeInTheDocument();
   });
 
+  it("registers every folder file in the batch before completion and continues after one succeeds", async () => {
+    const uploadResolvers: Array<() => void> = [];
+    mocks.uploadFile.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          uploadResolvers.push(() => resolve({ id: uploadResolvers.length + 1 }));
+        }),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const files = [
+      new File(["a"], "first.txt", { type: "text/plain" }),
+      new File(["b"], "second.txt", { type: "text/plain" }),
+      new File(["c"], "third.txt", { type: "text/plain" }),
+    ];
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithDirectory("素材", files),
+    });
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(3));
+    expect(screen.getByText("0 / 3 件完了")).toBeInTheDocument();
+
+    uploadResolvers[0]?.();
+    await waitFor(() => expect(screen.getByText("1 / 3 件完了")).toBeInTheDocument());
+    expect(mocks.uploadFile).toHaveBeenCalledTimes(3);
+    expect(
+      screen.queryByText(/アップロード処理が完了しました/),
+    ).not.toBeInTheDocument();
+
+    uploadResolvers[1]?.();
+    uploadResolvers[2]?.();
+    expect(
+      await screen.findByText("3件のアップロード処理が完了しました"),
+    ).toBeInTheDocument();
+  });
+
   it("does not reject dropped folders with more than 1000 files", async () => {
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
@@ -610,6 +647,95 @@ describe("DrivePage drag and drop upload", () => {
         name: "同じ内容でもすべてアップロード（2件）",
       }),
     ).not.toBeInTheDocument();
+  });
+
+  it("retries a failed upload without adding another queue row", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(new Error("通信が中断されました。"))
+      .mockResolvedValueOnce({
+        id: 40,
+        parent_id: 42,
+        name: "retry",
+        item_type: "file",
+      });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const file = new File(["retry"], "retry.txt", { type: "text/plain" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+
+    expect(
+      await screen.findByText("1件のアップロード処理が完了しました"),
+    ).toBeInTheDocument();
+    const uploadProgress = screen.getByRole("region", { name: "アップロード進捗" });
+    fireEvent.click(within(uploadProgress).getByRole("button", { name: "詳細を表示" }));
+    expect(container.querySelectorAll(".upload-progress li")).toHaveLength(1);
+
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "アップロード進捗" })).getAllByRole(
+        "button",
+        { name: "再試行" },
+      )[0],
+    );
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
+    const completedProgress = screen.getByRole("region", { name: "アップロード進捗" });
+    const completedDetails = within(completedProgress).queryByRole("button", {
+      name: "詳細を表示",
+    });
+    if (completedDetails) fireEvent.click(completedDetails);
+    expect(container.querySelectorAll(".upload-progress li")).toHaveLength(1);
+    expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
+      file,
+      name: "retry",
+      parentId: 42,
+    });
+  });
+
+  it("bulk retry of duplicate content reuses the same queue items", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockRejectedValueOnce(duplicateContentError("同じ内容のファイルです。"))
+      .mockResolvedValueOnce({
+        id: 51,
+        parent_id: 42,
+        name: "first",
+        item_type: "file",
+      })
+      .mockResolvedValueOnce({
+        id: 52,
+        parent_id: 42,
+        name: "second",
+        item_type: "file",
+      });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([
+        new File(["same-a"], "first.txt", { type: "text/plain" }),
+        new File(["same-b"], "second.txt", { type: "text/plain" }),
+      ]),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "同じ内容でもすべてアップロード（2件）",
+      }),
+    );
+    fireEvent.click(
+      within(openDialog("同じ内容でもすべてアップロード")).getByRole("button", {
+        name: "2件をアップロード",
+      }),
+    );
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(4));
+    expect(container.querySelectorAll(".upload-progress li")).toHaveLength(2);
+    expect(
+      await screen.findByText(/一括処理結果: 完了: 2件 \/ 失敗: 0件/),
+    ).toBeInTheDocument();
   });
 
   it("excludes all unresolved duplicate content items without retrying other errors", async () => {
@@ -1895,6 +2021,61 @@ describe("DrivePage drag and drop upload", () => {
     await waitFor(() => {
       expect(mocks.bulkMove).toHaveBeenCalledWith(null, [1, 2], 3);
     });
+  });
+
+  it("selects and clears every current item from the header checkbox", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "a", item_type: "file", extension: "txt" },
+      { id: 2, parent_id: null, name: "b", item_type: "file", extension: "txt" },
+      { id: 3, parent_id: null, name: "folder", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+
+    const selectAll = await screen.findByLabelText("現在の一覧をすべて選択");
+    fireEvent.click(selectAll);
+
+    expect(screen.getByText("3件選択中")).toBeInTheDocument();
+    expect(screen.getByLabelText("aを選択")).toBeChecked();
+    expect(screen.getByLabelText("bを選択")).toBeChecked();
+    expect(screen.getByLabelText("folderを選択")).toBeChecked();
+
+    fireEvent.click(selectAll);
+
+    expect(screen.queryByText("3件選択中")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("aを選択")).not.toBeChecked();
+    expect(screen.getByLabelText("bを選択")).not.toBeChecked();
+    expect(screen.getByLabelText("folderを選択")).not.toBeChecked();
+  });
+
+  it("shows an indeterminate header checkbox when only part of the current items are selected", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "a", item_type: "file", extension: "txt" },
+      { id: 2, parent_id: null, name: "b", item_type: "file", extension: "txt" },
+    ]);
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByLabelText("aを選択"));
+
+    const selectAll = screen.getByLabelText("現在の一覧をすべて選択");
+    expect(selectAll).not.toBeChecked();
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+  });
+
+  it("header selection targets the full items list rather than only rendered virtual rows", async () => {
+    mocks.fetchDriveItems.mockResolvedValue(
+      Array.from({ length: 30 }, (_, index) => ({
+        id: index + 1,
+        parent_id: null,
+        name: `item-${index + 1}`,
+        item_type: "file" as const,
+        extension: "txt",
+      })),
+    );
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByLabelText("現在の一覧をすべて選択"));
+
+    expect(screen.getByText("30件選択中")).toBeInTheDocument();
   });
 
   it("moves only the dragged item when it is not selected", async () => {
