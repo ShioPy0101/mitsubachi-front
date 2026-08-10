@@ -1273,12 +1273,24 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           parentId = existing.id;
           continue;
         }
-        const created = await createDirectory({
-          organizationId,
-          name: segment,
-          parentId,
-        });
-        parentId = created.id;
+        try {
+          const created = await createDirectory({
+            organizationId,
+            name: segment,
+            parentId,
+          });
+          parentId = created.id;
+        } catch (error) {
+          if (!isNameConflict(error)) throw error;
+          // 同じフォルダ配下のファイルを並列準備すると、同一ディレクトリ作成が競合する。
+          // 409は失敗扱いにせず、先に作られたフォルダへ合流して残りのアップロードを続ける。
+          const latestSiblings = await fetchDriveItems(organizationId, parentId);
+          const existing = latestSiblings.find(
+            (item) => item.item_type === "directory" && item.name === segment,
+          );
+          if (!existing) throw error;
+          parentId = existing.id;
+        }
       }
       return parentId;
     },
@@ -1359,6 +1371,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
               ? "同名または同一内容のファイルがあります。名前を確認してください。"
               : `${succeeded} / ${safeFiles.length} 件アップロードしました。`,
         });
+      } catch (error) {
+        captureError(error, "フォルダーアップロード", {
+          itemType: "directory",
+          itemName: relativePathSegments(safeFiles[0])[0],
+        });
       } finally {
         uploadInProgressRef.current = false;
         setIsUploading(false);
@@ -1366,6 +1383,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
     },
     [
       buildUploadTask,
+      captureError,
       ensureDirectoryPath,
       invalidateCurrent,
       startUploadBatch,

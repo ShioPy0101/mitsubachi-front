@@ -1433,6 +1433,78 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
+  it("continues folder upload when parallel directory preparation hits an existing-name conflict", async () => {
+    let rootLookupCount = 0;
+    let materialCreateCount = 0;
+    mocks.fetchDriveItems.mockImplementation(
+      (_organizationId: number | null, parentId: number | null) => {
+        if (parentId === 42) {
+          rootLookupCount += 1;
+          if (rootLookupCount <= 3) return Promise.resolve([]);
+          return Promise.resolve([
+            { id: 100, parent_id: 42, name: "素材", item_type: "directory" },
+          ]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+    mocks.createDirectory.mockImplementation(({ name, parentId }) => {
+      if (name === "素材") {
+        materialCreateCount += 1;
+        if (materialCreateCount === 2) {
+          return Promise.reject(
+            new ApiError(
+              409,
+              "同じ名前のファイルまたはフォルダーが存在します。",
+              [],
+              "duplicate_name",
+            ),
+          );
+        }
+        return Promise.resolve({
+          id: 100,
+          parent_id: parentId,
+          name,
+          item_type: "directory",
+        });
+      }
+      return Promise.resolve({
+        id: 101,
+        parent_id: parentId,
+        name,
+        item_type: "directory",
+      });
+    });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const first = new File(["a"], "root.txt", { type: "text/plain" });
+    Object.defineProperty(first, "webkitRelativePath", {
+      value: "素材/root.txt",
+    });
+    const second = new File(["b"], "clip.txt", { type: "text/plain" });
+    Object.defineProperty(second, "webkitRelativePath", {
+      value: "素材/camera/clip.txt",
+    });
+
+    fireEvent.change(directoryInput(container), {
+      target: { files: [first, second] },
+    });
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
+    expect(mocks.uploadFile.mock.calls[0]?.[0]).toMatchObject({
+      file: first,
+      parentId: 100,
+    });
+    expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
+      file: second,
+      parentId: 101,
+    });
+    expect(
+      screen.queryByText("同じ名前のファイルまたはフォルダーが存在します。"),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps the folder form open without copy controls when the name already exists", async () => {
     mocks.createDirectory.mockRejectedValueOnce(
       new ApiError(
