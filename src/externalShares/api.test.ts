@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { API_BASE_URL, clearCsrfToken } from "../api/client";
 import {
   createExternalShare,
+  fetchPublicShareItems,
   publicDownloadUrl,
   publicPreviewUrl,
   regenerateExternalSharePassword,
@@ -102,6 +103,44 @@ describe("external share api", () => {
     );
     expect(publicDownloadUrl("raw/token", 5)).toBe(
       `${API_BASE_URL}/api/v1/public/shares/raw%2Ftoken/items/5/download`,
+    );
+  });
+
+  it("fetches public share items under a shared folder", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              current_folder: { id: 30, name: "documents", item_type: "directory" },
+              breadcrumbs: [{ id: 12, name: "共有ルート", item_type: "directory" }],
+              items: [
+                {
+                  id: 31,
+                  parent_id: 30,
+                  name: "spec.pdf",
+                  kind: "file",
+                  item_type: "file",
+                  extension: "pdf",
+                  content_type: "application/pdf",
+                  size: 2048,
+                  previewable: true,
+                  downloadable: true,
+                },
+              ],
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      ),
+    );
+
+    const result = await fetchPublicShareItems("raw/token", 30);
+
+    expect(result.items[0]?.previewable).toBe(true);
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
+      `${API_BASE_URL}/api/v1/public/shares/raw%2Ftoken/items?parent_id=30`,
     );
   });
 });
