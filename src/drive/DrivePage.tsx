@@ -219,9 +219,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   >(null);
   const [activeItem, setActiveItem] = useState<DriveItem | null>(null);
   const [moveDialog, setMoveDialog] = useState<MoveDialogState | null>(null);
+  const [createMenuAnchor, setCreateMenuAnchor] = useState<HTMLButtonElement | null>(
+    null,
+  );
   const [createdShare, setCreatedShare] = useState<ExternalShare | null>(null);
   const [nameValue, setNameValue] = useState("");
   const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
+  const [isSearchComposing, setIsSearchComposing] = useState(false);
   const searchScope =
     searchParams.get("scope") === "organization" ? "organization" : "current";
   const searchTerm = searchParams.get("q")?.trim() ?? "";
@@ -307,6 +311,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   });
 
   useEffect(() => {
+    if (isSearchComposing) return;
     const timeout = window.setTimeout(() => {
       const next = new URLSearchParams(searchParams);
       if (searchInput.trim()) {
@@ -320,7 +325,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       setSearchParams(next, { replace: true });
     }, 350);
     return () => window.clearTimeout(timeout);
-  }, [searchInput, searchParams, searchScope, setSearchParams]);
+  }, [isSearchComposing, searchInput, searchParams, searchScope, setSearchParams]);
 
   const visibleQuery = searchTerm ? searchQuery : listQuery;
   const items = useMemo(
@@ -1698,9 +1703,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
             );
           })}
         </nav>
-        <p className="drag-status" role="status">
-          {draggingIds.length > 0 ? <>{draggingIds.length}件を移動中</> : <>(^_-)-☆</>}
-        </p>
+        {draggingIds.length > 0 ? (
+          <p className="drag-status" role="status">
+            {draggingIds.length}件を移動中
+          </p>
+        ) : null}
         <h1>
           {mode === "trash" ? "ゴミ箱" : (folderQuery.data?.name ?? "共有ドライブ")}
         </h1>
@@ -1725,6 +1732,11 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
               <input
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
+                onCompositionStart={() => setIsSearchComposing(true)}
+                onCompositionEnd={(event) => {
+                  setIsSearchComposing(false);
+                  setSearchInput(event.currentTarget.value);
+                }}
                 placeholder="ファイル名、拡張子、作成者名"
               />
               {searchInput ? (
@@ -1748,43 +1760,51 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
               <option value="organization">グループ全体</option>
             </select>
           </label>
+          <p className="search-status" role="status" aria-live="polite">
+            {searchTerm
+              ? searchQuery.isFetching
+                ? "検索しています"
+                : `${searchQuery.data?.meta.total_count ?? items.length}件見つかりました`
+              : "現在のフォルダーを表示中"}
+          </p>
         </form>
       ) : null}
       <div className="toolbar drive-toolbar">
         {mode === "drive" ? (
-          <>
+          <div className="create-menu-wrap">
             <Button
               type="button"
-              aria-label="新しいフォルダ"
-              onClick={() => setDialog("folder")}
-            >
-              <FolderPlus size={16} aria-hidden="true" />
-              <span className="desktop-action-label">新しいフォルダ</span>
-              <span className="mobile-action-label">新規フォルダ</span>
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              aria-label="ファイルアップロード"
-              loading={isUploading}
-              onClick={() => fileInputRef.current?.click()}
+              aria-label="新規作成メニューを開く"
+              aria-haspopup="menu"
+              aria-expanded={createMenuAnchor !== null}
+              onClick={(event) => {
+                const anchor = event.currentTarget;
+                setCreateMenuAnchor((current) => (current ? null : anchor));
+              }}
             >
               <FilePlus size={16} aria-hidden="true" />
-              <span className="desktop-action-label">ファイルアップロード</span>
-              <span className="mobile-action-label">ファイル</span>
+              新規作成
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              aria-label="フォルダーアップロード"
-              loading={isUploading}
-              onClick={() => directoryInputRef.current?.click()}
-            >
-              <UploadCloud size={16} aria-hidden="true" />
-              <span className="desktop-action-label">フォルダーアップロード</span>
-              <span className="mobile-action-label">フォルダー</span>
-            </Button>
-          </>
+            {createMenuAnchor ? (
+              <CreateMenu
+                anchor={createMenuAnchor}
+                uploading={isUploading}
+                onClose={() => setCreateMenuAnchor(null)}
+                onCreateFolder={() => {
+                  setCreateMenuAnchor(null);
+                  setDialog("folder");
+                }}
+                onUploadFiles={() => {
+                  setCreateMenuAnchor(null);
+                  fileInputRef.current?.click();
+                }}
+                onUploadDirectory={() => {
+                  setCreateMenuAnchor(null);
+                  directoryInputRef.current?.click();
+                }}
+              />
+            ) : null}
+          </div>
         ) : null}
         <Button type="button" variant="ghost" onClick={() => void listQuery.refetch()}>
           <RefreshCw size={16} aria-hidden="true" />
@@ -1934,9 +1954,13 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }}
         />
       ) : null}
-      {visibleQuery.isLoading ? (
-        <LoadingIndicator label="一覧を読み込んでいます" />
+      {!visibleQuery.isLoading && visibleQuery.isFetching ? (
+        <div className="list-refresh-status" role="status" aria-live="polite">
+          <RefreshCw className="spin" size={14} aria-hidden="true" />
+          一覧を更新しています
+        </div>
       ) : null}
+      {visibleQuery.isLoading ? <FileListSkeleton /> : null}
       {visibleQuery.isError ? (
         visibleQueryUnauthorized ? (
           <ErrorState
@@ -2421,6 +2445,7 @@ function FileTable({
     <div className={`file-list${trash ? " file-list-trash" : ""}`}>
       <div ref={listViewportRef} className="file-list-viewport">
         <table>
+          <caption className="visually-hidden">ファイルとフォルダーの一覧</caption>
           <thead>
             <tr>
               <th scope="col">
@@ -2605,6 +2630,142 @@ function FileTable({
   );
 }
 
+function FileListSkeleton() {
+  return (
+    <div className="file-list file-list-skeleton" role="status" aria-live="polite">
+      <span className="visually-hidden">一覧を読み込んでいます</span>
+      {Array.from({ length: 8 }, (_, index) => (
+        <div key={index} className="skeleton-row">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CreateMenu({
+  anchor,
+  uploading,
+  onClose,
+  onCreateFolder,
+  onUploadFiles,
+  onUploadDirectory,
+}: {
+  anchor: HTMLButtonElement;
+  uploading: boolean;
+  onClose: () => void;
+  onCreateFolder: () => void;
+  onUploadFiles: () => void;
+  onUploadDirectory: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<React.CSSProperties>({});
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    setPosition({
+      position: "fixed",
+      top: Math.max(
+        MENU_VIEWPORT_PADDING,
+        Math.min(
+          anchorRect.bottom + MENU_OFFSET,
+          window.innerHeight - menuRect.height - MENU_VIEWPORT_PADDING,
+        ),
+      ),
+      left: Math.max(
+        MENU_VIEWPORT_PADDING,
+        Math.min(
+          anchorRect.left,
+          window.innerWidth - menuRect.width - MENU_VIEWPORT_PADDING,
+        ),
+      ),
+    });
+    menu.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
+  }, [anchor]);
+
+  useEffect(() => {
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target) || anchor.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnPointerDown);
+  }, [anchor, onClose]);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    handleMenuKeyDown(event, onClose);
+  };
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="item-menu create-menu"
+      role="menu"
+      style={position}
+      onKeyDown={handleKeyDown}
+    >
+      <button type="button" role="menuitem" onClick={onCreateFolder}>
+        <FolderPlus size={16} aria-hidden="true" />
+        新しいフォルダ
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        disabled={uploading}
+        onClick={onUploadFiles}
+      >
+        <FilePlus size={16} aria-hidden="true" />
+        ファイルをアップロード
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        disabled={uploading}
+        onClick={onUploadDirectory}
+      >
+        <UploadCloud size={16} aria-hidden="true" />
+        フォルダーをアップロード
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+function handleMenuKeyDown(
+  event: React.KeyboardEvent<HTMLElement>,
+  onClose: () => void,
+) {
+  const menuItems = Array.from(
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      '[role="menuitem"]:not(:disabled)',
+    ),
+  );
+  const currentIndex = menuItems.findIndex((item) => item === document.activeElement);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    onClose();
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+
+  event.preventDefault();
+  const direction = event.key === "ArrowDown" ? 1 : -1;
+  const nextIndex =
+    currentIndex === -1
+      ? 0
+      : (currentIndex + direction + menuItems.length) % menuItems.length;
+  menuItems[nextIndex]?.focus();
+}
+
 function ItemActionMenu({
   anchor,
   item,
@@ -2669,6 +2830,12 @@ function ItemActionMenu({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [anchor, onClose]);
 
+  useEffect(() => {
+    menuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+      ?.focus();
+  }, []);
+
   return createPortal(
     <div
       ref={menuRef}
@@ -2676,6 +2843,7 @@ function ItemActionMenu({
       role="menu"
       data-no-drag
       data-placement={position.placement}
+      onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
       style={{
         position: "fixed",
         top: position.top,
