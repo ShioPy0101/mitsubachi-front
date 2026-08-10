@@ -1449,16 +1449,23 @@ describe("DrivePage drag and drop upload", () => {
     await screen.findByRole("heading", { name: "共有ドライブ" });
     const toolbar = container.querySelector(".drive-toolbar");
     expect(toolbar).toBeInTheDocument();
-    expect(toolbar).toContainElement(
-      screen.getByRole("button", { name: "新しいフォルダ" }),
-    );
-    expect(toolbar).toContainElement(
-      screen.getByRole("button", { name: "ファイルアップロード" }),
-    );
-    expect(toolbar).toContainElement(
-      screen.getByRole("button", { name: "フォルダーアップロード" }),
-    );
+    const createButton = screen.getByRole("button", {
+      name: "新規作成メニューを開く",
+    });
+    expect(toolbar).toContainElement(createButton);
     expect(toolbar).toContainElement(screen.getByRole("button", { name: "更新" }));
+
+    fireEvent.click(createButton);
+    const menu = screen.getByRole("menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "新しいフォルダ" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("menuitem", { name: "ファイルをアップロード" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("menuitem", { name: "フォルダーをアップロード" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps the folder form open without copy controls when the name already exists", async () => {
@@ -1477,7 +1484,8 @@ describe("DrivePage drag and drop upload", () => {
     renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
 
-    fireEvent.click(screen.getByRole("button", { name: "新しいフォルダ" }));
+    fireEvent.click(screen.getByRole("button", { name: "新規作成メニューを開く" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "新しいフォルダ" }));
     fireEvent.change(screen.getAllByLabelText("名前")[0], {
       target: { value: "素材" },
     });
@@ -2574,6 +2582,57 @@ describe("DrivePage drag and drop upload", () => {
     expect(
       await screen.findAllByText("ZIPファイルを作成できませんでした"),
     ).not.toHaveLength(0);
+  });
+
+  it("opens the create menu and supports keyboard navigation", async () => {
+    renderDrivePage("/drive");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "新規作成メニューを開く" }),
+    );
+
+    const menu = screen.getByRole("menu");
+    const createFolder = within(menu).getByRole("menuitem", {
+      name: "新しいフォルダ",
+    });
+    const uploadFiles = within(menu).getByRole("menuitem", {
+      name: "ファイルをアップロード",
+    });
+
+    await waitFor(() => expect(createFolder).toHaveFocus());
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(uploadFiles).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(createFolder).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("shows search result count without replacing the list UI", async () => {
+    mocks.searchDriveItems.mockResolvedValue({
+      data: [
+        {
+          id: 20,
+          parent_id: null,
+          parent_name: "共有ドライブ",
+          name: "report",
+          extension: "pdf",
+          item_type: "file",
+          owner_display_name: "佐藤",
+          updated_at: "2026-07-14T18:20:00.000Z",
+          file_size: 2400,
+        },
+      ],
+      meta: { current_page: 1, per_page: 50, total_pages: 1, total_count: 2 },
+    });
+
+    renderDrivePage("/drive?q=report&scope=organization");
+
+    expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByText("2件見つかりました")).toBeInTheDocument();
+    expect(
+      screen.getByRole("table", { name: "ファイルとフォルダーの一覧" }),
+    ).toBeInTheDocument();
   });
 });
 
