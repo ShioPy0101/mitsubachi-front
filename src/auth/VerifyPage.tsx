@@ -2,8 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import { authKeys } from "./api";
-import { verifyEmailToken } from "./api";
+import { authKeys, fetchCurrentUser, verifyEmailToken } from "./api";
 import { AUTH_RETURN_PATH_KEY } from "./LoginPage";
 
 export function VerifyPage() {
@@ -13,9 +12,21 @@ export function VerifyPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const mutation = useMutation({
-    mutationFn: verifyEmailToken,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: authKeys.me });
+    mutationFn: async (rawToken: string) => {
+      // 未ログイン時の初回 /me がmagic link検証後に401を返すと、作成済みsessionを
+      // unauthenticated状態で上書きするため、検証前に古い認証確認を確実に止める。
+      await queryClient.cancelQueries({ queryKey: authKeys.me });
+      await verifyEmailToken(rawToken);
+
+      // 新しいsessionでの /me 成功を確認してから保護画面へ進み、通信順序によって
+      // 「セッション期限切れ」が表示される競合を防ぐ。
+      return queryClient.fetchQuery({
+        queryKey: authKeys.me,
+        queryFn: ({ signal }) => fetchCurrentUser({ signal }),
+        staleTime: 0,
+      });
+    },
+    onSuccess: () => {
       const returnPath = localStorage.getItem(AUTH_RETURN_PATH_KEY);
       if (returnPath) {
         localStorage.removeItem(AUTH_RETURN_PATH_KEY);
