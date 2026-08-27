@@ -102,15 +102,14 @@ describe("drive api", () => {
       file: new File(["content"], "report.txt", { type: "text/plain" }),
       name: "report",
       parentId: 42,
-      replaceTrashedDriveItemId: 99,
     });
 
     const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
-    expect(form.get("replace_trashed_drive_item_id")).toBe("99");
+    expect(form.has("replace_trashed_drive_item_id")).toBe(false);
     expect(form.get("parent_id")).toBe("42");
   });
 
-  it("sends active content duplicate policy fields", async () => {
+  it("sends name conflict policy without content duplicate fields", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url) => {
@@ -136,12 +135,10 @@ describe("drive api", () => {
       file: new File(["content"], "report.txt", { type: "text/plain" }),
       name: "report",
       parentId: 42,
-      allowDuplicateContent: true,
-      duplicateContentAction: "upload_anyway",
       nameConflictAction: "auto_rename",
       uploadPolicy: {
-        category: "active_content_duplicate",
-        resolution: "upload_anyway",
+        category: "duplicate_name",
+        resolution: "auto_rename",
         scope: "batch",
         operationId: "operation-123",
       },
@@ -149,13 +146,13 @@ describe("drive api", () => {
     });
 
     const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
-    expect(form.get("allow_duplicate_content")).toBe("true");
-    expect(form.get("duplicate_content_action")).toBe("upload_anyway");
+    expect(form.has("allow_duplicate_content")).toBe(false);
+    expect(form.has("duplicate_content_action")).toBe(false);
     const uploadPolicy = form.get("upload_policy");
     expect(typeof uploadPolicy).toBe("string");
     expect(JSON.parse(uploadPolicy as string)).toEqual({
-      category: "active_content_duplicate",
-      resolution: "upload_anyway",
+      category: "duplicate_name",
+      resolution: "auto_rename",
       scope: "batch",
       operationId: "operation-123",
     });
@@ -269,7 +266,7 @@ describe("drive api", () => {
     );
   });
 
-  it("keeps active content duplicate restore preview conflicts", () => {
+  it("treats retired content duplicate restore preview values as no conflict", () => {
     const preview = normalizeRestorePreview({
       items: [
         {
@@ -312,6 +309,6 @@ describe("drive api", () => {
       },
     });
 
-    expect(preview.items[0]?.conflictType).toBe("active_content_duplicate");
+    expect(preview.items[0]?.conflictType).toBe("none");
   });
 });

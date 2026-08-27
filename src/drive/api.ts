@@ -100,14 +100,13 @@ export type UploadProgress = {
 
 export type UploadResolutionPolicy =
   | {
-      category:
-        "active_content_duplicate" | "trash_content_duplicate" | "duplicate_name";
-      resolution: "upload_anyway" | "skip" | "auto_rename" | "restore" | "replace";
+      category: "duplicate_name";
+      resolution: "skip" | "auto_rename";
       scope: "item" | "batch";
       itemKey?: string;
       operationId?: string;
     }
-  | Record<string, "upload_anyway" | "skip" | "auto_rename" | "restore" | "replace">;
+  | Record<string, "skip" | "auto_rename">;
 
 export type RestoreConflictResolution =
   | "restore"
@@ -130,12 +129,7 @@ export type RestorePreviewItem = {
   itemType: "file" | "directory";
   restoreTargetId: number;
   conflictType:
-    | "none"
-    | "name_conflict"
-    | "missing_parent"
-    | "name_conflict_and_missing_parent"
-    | "active_content_duplicate"
-    | "active_content_duplicate_and_missing_parent";
+    "none" | "name_conflict" | "missing_parent" | "name_conflict_and_missing_parent";
   parentExists: boolean;
   existingItemId: number | null;
   existingItemType?: "file" | "directory" | null;
@@ -189,12 +183,9 @@ export function uploadFile(input: {
   file: File;
   name: string;
   parentId: number | null;
-  allowDuplicateContent?: boolean;
-  duplicateContentAction?: "upload_anyway";
   nameConflictAction?: "auto_rename";
   uploadPolicy?: UploadResolutionPolicy;
   operationId?: string;
-  replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   organizationId: number | null;
   uploadSessionId?: string;
@@ -208,12 +199,6 @@ export function uploadFile(input: {
     form.append("item_type", "file");
     if (input.parentId !== null) form.append("parent_id", String(input.parentId));
     appendUploadResolutionFields(form, input);
-    if (input.replaceTrashedDriveItemId !== undefined) {
-      form.append(
-        "replace_trashed_drive_item_id",
-        String(input.replaceTrashedDriveItemId),
-      );
-    }
     form.append("file", input.file);
     return apiRequest<DriveItem>(drivePath(input.organizationId), {
       method: "POST",
@@ -230,12 +215,9 @@ async function uploadFileWithProgress(input: {
   file: File;
   name: string;
   parentId: number | null;
-  allowDuplicateContent?: boolean;
-  duplicateContentAction?: "upload_anyway";
   nameConflictAction?: "auto_rename";
   uploadPolicy?: UploadResolutionPolicy;
   operationId?: string;
-  replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   organizationId: number | null;
   uploadSessionId?: string;
@@ -248,12 +230,6 @@ async function uploadFileWithProgress(input: {
   form.append("item_type", "file");
   if (input.parentId !== null) form.append("parent_id", String(input.parentId));
   appendUploadResolutionFields(form, input);
-  if (input.replaceTrashedDriveItemId !== undefined) {
-    form.append(
-      "replace_trashed_drive_item_id",
-      String(input.replaceTrashedDriveItemId),
-    );
-  }
   form.append("file", input.file);
 
   const csrfToken = await getCsrfToken();
@@ -315,22 +291,11 @@ function uploadHeaders(input: { uploadSessionId?: string; clientUploadId?: strin
 function appendUploadResolutionFields(
   form: FormData,
   input: {
-    allowDuplicateContent?: boolean;
-    duplicateContentAction?: "upload_anyway";
     nameConflictAction?: "auto_rename";
     uploadPolicy?: UploadResolutionPolicy;
     operationId?: string;
   },
 ) {
-  if (input.allowDuplicateContent !== undefined) {
-    form.append(
-      "allow_duplicate_content",
-      input.allowDuplicateContent ? "true" : "false",
-    );
-  }
-  if (input.duplicateContentAction) {
-    form.append("duplicate_content_action", input.duplicateContentAction);
-  }
   if (input.uploadPolicy) {
     form.append("upload_policy", JSON.stringify(input.uploadPolicy));
   }
@@ -686,9 +651,7 @@ function restoreConflictTypeFrom(value: unknown): RestorePreviewItem["conflictTy
   if (
     value === "name_conflict" ||
     value === "missing_parent" ||
-    value === "name_conflict_and_missing_parent" ||
-    value === "active_content_duplicate" ||
-    value === "active_content_duplicate_and_missing_parent"
+    value === "name_conflict_and_missing_parent"
   ) {
     return value;
   }
