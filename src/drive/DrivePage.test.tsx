@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   fetchDriveItem: vi.fn(),
   fetchTrash: vi.fn(),
   uploadFile: vi.fn<(input: UploadFileInput) => Promise<unknown>>(),
+  checkDriveItemName: vi.fn(),
   searchDriveItems: vi.fn(),
   bulkMove: vi.fn(),
   bulkPurge: vi.fn(),
@@ -58,6 +59,7 @@ vi.mock("./api", () => ({
   fetchDriveItem: mocks.fetchDriveItem,
   fetchTrash: mocks.fetchTrash,
   uploadFile: mocks.uploadFile,
+  checkDriveItemName: mocks.checkDriveItemName,
   searchDriveItems: mocks.searchDriveItems,
   bulkDelete: vi.fn(),
   bulkDownload: vi.fn(),
@@ -106,6 +108,14 @@ describe("DrivePage drag and drop upload", () => {
         name: "report",
         item_type: "file",
       });
+    });
+    mocks.checkDriveItemName.mockResolvedValue({
+      available: true,
+      name: "report",
+      filename: "report.txt",
+      parent_id: 42,
+      extension: "txt",
+      conflict: null,
     });
     mocks.searchDriveItems.mockResolvedValue({
       data: [],
@@ -215,6 +225,47 @@ describe("DrivePage drag and drop upload", () => {
         parentId: 42,
       });
     });
+    expect(mocks.checkDriveItemName).toHaveBeenCalledWith({
+      organizationId: null,
+      name: "selected",
+      itemType: "file",
+      parentId: 42,
+      extension: "txt",
+    });
+  });
+
+  it("checks the name before uploading and opens the conflict dialog without sending the file", async () => {
+    mocks.checkDriveItemName.mockResolvedValueOnce({
+      available: false,
+      name: "report",
+      filename: "report.pdf",
+      parent_id: 42,
+      extension: "pdf",
+      conflict: {
+        field: "name",
+        conflicting_name: "report.pdf",
+        duplicate_kind: "name",
+        suggested_name: "report（1）",
+        suggested_filename: "report（1）.pdf",
+      },
+    });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const file = new File(["content"], "report.pdf", { type: "application/pdf" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+
+    expect(await screen.findByText("名前の重複")).toBeInTheDocument();
+    expect(mocks.checkDriveItemName).toHaveBeenCalledWith({
+      organizationId: null,
+      name: "report",
+      itemType: "file",
+      parentId: 42,
+      extension: "pdf",
+    });
+    expect(mocks.uploadFile).not.toHaveBeenCalled();
   });
 
   it("uploads multiple dropped files sequentially", async () => {

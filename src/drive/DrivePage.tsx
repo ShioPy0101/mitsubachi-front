@@ -56,6 +56,7 @@ import {
   bulkPurge,
   bulkRestore,
   bulkRestorePreview,
+  checkDriveItemName,
   createDirectory,
   deleteDriveItem,
   downloadDriveItem,
@@ -872,6 +873,33 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
       });
 
       try {
+        const extension = file.name.includes(".")
+          ? file.name.slice(file.name.lastIndexOf(".") + 1).toLowerCase()
+          : undefined;
+        const nameCheck = await checkDriveItemName({
+          organizationId,
+          name: uploadName,
+          itemType: "file",
+          parentId,
+          extension,
+        });
+        if (!nameCheck.available) {
+          throw new ApiError(
+            409,
+            "同じ名前のファイルが存在します。",
+            [],
+            "duplicate_name",
+            "/api/v1/drive_items/check_name",
+            "name",
+            nameCheck.filename,
+            undefined,
+            {
+              suggested_name: nameCheck.conflict?.suggested_name ?? uploadName,
+              suggested_filename:
+                nameCheck.conflict?.suggested_filename ?? nameCheck.filename,
+            },
+          );
+        }
         uploadObservationRef.current?.begin(file, Boolean(options.sourceTaskId));
         await uploadFile({
           organizationId,

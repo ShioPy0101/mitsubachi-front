@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { API_BASE_URL } from "../api/client";
 import {
   fetchDriveItems,
+  checkDriveItemName,
   normalizeRestorePreview,
   purgeDriveItem,
   previewUrl,
@@ -13,6 +14,50 @@ import {
 } from "./api";
 
 describe("drive api", () => {
+  it("checks a drive item name without sending a file", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              available: false,
+              name: "report",
+              filename: "report.txt",
+              parent_id: 42,
+              extension: "txt",
+              conflict: {
+                field: "name",
+                conflicting_name: "report.txt",
+                duplicate_kind: "name",
+                suggested_name: "report（1）",
+                suggested_filename: "report（1）.txt",
+              },
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      ),
+    );
+
+    await expect(
+      checkDriveItemName({
+        organizationId: 7,
+        name: "report",
+        itemType: "file",
+        parentId: 42,
+        extension: "txt",
+      }),
+    ).resolves.toMatchObject({ available: false });
+
+    const [url, request] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe(
+      `${API_BASE_URL}/api/v1/organizations/7/drive_items/check_name?name=report&item_type=file&parent_id=42&extension=txt`,
+    );
+    expect(request?.method ?? "GET").toBe("GET");
+    expect(request?.body).toBeUndefined();
+  });
+
   it("accepts array responses directly", async () => {
     vi.stubGlobal(
       "fetch",

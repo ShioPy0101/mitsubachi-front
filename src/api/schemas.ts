@@ -89,6 +89,23 @@ export const driveItemSchema = z.object({
 
 export const driveItemsSchema = z.array(driveItemSchema);
 
+export const driveItemNameCheckSchema = z.object({
+  available: z.boolean(),
+  name: z.string(),
+  filename: z.string(),
+  parent_id: z.number().nullable(),
+  extension: z.string().nullable(),
+  conflict: z
+    .object({
+      field: z.string().optional(),
+      conflicting_name: z.string().optional(),
+      duplicate_kind: z.string().optional(),
+      suggested_name: z.string().optional(),
+      suggested_filename: z.string().optional(),
+    })
+    .nullable(),
+});
+
 export const adminMetaSchema = z.object({
   current_page: z.number(),
   per_page: z.number(),
