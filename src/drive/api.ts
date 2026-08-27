@@ -4,6 +4,7 @@ import {
   driveItemSchema,
   driveItemsSchema,
   driveSearchResponseSchema,
+  driveItemNameCheckSchema,
   type DriveItem,
 } from "../api/schemas";
 
@@ -31,6 +32,42 @@ export async function fetchDriveItems(
     parentId === null ? "" : `?parent_id=${encodeURIComponent(String(parentId))}`;
   return driveItemsSchema.parse(
     await apiRequest<unknown>(`${drivePath(organizationId)}${query}`),
+  );
+}
+
+export type DriveItemNameCheck = {
+  available: boolean;
+  name: string;
+  filename: string;
+  parent_id: number | null;
+  extension: string | null;
+  conflict: {
+    field?: string;
+    conflicting_name?: string;
+    duplicate_kind?: string;
+    suggested_name?: string;
+    suggested_filename?: string;
+  } | null;
+};
+
+export async function checkDriveItemName(input: {
+  organizationId: number | null;
+  name: string;
+  itemType: "file" | "directory";
+  parentId: number | null;
+  extension?: string;
+}): Promise<DriveItemNameCheck> {
+  const params = new URLSearchParams({
+    name: input.name,
+    item_type: input.itemType,
+  });
+  if (input.parentId !== null) params.set("parent_id", String(input.parentId));
+  if (input.extension) params.set("extension", input.extension);
+
+  return driveItemNameCheckSchema.parse(
+    await apiRequest<unknown>(
+      `${drivePath(input.organizationId, "/check_name")}?${params}`,
+    ),
   );
 }
 
