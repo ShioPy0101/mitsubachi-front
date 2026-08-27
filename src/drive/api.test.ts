@@ -61,14 +61,55 @@ describe("drive api", () => {
       file: new File(["content"], "quarterly.report.pdf", { type: "application/pdf" }),
       name: "quarterly.report",
       parentId: null,
+      uploadSessionId: "123e4567-e89b-42d3-a456-426614174000",
+      clientUploadId: "123e4567-e89b-42d3-a456-426614174001",
     });
 
     const [, request] = vi.mocked(fetch).mock.calls[1];
     expect(request?.body).toBeInstanceOf(FormData);
     expect((request?.headers as Headers).get("Content-Type")).toBeNull();
+    expect((request?.headers as Headers).get("X-Upload-Session-ID")).toBe(
+      "123e4567-e89b-42d3-a456-426614174000",
+    );
+    expect((request?.headers as Headers).get("X-Upload-ID")).toBe(
+      "123e4567-e89b-42d3-a456-426614174001",
+    );
   });
 
-  it("sends explicit name conflict action without content duplicate fields", async () => {
+  it("does not send removed trash duplicate multipart field", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
+          return new Response(JSON.stringify({ csrf_token: "csrf" }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            id: 1,
+            parent_id: null,
+            name: "report",
+            item_type: "file",
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+
+    await uploadFile({
+      organizationId: 7,
+      file: new File(["content"], "report.txt", { type: "text/plain" }),
+      name: "report",
+      parentId: 42,
+    });
+
+    const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
+    expect(form.has("replace_trashed_drive_item_id")).toBe(false);
+    expect(form.get("parent_id")).toBe("42");
+  });
+
+  it("sends name conflict policy without content duplicate fields", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url) => {
@@ -95,14 +136,26 @@ describe("drive api", () => {
       name: "report",
       parentId: 42,
       nameConflictAction: "auto_rename",
+      uploadPolicy: {
+        category: "duplicate_name",
+        resolution: "auto_rename",
+        scope: "batch",
+        operationId: "operation-123",
+      },
       operationId: "operation-123",
     });
 
     const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
     expect(form.has("allow_duplicate_content")).toBe(false);
     expect(form.has("duplicate_content_action")).toBe(false);
-    expect(form.has("allow_trash_duplicate")).toBe(false);
-    expect(form.has("replace_trashed_drive_item_id")).toBe(false);
+    const uploadPolicy = form.get("upload_policy");
+    expect(typeof uploadPolicy).toBe("string");
+    expect(JSON.parse(uploadPolicy as string)).toEqual({
+      category: "duplicate_name",
+      resolution: "auto_rename",
+      scope: "batch",
+      operationId: "operation-123",
+    });
     expect(form.get("name_conflict_action")).toBe("auto_rename");
     expect(form.get("operation_id")).toBe("operation-123");
   });

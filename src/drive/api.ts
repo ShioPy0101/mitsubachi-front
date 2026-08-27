@@ -36,6 +36,8 @@ export async function fetchDriveItems(
 
 export async function searchDriveItems(input: {
   organizationId: number | null;
+  uploadSessionId?: string;
+  onRequestId?: (requestId: string) => void;
   query: string;
   parentId: number | null;
   scope: "current" | "organization";
@@ -76,9 +78,12 @@ export function createDirectory(input: {
   organizationId: number | null;
   name: string;
   parentId: number | null;
+  uploadSessionId?: string;
+  clientUploadId?: string;
 }) {
   return apiRequest<DriveItem>(drivePath(input.organizationId), {
     method: "POST",
+    headers: uploadHeaders(input),
     body: {
       name: input.name,
       item_type: "directory",
@@ -92,6 +97,16 @@ export type UploadProgress = {
   total?: number;
   percent?: number;
 };
+
+export type UploadResolutionPolicy =
+  | {
+      category: "duplicate_name";
+      resolution: "skip" | "auto_rename";
+      scope: "item" | "batch";
+      itemKey?: string;
+      operationId?: string;
+    }
+  | Record<string, "skip" | "auto_rename">;
 
 export type RestoreConflictResolution =
   | "restore"
@@ -169,9 +184,13 @@ export function uploadFile(input: {
   name: string;
   parentId: number | null;
   nameConflictAction?: "auto_rename";
+  uploadPolicy?: UploadResolutionPolicy;
   operationId?: string;
   signal?: AbortSignal;
   organizationId: number | null;
+  uploadSessionId?: string;
+  clientUploadId?: string;
+  onRequestId?: (requestId: string) => void;
   onProgress?: (progress: UploadProgress) => void;
 }) {
   if (!input.onProgress) {
@@ -185,6 +204,7 @@ export function uploadFile(input: {
       method: "POST",
       body: form,
       signal: input.signal,
+      headers: uploadHeaders(input),
     });
   }
 
@@ -196,10 +216,14 @@ async function uploadFileWithProgress(input: {
   name: string;
   parentId: number | null;
   nameConflictAction?: "auto_rename";
+  uploadPolicy?: UploadResolutionPolicy;
   operationId?: string;
   signal?: AbortSignal;
   organizationId: number | null;
+  uploadSessionId?: string;
+  clientUploadId?: string;
   onProgress: (progress: UploadProgress) => void;
+  onRequestId?: (requestId: string) => void;
 }): Promise<DriveItem> {
   const form = new FormData();
   form.append("name", input.name);
@@ -226,6 +250,8 @@ async function uploadFileWithProgress(input: {
     };
     xhr.onload = () => {
       input.signal?.removeEventListener("abort", abort);
+      const requestId = xhr.getResponseHeader("X-Request-ID");
+      if (requestId) input.onRequestId?.(requestId);
       const body = parseJson(xhr.responseText);
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(driveItemSchema.parse(body));
@@ -245,17 +271,34 @@ async function uploadFileWithProgress(input: {
     xhr.withCredentials = true;
     xhr.setRequestHeader("Accept", "application/json");
     xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+    if (input.uploadSessionId) {
+      xhr.setRequestHeader("X-Upload-Session-ID", input.uploadSessionId);
+    }
+    if (input.clientUploadId) {
+      xhr.setRequestHeader("X-Upload-ID", input.clientUploadId);
+    }
     xhr.send(form);
   });
+}
+
+function uploadHeaders(input: { uploadSessionId?: string; clientUploadId?: string }) {
+  const headers: Record<string, string> = {};
+  if (input.uploadSessionId) headers["X-Upload-Session-ID"] = input.uploadSessionId;
+  if (input.clientUploadId) headers["X-Upload-ID"] = input.clientUploadId;
+  return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
 function appendUploadResolutionFields(
   form: FormData,
   input: {
     nameConflictAction?: "auto_rename";
+    uploadPolicy?: UploadResolutionPolicy;
     operationId?: string;
   },
 ) {
+  if (input.uploadPolicy) {
+    form.append("upload_policy", JSON.stringify(input.uploadPolicy));
+  }
   if (input.nameConflictAction) {
     form.append("name_conflict_action", input.nameConflictAction);
   }

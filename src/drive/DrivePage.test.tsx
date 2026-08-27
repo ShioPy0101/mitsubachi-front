@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +21,7 @@ type CreateDirectoryInput = {
   organizationId: number | null;
   name: string;
   parentId: number | null;
+  uploadSessionId?: string;
 };
 
 const mocks = vi.hoisted(() => ({
@@ -323,6 +324,43 @@ describe("DrivePage drag and drop upload", () => {
     ).toBeInTheDocument();
   });
 
+  it("registers every folder file in the batch before completion and continues after one succeeds", async () => {
+    const uploadResolvers: Array<() => void> = [];
+    mocks.uploadFile.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          uploadResolvers.push(() => resolve({ id: uploadResolvers.length + 1 }));
+        }),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const files = [
+      new File(["a"], "first.txt", { type: "text/plain" }),
+      new File(["b"], "second.txt", { type: "text/plain" }),
+      new File(["c"], "third.txt", { type: "text/plain" }),
+    ];
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithDirectory("素材", files),
+    });
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(3));
+    expect(screen.getByText("0 / 3 件完了")).toBeInTheDocument();
+
+    uploadResolvers[0]?.();
+    await waitFor(() => expect(screen.getByText("1 / 3 件完了")).toBeInTheDocument());
+    expect(mocks.uploadFile).toHaveBeenCalledTimes(3);
+    expect(
+      screen.queryByText(/アップロード処理が完了しました/),
+    ).not.toBeInTheDocument();
+
+    uploadResolvers[1]?.();
+    uploadResolvers[2]?.();
+    expect(
+      await screen.findByText("3件のアップロード処理が完了しました"),
+    ).toBeInTheDocument();
+  });
+
   it("does not reject dropped folders with more than 1000 files", async () => {
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
@@ -471,6 +509,51 @@ describe("DrivePage drag and drop upload", () => {
         name: "report（1）",
         parentId: 42,
       });
+    });
+  });
+
+  it("retries a failed upload without adding another queue row", async () => {
+    mocks.uploadFile
+      .mockRejectedValueOnce(new Error("通信が中断されました。"))
+      .mockResolvedValueOnce({
+        id: 40,
+        parent_id: 42,
+        name: "retry",
+        item_type: "file",
+      });
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const file = new File(["retry"], "retry.txt", { type: "text/plain" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+
+    expect(
+      await screen.findByText("1件のアップロード処理が完了しました"),
+    ).toBeInTheDocument();
+    const uploadProgress = screen.getByRole("region", { name: "アップロード進捗" });
+    fireEvent.click(within(uploadProgress).getByRole("button", { name: "詳細を表示" }));
+    expect(container.querySelectorAll(".upload-progress li")).toHaveLength(1);
+
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "アップロード進捗" })).getAllByRole(
+        "button",
+        { name: "再試行" },
+      )[0],
+    );
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(2));
+    const completedProgress = screen.getByRole("region", { name: "アップロード進捗" });
+    const completedDetails = within(completedProgress).queryByRole("button", {
+      name: "詳細を表示",
+    });
+    if (completedDetails) fireEvent.click(completedDetails);
+    expect(container.querySelectorAll(".upload-progress li")).toHaveLength(1);
+    expect(mocks.uploadFile.mock.calls[1]?.[0]).toMatchObject({
+      file,
+      name: "retry",
+      parentId: 42,
     });
   });
 
@@ -881,16 +964,23 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.change(directoryInput(container), { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(mocks.createDirectory).toHaveBeenCalledWith({
-        organizationId: null,
-        name: "素材",
-        parentId: 42,
-      });
-      expect(mocks.createDirectory).toHaveBeenCalledWith({
-        organizationId: null,
-        name: "camera-a",
-        parentId: 100,
-      });
+      expect(mocks.createDirectory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: null,
+          name: "素材",
+          parentId: 42,
+        }),
+      );
+      expect(mocks.createDirectory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: null,
+          name: "camera-a",
+          parentId: 100,
+        }),
+      );
+      expect(mocks.createDirectory.mock.calls[0]?.[0].uploadSessionId).toBe(
+        mocks.createDirectory.mock.calls[1]?.[0].uploadSessionId,
+      );
       expect(mocks.uploadFile.mock.calls[0]?.[0]).toMatchObject({
         file,
         name: "clip001",
@@ -905,16 +995,23 @@ describe("DrivePage drag and drop upload", () => {
     await screen.findByRole("heading", { name: "共有ドライブ" });
     const toolbar = container.querySelector(".drive-toolbar");
     expect(toolbar).toBeInTheDocument();
-    expect(toolbar).toContainElement(
-      screen.getByRole("button", { name: "新しいフォルダ" }),
-    );
-    expect(toolbar).toContainElement(
-      screen.getByRole("button", { name: "ファイルアップロード" }),
-    );
-    expect(toolbar).toContainElement(
-      screen.getByRole("button", { name: "フォルダーアップロード" }),
-    );
+    const createButton = screen.getByRole("button", {
+      name: "新規作成メニューを開く",
+    });
+    expect(toolbar).toContainElement(createButton);
     expect(toolbar).toContainElement(screen.getByRole("button", { name: "更新" }));
+
+    fireEvent.click(createButton);
+    const menu = screen.getByRole("menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "新しいフォルダ" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("menuitem", { name: "ファイルをアップロード" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("menuitem", { name: "フォルダーをアップロード" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps the folder form open without copy controls when the name already exists", async () => {
@@ -933,7 +1030,8 @@ describe("DrivePage drag and drop upload", () => {
     renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
 
-    fireEvent.click(screen.getByRole("button", { name: "新しいフォルダ" }));
+    fireEvent.click(screen.getByRole("button", { name: "新規作成メニューを開く" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "新しいフォルダ" }));
     fireEvent.change(screen.getAllByLabelText("名前")[0], {
       target: { value: "素材" },
     });
@@ -1479,6 +1577,61 @@ describe("DrivePage drag and drop upload", () => {
     });
   });
 
+  it("selects and clears every current item from the header checkbox", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "a", item_type: "file", extension: "txt" },
+      { id: 2, parent_id: null, name: "b", item_type: "file", extension: "txt" },
+      { id: 3, parent_id: null, name: "folder", item_type: "directory" },
+    ]);
+    renderDrivePage("/drive");
+
+    const selectAll = await screen.findByLabelText("現在の一覧をすべて選択");
+    fireEvent.click(selectAll);
+
+    expect(screen.getByText("3件選択中")).toBeInTheDocument();
+    expect(screen.getByLabelText("aを選択")).toBeChecked();
+    expect(screen.getByLabelText("bを選択")).toBeChecked();
+    expect(screen.getByLabelText("folderを選択")).toBeChecked();
+
+    fireEvent.click(selectAll);
+
+    expect(screen.queryByText("3件選択中")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("aを選択")).not.toBeChecked();
+    expect(screen.getByLabelText("bを選択")).not.toBeChecked();
+    expect(screen.getByLabelText("folderを選択")).not.toBeChecked();
+  });
+
+  it("shows an indeterminate header checkbox when only part of the current items are selected", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      { id: 1, parent_id: null, name: "a", item_type: "file", extension: "txt" },
+      { id: 2, parent_id: null, name: "b", item_type: "file", extension: "txt" },
+    ]);
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByLabelText("aを選択"));
+
+    const selectAll = screen.getByLabelText("現在の一覧をすべて選択");
+    expect(selectAll).not.toBeChecked();
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+  });
+
+  it("header selection targets the full items list rather than only rendered virtual rows", async () => {
+    mocks.fetchDriveItems.mockResolvedValue(
+      Array.from({ length: 30 }, (_, index) => ({
+        id: index + 1,
+        parent_id: null,
+        name: `item-${index + 1}`,
+        item_type: "file" as const,
+        extension: "txt",
+      })),
+    );
+    renderDrivePage("/drive");
+
+    fireEvent.click(await screen.findByLabelText("現在の一覧をすべて選択"));
+
+    expect(screen.getByText("30件選択中")).toBeInTheDocument();
+  });
+
   it("moves only the dragged item when it is not selected", async () => {
     mocks.fetchDriveItems.mockResolvedValue([
       { id: 1, parent_id: null, name: "selected", item_type: "file", extension: "txt" },
@@ -1892,7 +2045,10 @@ describe("DrivePage drag and drop upload", () => {
     fireEvent.click(screen.getByRole("button", { name: "パスワードを再発行" }));
 
     await waitFor(() => {
-      expect(mocks.regenerateExternalSharePassword.mock.calls[0]?.[0]).toBe(12);
+      expect(mocks.regenerateExternalSharePassword.mock.calls[0]?.[0]).toEqual({
+        organizationId: null,
+        id: 12,
+      });
     });
     expect(await screen.findByDisplayValue("N3wPassw0rdValue")).toBeInTheDocument();
   });
@@ -1975,6 +2131,57 @@ describe("DrivePage drag and drop upload", () => {
     expect(
       await screen.findAllByText("ZIPファイルを作成できませんでした"),
     ).not.toHaveLength(0);
+  });
+
+  it("opens the create menu and supports keyboard navigation", async () => {
+    renderDrivePage("/drive");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "新規作成メニューを開く" }),
+    );
+
+    const menu = screen.getByRole("menu");
+    const createFolder = within(menu).getByRole("menuitem", {
+      name: "新しいフォルダ",
+    });
+    const uploadFiles = within(menu).getByRole("menuitem", {
+      name: "ファイルをアップロード",
+    });
+
+    await waitFor(() => expect(createFolder).toHaveFocus());
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(uploadFiles).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(createFolder).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("shows search result count without replacing the list UI", async () => {
+    mocks.searchDriveItems.mockResolvedValue({
+      data: [
+        {
+          id: 20,
+          parent_id: null,
+          parent_name: "共有ドライブ",
+          name: "report",
+          extension: "pdf",
+          item_type: "file",
+          owner_display_name: "佐藤",
+          updated_at: "2026-07-14T18:20:00.000Z",
+          file_size: 2400,
+        },
+      ],
+      meta: { current_page: 1, per_page: 50, total_pages: 1, total_count: 2 },
+    });
+
+    renderDrivePage("/drive?q=report&scope=organization");
+
+    expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByText("2件見つかりました")).toBeInTheDocument();
+    expect(
+      screen.getByRole("table", { name: "ファイルとフォルダーの一覧" }),
+    ).toBeInTheDocument();
   });
 });
 

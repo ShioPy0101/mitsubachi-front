@@ -7,10 +7,20 @@ const publicShareItemSchema = z.object({
   id: z.number(),
   parent_id: z.number().nullable().optional(),
   name: z.string(),
+  kind: z.enum(["file", "folder"]).optional(),
   item_type: z.enum(["file", "directory"]),
   extension: z.string().nullable().optional(),
   content_type: z.string().nullable().optional(),
   file_size: z.number().nullable().optional(),
+  size: z.number().nullable().optional(),
+  previewable: z.boolean().optional(),
+  downloadable: z.boolean().optional(),
+});
+
+const publicShareItemsResponseSchema = z.object({
+  current_folder: publicShareItemSchema.nullable().optional(),
+  breadcrumbs: z.array(publicShareItemSchema).optional().default([]),
+  items: z.array(publicShareItemSchema),
 });
 
 const externalShareSchema = z.object({
@@ -44,8 +54,10 @@ const publicShareSchema = z.union([
 export type ExternalShare = z.infer<typeof externalShareSchema>;
 export type PublicShare = z.infer<typeof publicShareSchema>;
 export type PublicShareItem = z.infer<typeof publicShareItemSchema>;
+export type PublicShareItemsResponse = z.infer<typeof publicShareItemsResponseSchema>;
 
 export type CreateExternalShareInput = {
+  organizationId: number | null;
   name: string;
   driveItemIds: number[];
   expiresAt: string | null;
@@ -55,8 +67,14 @@ export type CreateExternalShareInput = {
   folderShareMode: "snapshot" | "dynamic";
 };
 
+function externalSharePath(organizationId: number | null, suffix = "") {
+  if (organizationId == null) return `/api/v1/external_shares${suffix}`;
+
+  return `/api/v1/organizations/${organizationId}/external_shares${suffix}`;
+}
+
 export function createExternalShare(input: CreateExternalShareInput) {
-  return apiRequest<unknown>("/api/v1/external_shares", {
+  return apiRequest<unknown>(externalSharePath(input.organizationId), {
     method: "POST",
     body: {
       external_share: {
@@ -72,10 +90,16 @@ export function createExternalShare(input: CreateExternalShareInput) {
   }).then((body) => externalShareSchema.parse(body));
 }
 
-export function regenerateExternalSharePassword(id: number) {
-  return apiRequest<unknown>(`/api/v1/external_shares/${id}/regenerate_password`, {
-    method: "POST",
-  }).then((body) => externalShareSchema.parse(body));
+export function regenerateExternalSharePassword(input: {
+  organizationId: number | null;
+  id: number;
+}) {
+  return apiRequest<unknown>(
+    externalSharePath(input.organizationId, `/${input.id}/regenerate_password`),
+    {
+      method: "POST",
+    },
+  ).then((body) => externalShareSchema.parse(body));
 }
 
 export function fetchPublicShare(token: string): Promise<PublicShare> {
@@ -89,6 +113,17 @@ export function unlockPublicShare(token: string, password: string) {
     `/api/v1/public/shares/${encodeURIComponent(token)}/unlock`,
     { method: "POST", body: { password } },
   );
+}
+
+export function fetchPublicShareItems(
+  token: string,
+  parentId: number | null,
+): Promise<PublicShareItemsResponse> {
+  const query =
+    parentId === null ? "" : `?parent_id=${encodeURIComponent(String(parentId))}`;
+  return apiRequest<unknown>(
+    `/api/v1/public/shares/${encodeURIComponent(token)}/items${query}`,
+  ).then((body) => publicShareItemsResponseSchema.parse(body));
 }
 
 export function publicPreviewUrl(token: string, id: number) {

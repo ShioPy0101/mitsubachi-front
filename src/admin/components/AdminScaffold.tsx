@@ -92,6 +92,9 @@ export function AdminLayout() {
             システムイベント
           </NavLink>
           {systemAdminContext ? (
+            <NavLink to="/system-admin/upload-metrics">アップロード統計</NavLink>
+          ) : null}
+          {systemAdminContext ? (
             <NavLink to="/system-admin/organizations/new">組織作成</NavLink>
           ) : null}
         </nav>
@@ -132,6 +135,7 @@ function adminSectionLabel(pathname: string) {
   if (pathname.includes("/operation-logs")) return "操作履歴";
   if (pathname.includes("/file-access-logs")) return "ファイルアクセス履歴";
   if (pathname.includes("/system-events")) return "システムイベント";
+  if (pathname.includes("/upload-metrics")) return "アップロード統計";
   if (pathname.includes("/dashboard")) return "ダッシュボード";
   return "";
 }
