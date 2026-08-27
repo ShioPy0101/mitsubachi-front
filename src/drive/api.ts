@@ -114,12 +114,7 @@ export type RestorePreviewItem = {
   itemType: "file" | "directory";
   restoreTargetId: number;
   conflictType:
-    | "none"
-    | "name_conflict"
-    | "missing_parent"
-    | "name_conflict_and_missing_parent"
-    | "active_content_duplicate"
-    | "active_content_duplicate_and_missing_parent";
+    "none" | "name_conflict" | "missing_parent" | "name_conflict_and_missing_parent";
   parentExists: boolean;
   existingItemId: number | null;
   existingItemType?: "file" | "directory" | null;
@@ -173,12 +168,8 @@ export function uploadFile(input: {
   file: File;
   name: string;
   parentId: number | null;
-  allowDuplicateContent?: boolean;
-  duplicateContentAction?: "upload_anyway";
   nameConflictAction?: "auto_rename";
   operationId?: string;
-  allowTrashDuplicate?: boolean;
-  replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   organizationId: number | null;
   onProgress?: (progress: UploadProgress) => void;
@@ -188,15 +179,7 @@ export function uploadFile(input: {
     form.append("name", input.name);
     form.append("item_type", "file");
     if (input.parentId !== null) form.append("parent_id", String(input.parentId));
-    if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
     appendUploadResolutionFields(form, input);
-    if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
-    if (input.replaceTrashedDriveItemId !== undefined) {
-      form.append(
-        "replace_trashed_drive_item_id",
-        String(input.replaceTrashedDriveItemId),
-      );
-    }
     form.append("file", input.file);
     return apiRequest<DriveItem>(drivePath(input.organizationId), {
       method: "POST",
@@ -212,12 +195,8 @@ async function uploadFileWithProgress(input: {
   file: File;
   name: string;
   parentId: number | null;
-  allowDuplicateContent?: boolean;
-  duplicateContentAction?: "upload_anyway";
   nameConflictAction?: "auto_rename";
   operationId?: string;
-  allowTrashDuplicate?: boolean;
-  replaceTrashedDriveItemId?: number;
   signal?: AbortSignal;
   organizationId: number | null;
   onProgress: (progress: UploadProgress) => void;
@@ -226,15 +205,7 @@ async function uploadFileWithProgress(input: {
   form.append("name", input.name);
   form.append("item_type", "file");
   if (input.parentId !== null) form.append("parent_id", String(input.parentId));
-  if (input.allowDuplicateContent) form.append("allow_duplicate_content", "true");
   appendUploadResolutionFields(form, input);
-  if (input.allowTrashDuplicate) form.append("allow_trash_duplicate", "true");
-  if (input.replaceTrashedDriveItemId !== undefined) {
-    form.append(
-      "replace_trashed_drive_item_id",
-      String(input.replaceTrashedDriveItemId),
-    );
-  }
   form.append("file", input.file);
 
   const csrfToken = await getCsrfToken();
@@ -281,14 +252,10 @@ async function uploadFileWithProgress(input: {
 function appendUploadResolutionFields(
   form: FormData,
   input: {
-    duplicateContentAction?: "upload_anyway";
     nameConflictAction?: "auto_rename";
     operationId?: string;
   },
 ) {
-  if (input.duplicateContentAction) {
-    form.append("duplicate_content_action", input.duplicateContentAction);
-  }
   if (input.nameConflictAction) {
     form.append("name_conflict_action", input.nameConflictAction);
   }
@@ -641,9 +608,7 @@ function restoreConflictTypeFrom(value: unknown): RestorePreviewItem["conflictTy
   if (
     value === "name_conflict" ||
     value === "missing_parent" ||
-    value === "name_conflict_and_missing_parent" ||
-    value === "active_content_duplicate" ||
-    value === "active_content_duplicate_and_missing_parent"
+    value === "name_conflict_and_missing_parent"
   ) {
     return value;
   }

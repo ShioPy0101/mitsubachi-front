@@ -68,7 +68,7 @@ describe("drive api", () => {
     expect((request?.headers as Headers).get("Content-Type")).toBeNull();
   });
 
-  it("sends trash duplicate resolution flags as explicit multipart fields", async () => {
+  it("sends explicit name conflict action without content duplicate fields", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url) => {
@@ -94,51 +94,15 @@ describe("drive api", () => {
       file: new File(["content"], "report.txt", { type: "text/plain" }),
       name: "report",
       parentId: 42,
-      allowTrashDuplicate: true,
-      replaceTrashedDriveItemId: 99,
-    });
-
-    const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
-    expect(form.get("allow_trash_duplicate")).toBe("true");
-    expect(form.get("replace_trashed_drive_item_id")).toBe("99");
-    expect(form.get("parent_id")).toBe("42");
-  });
-
-  it("sends explicit duplicate content and name conflict actions", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url) => {
-        if (url === `${API_BASE_URL}/api/v1/csrf_token`) {
-          return new Response(JSON.stringify({ csrf_token: "csrf" }), {
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(
-          JSON.stringify({
-            id: 1,
-            parent_id: null,
-            name: "report",
-            item_type: "file",
-          }),
-          { headers: { "Content-Type": "application/json" } },
-        );
-      }),
-    );
-
-    await uploadFile({
-      organizationId: 7,
-      file: new File(["content"], "report.txt", { type: "text/plain" }),
-      name: "report",
-      parentId: 42,
-      allowDuplicateContent: true,
-      duplicateContentAction: "upload_anyway",
       nameConflictAction: "auto_rename",
       operationId: "operation-123",
     });
 
     const form = vi.mocked(fetch).mock.calls[1]?.[1]?.body as FormData;
-    expect(form.get("allow_duplicate_content")).toBe("true");
-    expect(form.get("duplicate_content_action")).toBe("upload_anyway");
+    expect(form.has("allow_duplicate_content")).toBe(false);
+    expect(form.has("duplicate_content_action")).toBe(false);
+    expect(form.has("allow_trash_duplicate")).toBe(false);
+    expect(form.has("replace_trashed_drive_item_id")).toBe(false);
     expect(form.get("name_conflict_action")).toBe("auto_rename");
     expect(form.get("operation_id")).toBe("operation-123");
   });
@@ -249,7 +213,7 @@ describe("drive api", () => {
     );
   });
 
-  it("keeps active content duplicate restore preview conflicts", () => {
+  it("treats retired content duplicate restore preview values as no conflict", () => {
     const preview = normalizeRestorePreview({
       items: [
         {
@@ -292,6 +256,6 @@ describe("drive api", () => {
       },
     });
 
-    expect(preview.items[0]?.conflictType).toBe("active_content_duplicate");
+    expect(preview.items[0]?.conflictType).toBe("none");
   });
 });
