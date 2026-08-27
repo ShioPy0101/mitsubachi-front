@@ -117,14 +117,9 @@ export function sanitizeText(value: unknown) {
 }
 
 export function isNameConflictAppError(error: AppError) {
-  return [
-    "duplicate_name",
-    "name_conflict",
-    "duplicate_content",
-    "active_content_duplicate",
-    "trash_content_duplicate",
-    "auto_rename_required",
-  ].includes(error.code);
+  return ["duplicate_name", "name_conflict", "auto_rename_required"].includes(
+    error.code,
+  );
 }
 
 export function isReportableAppError(error: AppError) {
@@ -168,16 +163,7 @@ function codeForStatus(status: number) {
 
 function levelFor(code: string, status: number): AppError["level"] {
   if (status === 401) return "warn";
-  if (
-    [
-      "duplicate_name",
-      "name_conflict",
-      "duplicate_content",
-      "active_content_duplicate",
-      "trash_content_duplicate",
-      "auto_rename_required",
-    ].includes(code)
-  ) {
+  if (["duplicate_name", "name_conflict", "auto_rename_required"].includes(code)) {
     return "info";
   }
   if (status === 409 || status === 413 || status === 422) return "warn";
