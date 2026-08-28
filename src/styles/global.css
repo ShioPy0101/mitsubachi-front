@@ -640,6 +640,112 @@ a {
   margin-left: 2px;
 }
 
+.view-mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.view-mode-switch .button[aria-pressed="true"] {
+  color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+.media-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.media-preview-tile {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.media-preview-tile[data-selected="true"] {
+  background: var(--color-surface-selected);
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.media-preview-open {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.media-preview-open:hover .media-preview-name {
+  color: var(--color-primary);
+}
+
+.media-preview-image {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-subtle);
+  place-items: center;
+}
+
+.media-preview-image .media-thumbnail-fallback svg {
+  width: 36px;
+  height: 36px;
+}
+
+.media-preview-name,
+.media-preview-meta {
+  min-width: 0;
+  margin-inline: var(--space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-preview-name {
+  margin-top: var(--space-2);
+  padding-right: 32px;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.media-preview-meta {
+  margin-block: var(--space-1) var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.media-preview-select {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 2;
+}
+
+.media-preview-download {
+  position: absolute;
+  right: var(--space-1);
+  bottom: var(--space-1);
+  z-index: 2;
+}
+
 :root[data-color-mode="dark"] .file-list {
   background: var(--color-surface);
   border-color: transparent;
@@ -2392,6 +2498,22 @@ th:last-child,
     width: 100%;
   }
 
+  .drive-toolbar .view-mode-switch {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .drive-toolbar .view-mode-switch .button {
+    flex: 1;
+  }
+
+  .media-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    padding: var(--space-2);
+  }
+
   .file-list {
     width: 100%;
     min-width: 0;
@@ -3127,6 +3249,16 @@ th:last-child,
   cursor: default;
 }
 
+.public-share-view-toolbar {
+  display: flex;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.public-share-view-toolbar .view-mode-switch {
+  margin-left: auto;
+}
+
 .public-share-crumb {
   display: inline-flex;
   align-items: center;
@@ -3138,6 +3270,26 @@ th:last-child,
   min-height: 180px;
   border: 0;
   border-radius: 0;
+}
+
+.public-share-media-grid {
+  border: 0;
+  border-radius: 0;
+  padding: var(--space-4);
+}
+
+.public-share-media-grid .media-preview-open:disabled {
+  cursor: default;
+}
+
+.public-share-media-download {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border-radius: var(--radius-pill);
+  place-items: center;
 }
 
 .public-share-grid {
@@ -3250,6 +3402,14 @@ th:last-child,
     grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
     gap: var(--space-2);
     padding: var(--space-3);
+  }
+
+  .public-share-view-toolbar .view-mode-switch {
+    width: 100%;
+  }
+
+  .public-share-view-toolbar .view-mode-switch .button {
+    flex: 1;
   }
 }
 
