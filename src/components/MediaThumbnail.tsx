@@ -5,7 +5,7 @@ import { FileTypeIcon } from "./FileTypeIcon";
 
 type ThumbnailItem = {
   name: string;
-  item_type?: string | null;
+  item_type?: "file" | "directory" | null;
   kind?: string | null;
   extension?: string | null;
   content_type?: string | null;
