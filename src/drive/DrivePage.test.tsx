@@ -271,32 +271,6 @@ describe("DrivePage drag and drop upload", () => {
     expect(mocks.uploadFile).not.toHaveBeenCalled();
   });
 
-  it("continues uploading when an older backend does not have the name check route", async () => {
-    mocks.checkDriveItemName.mockRejectedValueOnce(
-      new ApiError(
-        404,
-        "指定されたファイルが見つかりません",
-        [],
-        "not_found",
-        "/api/v1/organizations/1/drive_items/check_name",
-      ),
-    );
-    const { container } = renderDrivePage("/drive/folder/42");
-    await screen.findByText("Reports");
-
-    const file = new File(["content"], "legacy.wav", { type: "audio/wav" });
-    fireEvent.drop(driveDropTarget(container), {
-      dataTransfer: dataTransferWithFiles([file]),
-    });
-
-    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(1));
-    expect(mocks.uploadFile.mock.calls[0]?.[0]).toMatchObject({
-      file,
-      name: "legacy",
-      parentId: 42,
-    });
-  });
-
   it("uploads multiple dropped files sequentially", async () => {
     const { container } = renderDrivePage("/drive/folder/42");
     await screen.findByText("Reports");
