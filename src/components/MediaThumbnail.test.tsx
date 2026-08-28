@@ -50,5 +50,16 @@ describe("MediaThumbnail", () => {
     );
     fireEvent.error(screen.getByRole("img", { name: "broken.jpg" }));
     expect(screen.getByTestId("thumbnail-fallback")).toBeInTheDocument();
+
+    rerender(
+      <MediaThumbnail
+        item={{ name: "replaced.jpg", content_type: "image/jpeg", extension: "jpg" }}
+        src="/thumbnail/5"
+      />,
+    );
+    expect(screen.getByRole("img", { name: "replaced.jpg" })).toHaveAttribute(
+      "src",
+      "/thumbnail/5",
+    );
   });
 });
