@@ -518,6 +518,10 @@ export function previewUrl(organizationId: number | null, id: number) {
   return apiUrl(drivePath(organizationId, `/${id}/preview`));
 }
 
+export function thumbnailUrl(organizationId: number | null, id: number) {
+  return apiUrl(drivePath(organizationId, `/${id}/thumbnail`));
+}
+
 export function streamUrl(organizationId: number | null, id: number) {
   return apiUrl(drivePath(organizationId, `/${id}/stream`));
 }
