@@ -1,8 +1,11 @@
 import { File, FileAudio, FileText, FileVideo, Folder } from "lucide-react";
 
-import type { DriveItem } from "../api/schemas";
+type FileTypeItem = {
+  item_type?: "file" | "directory" | null;
+  content_type?: string | null;
+};
 
-export function FileTypeIcon({ item }: { item: DriveItem }) {
+export function FileTypeIcon({ item }: { item: FileTypeItem }) {
   if (item.item_type === "directory") return <Folder size={20} aria-hidden="true" />;
   if (item.content_type?.startsWith("video/"))
     return <FileVideo size={20} aria-hidden="true" />;

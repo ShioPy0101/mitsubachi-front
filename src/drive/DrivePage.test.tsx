@@ -72,6 +72,9 @@ vi.mock("./api", () => ({
   purgeDriveItem: mocks.purgeDriveItem,
   downloadDriveItem: mocks.downloadDriveItem,
   previewUrl: vi.fn((_organizationId: number | null, id: number) => `/preview/${id}`),
+  thumbnailUrl: vi.fn(
+    (_organizationId: number | null, id: number) => `/thumbnail/${id}`,
+  ),
   renameDriveItem: vi.fn(),
   moveDriveItem: mocks.moveDriveItem,
   restoreDriveItem: mocks.restoreDriveItem,
@@ -2230,6 +2233,58 @@ describe("DrivePage drag and drop upload", () => {
 
     expect(await screen.findByText("report.pdf")).toBeInTheDocument();
     expect(screen.getByText("2件見つかりました")).toBeInTheDocument();
+    expect(
+      screen.getByRole("table", { name: "ファイルとフォルダーの一覧" }),
+    ).toBeInTheDocument();
+  });
+
+  it("通常一覧を維持したまま画像プレビュー表示へ切り替える", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      {
+        id: 31,
+        parent_id: null,
+        name: "photo",
+        extension: "jpg",
+        item_type: "file",
+        content_type: "image/jpeg",
+        file_size: 2048,
+      },
+      {
+        id: 32,
+        parent_id: null,
+        name: "movie",
+        extension: "mp4",
+        item_type: "file",
+        content_type: "video/mp4",
+        file_size: 4096,
+      },
+      {
+        id: 33,
+        parent_id: null,
+        name: "document",
+        extension: "pdf",
+        item_type: "file",
+        content_type: "application/pdf",
+        file_size: 1024,
+      },
+    ]);
+
+    renderDrivePage("/drive");
+
+    expect(
+      await screen.findByRole("table", { name: "ファイルとフォルダーの一覧" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "画像プレビュー" }));
+
+    expect(screen.getByLabelText("画像プレビュー一覧")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "photo.jpg" })).toHaveAttribute(
+      "src",
+      "/thumbnail/31",
+    );
+    expect(screen.getByLabelText("動画")).toBeInTheDocument();
+    expect(screen.getAllByTestId("thumbnail-fallback")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "ファイル" }));
     expect(
       screen.getByRole("table", { name: "ファイルとフォルダーの一覧" }),
     ).toBeInTheDocument();

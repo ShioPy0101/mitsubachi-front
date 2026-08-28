@@ -132,6 +132,12 @@ export function publicPreviewUrl(token: string, id: number) {
   );
 }
 
+export function publicThumbnailUrl(token: string, id: number) {
+  return apiUrl(
+    `/api/v1/public/shares/${encodeURIComponent(token)}/items/${id}/thumbnail`,
+  );
+}
+
 export function publicDownloadUrl(token: string, id: number) {
   return apiUrl(
     `/api/v1/public/shares/${encodeURIComponent(token)}/items/${id}/download`,

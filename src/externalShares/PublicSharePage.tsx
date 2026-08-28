@@ -1,5 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Download, Eye, Folder, Lock, Package } from "lucide-react";
+import {
+  ChevronRight,
+  Download,
+  Eye,
+  Folder,
+  LayoutGrid,
+  List,
+  Lock,
+  Package,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -9,6 +18,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FileTypeIcon } from "../components/FileTypeIcon";
 import { LoadingIndicator } from "../components/LoadingIndicator";
+import { MediaThumbnail } from "../components/MediaThumbnail";
 import { Modal } from "../components/Modal";
 import { useToast } from "../components/ToastProvider";
 import {
@@ -17,6 +27,7 @@ import {
   fetchPublicShare,
   publicDownloadUrl,
   publicPreviewUrl,
+  publicThumbnailUrl,
   unlockPublicShare,
   type PublicShareItem,
 } from "./api";
@@ -222,6 +233,8 @@ function PublicShareBrowser({
   onNavigate: (index: number) => void;
   onPreview: (item: PublicShareItem) => void;
 }) {
+  const [viewMode, setViewMode] = useState<"files" | "media">("files");
+
   return (
     <section className="public-share-browser" aria-label="共有ファイル一覧">
       <nav className="public-share-breadcrumbs" aria-label="共有フォルダ">
@@ -245,6 +258,28 @@ function PublicShareBrowser({
           </span>
         ))}
       </nav>
+      <div className="public-share-view-toolbar">
+        <div className="view-mode-switch" role="group" aria-label="表示形式">
+          <Button
+            type="button"
+            variant="ghost"
+            aria-pressed={viewMode === "files"}
+            onClick={() => setViewMode("files")}
+          >
+            <List size={16} aria-hidden="true" />
+            ファイル
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-pressed={viewMode === "media"}
+            onClick={() => setViewMode("media")}
+          >
+            <LayoutGrid size={16} aria-hidden="true" />
+            画像プレビュー
+          </Button>
+        </div>
+      </div>
       <div className="public-share-list" aria-busy={loading ? "true" : undefined}>
         {loading ? <LoadingIndicator label="フォルダを読み込んでいます" /> : null}
         {error ? <ErrorState message="フォルダを読み込めませんでした。" /> : null}
@@ -252,21 +287,95 @@ function PublicShareBrowser({
           <EmptyState title="このフォルダは空です。" />
         ) : null}
         {!loading && !error && items.length > 0 ? (
-          <div className="public-share-grid">
-            {items.map((item) => (
-              <PublicShareItemCard
-                key={item.id}
-                token={token}
-                item={item}
-                allowDownload={allowDownload}
-                onOpenFolder={onOpenFolder}
-                onPreview={onPreview}
-              />
-            ))}
-          </div>
+          viewMode === "files" ? (
+            <div className="public-share-grid">
+              {items.map((item) => (
+                <PublicShareItemCard
+                  key={item.id}
+                  token={token}
+                  item={item}
+                  allowDownload={allowDownload}
+                  onOpenFolder={onOpenFolder}
+                  onPreview={onPreview}
+                />
+              ))}
+            </div>
+          ) : (
+            <PublicShareMediaGrid
+              token={token}
+              items={items}
+              allowDownload={allowDownload}
+              onOpenFolder={onOpenFolder}
+              onPreview={onPreview}
+            />
+          )
         ) : null}
       </div>
     </section>
+  );
+}
+
+function PublicShareMediaGrid({
+  token,
+  items,
+  allowDownload,
+  onOpenFolder,
+  onPreview,
+}: {
+  token: string;
+  items: PublicShareItem[];
+  allowDownload: boolean;
+  onOpenFolder: (item: PublicShareItem) => void;
+  onPreview: (item: PublicShareItem) => void;
+}) {
+  return (
+    <div
+      className="media-preview-grid public-share-media-grid"
+      aria-label="画像プレビュー一覧"
+    >
+      {items.map((item) => {
+        const directory = item.item_type === "directory";
+        const previewable = safePreview(item);
+        const canOpen = directory || previewable;
+        return (
+          <article key={item.id} className="media-preview-tile">
+            <button
+              type="button"
+              className="media-preview-open"
+              disabled={!canOpen}
+              onClick={() => {
+                if (directory) onOpenFolder(item);
+                else if (previewable) onPreview(item);
+              }}
+              aria-label={
+                directory ? `${item.name} を開く` : `${item.name} をプレビュー`
+              }
+            >
+              <span className="media-preview-image">
+                <MediaThumbnail item={item} src={publicThumbnailUrl(token, item.id)} />
+              </span>
+              <span className="media-preview-name" title={item.name}>
+                {item.name}
+              </span>
+              <span className="media-preview-meta">
+                {directory
+                  ? "フォルダ"
+                  : `${fileKindLabel(item)} ・ ${formatSize(item.size ?? item.file_size)}`}
+              </span>
+            </button>
+            {!directory && allowDownload && item.downloadable ? (
+              <a
+                className="media-preview-download public-share-media-download"
+                href={publicDownloadUrl(token, item.id)}
+                aria-label={`${item.name}をダウンロード`}
+              >
+                <Download size={18} aria-hidden="true" />
+              </a>
+            ) : null}
+          </article>
+        );
+      })}
+    </div>
   );
 }
 

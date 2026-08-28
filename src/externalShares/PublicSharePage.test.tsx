@@ -311,6 +311,58 @@ describe("PublicSharePage password unlock", () => {
     );
   });
 
+  it("keeps the file cards and switches to lazy media thumbnails", async () => {
+    clearCsrfToken();
+    mockPublicShare(folderShare(), {
+      root: itemsResponse([
+        fileItem({
+          id: 41,
+          name: "photo.jpg",
+          extension: "jpg",
+          content_type: "image/jpeg",
+        }),
+        fileItem({
+          id: 42,
+          name: "movie.mp4",
+          extension: "mp4",
+          content_type: "video/mp4",
+        }),
+        fileItem({
+          id: 43,
+          name: "document.pdf",
+          extension: "pdf",
+          content_type: "application/pdf",
+        }),
+      ]),
+    });
+
+    renderPublicSharePage();
+
+    expect(await screen.findByText("photo.jpg")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "photo.jpg をプレビュー" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "画像プレビュー" }));
+
+    expect(screen.getByLabelText("画像プレビュー一覧")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "photo.jpg" })).toHaveAttribute(
+      "src",
+      `${API_BASE_URL}/api/v1/public/shares/raw-token/items/41/thumbnail`,
+    );
+    expect(screen.getByRole("img", { name: "photo.jpg" })).toHaveAttribute(
+      "loading",
+      "lazy",
+    );
+    expect(screen.getByLabelText("動画")).toBeInTheDocument();
+    expect(screen.getAllByTestId("thumbnail-fallback")).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "ファイル" }));
+    expect(
+      screen.getByRole("button", { name: "photo.jpg をプレビュー" }),
+    ).toBeInTheDocument();
+  });
+
   it("hides download actions when the share disallows downloads", async () => {
     clearCsrfToken();
     mockPublicShare(folderShare({ allow_download: false }), {

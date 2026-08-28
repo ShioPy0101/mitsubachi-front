@@ -7,6 +7,8 @@ import {
   ExternalLink,
   FilePlus,
   FolderPlus,
+  LayoutGrid,
+  List,
   MoreVertical,
   Move,
   RefreshCw,
@@ -40,6 +42,7 @@ import { ErrorReportPanel } from "../components/ErrorReportPanel";
 import { FileTypeIcon } from "../components/FileTypeIcon";
 import { IconButton } from "../components/IconButton";
 import { LoadingIndicator } from "../components/LoadingIndicator";
+import { MediaThumbnail } from "../components/MediaThumbnail";
 import { Modal } from "../components/Modal";
 import { useToast } from "../components/ToastProvider";
 import {
@@ -67,6 +70,7 @@ import {
   purgeDriveItem,
   searchDriveItems,
   previewUrl,
+  thumbnailUrl,
   renameDriveItem,
   restoreDriveItem,
   restorePreview,
@@ -170,6 +174,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
   const uploadObservationRef = useRef<UploadObservation | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [viewMode, setViewMode] = useState<"files" | "media">("files");
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [dialog, setDialog] = useState<
     | "folder"
@@ -1614,6 +1619,28 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           <RefreshCw size={16} aria-hidden="true" />
           更新
         </Button>
+        {mode === "drive" ? (
+          <div className="view-mode-switch" role="group" aria-label="表示形式">
+            <Button
+              type="button"
+              variant="ghost"
+              aria-pressed={viewMode === "files"}
+              onClick={() => setViewMode("files")}
+            >
+              <List size={16} aria-hidden="true" />
+              ファイル
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              aria-pressed={viewMode === "media"}
+              onClick={() => setViewMode("media")}
+            >
+              <LayoutGrid size={16} aria-hidden="true" />
+              画像プレビュー
+            </Button>
+          </div>
+        ) : null}
         <input
           ref={fileInputRef}
           className="visually-hidden"
@@ -1790,7 +1817,7 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           }
         />
       ) : null}
-      {items.length > 0 ? (
+      {items.length > 0 && (mode === "trash" || viewMode === "files") ? (
         <FileTable
           items={items}
           selectedIds={selectedIds}
@@ -1826,6 +1853,17 @@ export function DrivePage({ mode = "drive" }: { mode?: DriveMode }) {
           dragOverFolderId={dragOverFolderId}
           trash={mode === "trash"}
           searchMode={Boolean(searchTerm)}
+        />
+      ) : null}
+      {items.length > 0 && mode === "drive" && viewMode === "media" ? (
+        <DriveMediaGrid
+          organizationId={organizationId}
+          items={items}
+          selectedIds={selectedIds}
+          onToggle={toggleSelected}
+          onOpen={openItem}
+          onDownload={(id) => void downloadItem(id)}
+          downloadingItemId={downloadingItemId}
         />
       ) : null}
       <Modal
@@ -2396,6 +2434,78 @@ function FileTable({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function DriveMediaGrid({
+  organizationId,
+  items,
+  selectedIds,
+  onToggle,
+  onOpen,
+  onDownload,
+  downloadingItemId,
+}: {
+  organizationId: number | null;
+  items: DriveItem[];
+  selectedIds: number[];
+  onToggle: (id: number) => void;
+  onOpen: (item: DriveItem) => void;
+  onDownload: (id: number) => void;
+  downloadingItemId: number | null;
+}) {
+  return (
+    <div className="media-preview-grid" aria-label="画像プレビュー一覧">
+      {items.map((item) => {
+        const itemName = displayName(item);
+        return (
+          <article
+            key={item.id}
+            className="media-preview-tile"
+            data-selected={selectedIds.includes(item.id)}
+          >
+            <input
+              className="media-preview-select"
+              type="checkbox"
+              aria-label={`${itemName}を選択`}
+              checked={selectedIds.includes(item.id)}
+              onChange={() => onToggle(item.id)}
+            />
+            <button
+              type="button"
+              className="media-preview-open"
+              onClick={() => onOpen(item)}
+              aria-label={`${itemName}を開く`}
+            >
+              <span className="media-preview-image">
+                <MediaThumbnail
+                  item={{ ...item, name: itemName }}
+                  src={thumbnailUrl(organizationId, item.id)}
+                />
+              </span>
+              <span className="media-preview-name" title={itemName}>
+                {itemName}
+              </span>
+              <span className="media-preview-meta">
+                {item.item_type === "directory"
+                  ? "フォルダー"
+                  : `${item.extension?.toUpperCase() ?? "ファイル"} ・ ${formatSize(item.file_size)}`}
+              </span>
+            </button>
+            {item.item_type === "file" ? (
+              <IconButton
+                label={`${itemName}をダウンロード`}
+                className="media-preview-download"
+                disabled={downloadingItemId !== null}
+                onClick={() => onDownload(item.id)}
+              >
+                <Download size={18} aria-hidden="true" />
+              </IconButton>
+            ) : null}
+          </article>
+        );
+      })}
     </div>
   );
 }
