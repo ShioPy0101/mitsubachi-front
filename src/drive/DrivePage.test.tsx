@@ -72,6 +72,9 @@ vi.mock("./api", () => ({
   purgeDriveItem: mocks.purgeDriveItem,
   downloadDriveItem: mocks.downloadDriveItem,
   previewUrl: vi.fn((_organizationId: number | null, id: number) => `/preview/${id}`),
+  thumbnailUrl: vi.fn(
+    (_organizationId: number | null, id: number) => `/thumbnail/${id}`,
+  ),
   renameDriveItem: vi.fn(),
   moveDriveItem: mocks.moveDriveItem,
   restoreDriveItem: mocks.restoreDriveItem,
@@ -266,6 +269,32 @@ describe("DrivePage drag and drop upload", () => {
       extension: "pdf",
     });
     expect(mocks.uploadFile).not.toHaveBeenCalled();
+  });
+
+  it("continues uploading when an older backend does not have the name check route", async () => {
+    mocks.checkDriveItemName.mockRejectedValueOnce(
+      new ApiError(
+        404,
+        "指定されたファイルが見つかりません",
+        [],
+        "not_found",
+        "/api/v1/organizations/1/drive_items/check_name",
+      ),
+    );
+    const { container } = renderDrivePage("/drive/folder/42");
+    await screen.findByText("Reports");
+
+    const file = new File(["content"], "legacy.wav", { type: "audio/wav" });
+    fireEvent.drop(driveDropTarget(container), {
+      dataTransfer: dataTransferWithFiles([file]),
+    });
+
+    await waitFor(() => expect(mocks.uploadFile).toHaveBeenCalledTimes(1));
+    expect(mocks.uploadFile.mock.calls[0]?.[0]).toMatchObject({
+      file,
+      name: "legacy",
+      parentId: 42,
+    });
   });
 
   it("uploads multiple dropped files sequentially", async () => {
@@ -2230,6 +2259,58 @@ describe("DrivePage drag and drop upload", () => {
 
     expect(await screen.findByText("report.pdf")).toBeInTheDocument();
     expect(screen.getByText("2件見つかりました")).toBeInTheDocument();
+    expect(
+      screen.getByRole("table", { name: "ファイルとフォルダーの一覧" }),
+    ).toBeInTheDocument();
+  });
+
+  it("通常一覧を維持したまま画像プレビュー表示へ切り替える", async () => {
+    mocks.fetchDriveItems.mockResolvedValue([
+      {
+        id: 31,
+        parent_id: null,
+        name: "photo",
+        extension: "jpg",
+        item_type: "file",
+        content_type: "image/jpeg",
+        file_size: 2048,
+      },
+      {
+        id: 32,
+        parent_id: null,
+        name: "movie",
+        extension: "mp4",
+        item_type: "file",
+        content_type: "video/mp4",
+        file_size: 4096,
+      },
+      {
+        id: 33,
+        parent_id: null,
+        name: "document",
+        extension: "pdf",
+        item_type: "file",
+        content_type: "application/pdf",
+        file_size: 1024,
+      },
+    ]);
+
+    renderDrivePage("/drive");
+
+    expect(
+      await screen.findByRole("table", { name: "ファイルとフォルダーの一覧" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "画像プレビュー" }));
+
+    expect(screen.getByLabelText("画像プレビュー一覧")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "photo.jpg" })).toHaveAttribute(
+      "src",
+      "/thumbnail/31",
+    );
+    expect(screen.getByLabelText("動画")).toBeInTheDocument();
+    expect(screen.getAllByTestId("thumbnail-fallback")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "ファイル" }));
     expect(
       screen.getByRole("table", { name: "ファイルとフォルダーの一覧" }),
     ).toBeInTheDocument();
