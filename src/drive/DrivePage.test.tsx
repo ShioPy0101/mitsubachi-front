@@ -2211,6 +2211,52 @@ describe("DrivePage drag and drop upload", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("aligns the create menu to the button right edge and follows viewport changes", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 800 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+    let anchorRight = 760;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function rect(this: HTMLElement) {
+        if (this.classList.contains("create-menu")) {
+          return domRect({
+            top: 0,
+            left: 0,
+            right: 224,
+            bottom: 120,
+            width: 224,
+            height: 120,
+          });
+        }
+        if (this.getAttribute("aria-label") === "新規作成メニューを開く") {
+          return domRect({
+            top: 60,
+            left: anchorRight - 120,
+            right: anchorRight,
+            bottom: 100,
+            width: 120,
+            height: 40,
+          });
+        }
+        return domRect({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 });
+      });
+
+    renderDrivePage("/drive");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "新規作成メニューを開く" }),
+    );
+
+    const menu = screen.getByRole("menu");
+    await waitFor(() => {
+      expect(menu).toHaveStyle({ left: "536px", top: "106px" });
+    });
+
+    anchorRight = 500;
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(menu).toHaveStyle({ left: "276px" }));
+    rectSpy.mockRestore();
+  });
+
   it("shows search result count without replacing the list UI", async () => {
     mocks.searchDriveItems.mockResolvedValue({
       data: [

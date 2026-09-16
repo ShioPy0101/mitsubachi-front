@@ -2548,27 +2548,42 @@ function CreateMenu({
   useLayoutEffect(() => {
     const menu = menuRef.current;
     if (!menu) return;
-    const anchorRect = anchor.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-    setPosition({
-      position: "fixed",
-      top: Math.max(
-        MENU_VIEWPORT_PADDING,
-        Math.min(
-          anchorRect.bottom + MENU_OFFSET,
-          window.innerHeight - menuRect.height - MENU_VIEWPORT_PADDING,
+    const updatePosition = () => {
+      const anchorRect = anchor.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      setPosition({
+        position: "fixed",
+        top: Math.max(
+          MENU_VIEWPORT_PADDING,
+          Math.min(
+            anchorRect.bottom + MENU_OFFSET,
+            window.innerHeight - menuRect.height - MENU_VIEWPORT_PADDING,
+          ),
         ),
-      ),
-      left: Math.max(
-        MENU_VIEWPORT_PADDING,
-        Math.min(
-          anchorRect.left,
-          window.innerWidth - menuRect.width - MENU_VIEWPORT_PADDING,
+        left: Math.max(
+          MENU_VIEWPORT_PADDING,
+          Math.min(
+            anchorRect.right - menuRect.width,
+            window.innerWidth - menuRect.width - MENU_VIEWPORT_PADDING,
+          ),
         ),
-      ),
-    });
-    menu.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
   }, [anchor]);
+
+  useEffect(() => {
+    menuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+      ?.focus();
+  }, []);
 
   useEffect(() => {
     const closeOnPointerDown = (event: PointerEvent) => {
