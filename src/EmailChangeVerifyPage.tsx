@@ -27,7 +27,7 @@ export function EmailChangeVerifyPage() {
 
   if (mutation.isSuccess) {
     return (
-      <main className="state-page" aria-live="polite">
+      <main className="state-page email-change-page" aria-live="polite">
         <CheckCircle2 size={36} aria-hidden="true" />
         <h1>メールアドレスを変更しました</h1>
         <p>変更前のメールアドレスに完了通知を送信しました。</p>
@@ -41,7 +41,7 @@ export function EmailChangeVerifyPage() {
 
   if (!token) {
     return (
-      <main className="state-page">
+      <main className="state-page email-change-page">
         <XCircle size={36} aria-hidden="true" />
         <h1>確認リンクが無効です</h1>
         <p>新しいメールアドレスに届いた確認リンクを確認してください。</p>
@@ -51,10 +51,10 @@ export function EmailChangeVerifyPage() {
   }
 
   return (
-    <main className="state-page" aria-busy={mutation.isPending}>
+    <main className="state-page email-change-page" aria-busy={mutation.isPending}>
       <h1>メールアドレスの変更を確定しますか？</h1>
       <p>
-        新しいメールアドレスを確認できました。下のボタンで変更を確定すると、変更前のメールアドレスへ完了通知を送信します。
+        新しいメールアドレスへ変更する場合は、下のボタンで確定してください。変更前のメールアドレスへ完了通知を送信します。
       </p>
       <p>変更後は新しいメールアドレスでの再ログインが必要です。</p>
       {mutation.isError ? (

@@ -23,7 +23,7 @@ export function EmailChangeApprovePage() {
 
   if (mutation.isSuccess) {
     return (
-      <main className="state-page" aria-live="polite">
+      <main className="state-page email-change-page" aria-live="polite">
         <CheckCircle2 size={36} aria-hidden="true" />
         <h1>現在のメールアドレスで承認しました</h1>
         <p>新しいメールアドレスに確認メールを送信しました。</p>
@@ -37,7 +37,7 @@ export function EmailChangeApprovePage() {
 
   if (!token) {
     return (
-      <main className="state-page">
+      <main className="state-page email-change-page">
         <XCircle size={36} aria-hidden="true" />
         <h1>承認リンクが無効です</h1>
         <p>現在のメールアドレスに届いた承認リンクを確認してください。</p>
@@ -47,7 +47,7 @@ export function EmailChangeApprovePage() {
   }
 
   return (
-    <main className="state-page" aria-busy={mutation.isPending}>
+    <main className="state-page email-change-page" aria-busy={mutation.isPending}>
       <h1>メールアドレス変更を承認しますか？</h1>
       <p>
         承認すると、新しいメールアドレスに確認メールを送信します。新しいメールで確認が完了するまで、現在のメールアドレスは変わりません。

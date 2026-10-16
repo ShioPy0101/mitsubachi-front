@@ -1128,6 +1128,21 @@ th:last-child,
   margin: 0;
 }
 
+.email-change-page {
+  width: min(640px, 100%);
+  margin-inline: auto;
+}
+
+@media (max-width: 767px) {
+  .email-change-page .button,
+  .user-settings .button,
+  .auth-panel .button,
+  .user-settings .field input,
+  .auth-panel .field input {
+    min-height: 44px;
+  }
+}
+
 .session-expired-state {
   width: min(440px, 100%);
   min-height: auto;
