@@ -50,7 +50,7 @@ export const adminOrganizationSchema = organizationSchema.extend({
 
 export const adminDriveItemSchema = driveItemSchema.extend({
   organization_name: z.string().optional(),
-  owner_email: z.string().optional(),
+  owner_email: z.string().nullable().optional(),
   upload_ip_address: z.string().nullable().optional(),
   uploaded_at: z.string().nullable().optional(),
 });
@@ -377,7 +377,7 @@ export async function fetchUser(
 export function updateUser(input: {
   id: number;
   name: string;
-  email: string;
+  email?: string;
   role: AdminUser["role"];
   organizationId?: number | null;
   scopedOrganizationId?: number | null;

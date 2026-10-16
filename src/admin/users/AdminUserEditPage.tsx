@@ -48,7 +48,7 @@ export function AdminUserEditPage() {
               mutation.mutate({
                 id,
                 name: form.name,
-                email: form.email,
+                email: form.email.trim() || undefined,
                 role: form.role,
                 organizationId: form.organizationId
                   ? Number(form.organizationId)
@@ -78,7 +78,7 @@ function UserEditForm({
 }) {
   const [form, setForm] = useState({
     name: user.name ?? "",
-    email: user.email,
+    email: "",
     role: user.role,
     organizationId: user.organization_id ? String(user.organization_id) : "",
   });
@@ -99,7 +99,7 @@ function UserEditForm({
         />
       </label>
       <label className="field">
-        <span>Email</span>
+        <span>新しいメールアドレス（変更する場合のみ）</span>
         <input
           type="email"
           value={form.email}

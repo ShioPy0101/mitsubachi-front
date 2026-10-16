@@ -40,7 +40,7 @@ export function OrganizationInvitationPage() {
   const invitation = invitationQuery.data;
   const emailMismatch =
     Boolean(invitation?.email && auth.user?.email) &&
-    invitation?.email?.toLowerCase() !== auth.user?.email.toLowerCase();
+    invitation?.email?.toLowerCase() !== auth.user?.email?.toLowerCase();
 
   if (!token) {
     return <Navigate to="/organizations/join" replace />;
@@ -209,7 +209,7 @@ function InvitationDetails({
   currentEmail,
 }: {
   invitation: Awaited<ReturnType<typeof fetchOrganizationInvitation>>;
-  currentEmail?: string;
+  currentEmail?: string | null;
 }) {
   return (
     <dl className="detail-list invitation-details">

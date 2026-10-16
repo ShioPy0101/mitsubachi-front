@@ -19,7 +19,7 @@ export const organizationInvitationSchema = z.object({
     .object({
       id: z.number(),
       display_name: z.string(),
-      email: z.string(),
+      email: z.string().nullable(),
     })
     .nullable()
     .optional(),
@@ -33,8 +33,12 @@ export const organizationInvitationSchema = z.object({
 export const userSchema = z
   .object({
     id: z.number(),
-    email: z.string(),
+    email: z.string().nullable(),
     pending_email: z.string().nullable().optional(),
+    email_change_stage: z
+      .enum(["awaiting_old_email_approval", "awaiting_new_email_confirmation"])
+      .nullable()
+      .optional(),
     name: z.string().nullable().optional(),
     display_name: z.string().nullable().optional(),
     role: z.enum(["member", "organization_admin", "system_admin"]),
