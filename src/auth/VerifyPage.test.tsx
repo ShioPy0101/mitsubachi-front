@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { API_BASE_URL } from "../api/client";
@@ -57,9 +57,39 @@ describe("VerifyPage", () => {
     });
     expect(events).toContain("me:authenticated");
   });
+  it.each([true, false])(
+    "returns to settings only when the server grants reauthentication: %s",
+    async (granted) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input) => {
+          const url = String(input);
+          const body = url.endsWith("/csrf_token")
+            ? { csrf_token: "csrf" }
+            : url.endsWith("/auth/verify")
+              ? { message: "ok", email_change_reauthenticated: granted }
+              : { data: { ...currentUser(), email: null } };
+          return Promise.resolve(jsonResponse(body));
+        }),
+      );
+      renderVerificationRoute("/auth/verify?token=reauth-token&intent=email_change");
+      if (granted) {
+        expect(await screen.findByText("Email change settings")).toBeInTheDocument();
+        expect(screen.getByTestId("reauth-state")).toHaveTextContent(
+          '"emailChangeUserId":1',
+        );
+        expect(screen.getByTestId("reauth-state")).not.toHaveTextContent(
+          "reauth-token",
+        );
+      } else {
+        expect(await screen.findByText("Protected content")).toBeInTheDocument();
+        expect(screen.queryByText("Email change settings")).not.toBeInTheDocument();
+      }
+    },
+  );
 });
 
-function renderVerificationRoute() {
+function renderVerificationRoute(path = "/auth/verify?token=magic-link-token") {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -69,11 +99,12 @@ function renderVerificationRoute() {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={["/auth/verify?token=magic-link-token"]}>
+        <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/auth/verify" element={<VerifyPage />} />
             <Route element={<RequireAuth />}>
               <Route path="/drive" element={<div>Protected content</div>} />
+              <Route path="/settings/user" element={<SettingsDestination />} />
             </Route>
           </Routes>
         </MemoryRouter>
@@ -98,4 +129,14 @@ function currentUser() {
     name: "User",
     role: "member",
   };
+}
+
+function SettingsDestination() {
+  const location = useLocation();
+  return (
+    <>
+      <h1>Email change settings</h1>
+      <p data-testid="reauth-state">{JSON.stringify(location.state)}</p>
+    </>
+  );
 }

@@ -3,6 +3,10 @@ import { useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { authKeys, fetchCurrentUser, verifyEmailToken } from "./api";
+import {
+  EMAIL_CHANGE_LOGIN_PATH,
+  type EmailChangeReauthentication,
+} from "./emailChangeFlow";
 import { AUTH_RETURN_PATH_KEY } from "./LoginPage";
 
 export function VerifyPage() {
@@ -16,22 +20,34 @@ export function VerifyPage() {
       // 未ログイン時の初回 /me がmagic link検証後に401を返すと、作成済みsessionを
       // unauthenticated状態で上書きするため、検証前に古い認証確認を確実に止める。
       await queryClient.cancelQueries({ queryKey: authKeys.me });
-      await verifyEmailToken(rawToken);
+      const verification = await verifyEmailToken(rawToken);
 
       // 新しいsessionでの /me 成功を確認してから保護画面へ進み、通信順序によって
       // 「セッション期限切れ」が表示される競合を防ぐ。
-      return queryClient.fetchQuery({
+      const user = await queryClient.fetchQuery({
         queryKey: authKeys.me,
         queryFn: ({ signal }) => fetchCurrentUser({ signal }),
         staleTime: 0,
       });
+      return { user, verification };
     },
-    onSuccess: () => {
+    onSuccess: ({ user, verification }) => {
       const returnPath = localStorage.getItem(AUTH_RETURN_PATH_KEY);
       if (returnPath) {
         localStorage.removeItem(AUTH_RETURN_PATH_KEY);
       }
-      void navigate(returnPath ?? "/drive", { replace: true });
+      if (verification.email_change_reauthenticated === true) {
+        const state: EmailChangeReauthentication = {
+          emailChangeReauthenticatedAt: Date.now(),
+          emailChangeUserId: user.id,
+        };
+        void navigate("/settings/user", { replace: true, state });
+        return;
+      }
+      const safeReturnPath = returnPath?.startsWith("/organization-invitations/")
+        ? returnPath
+        : null;
+      void navigate(safeReturnPath ?? "/drive", { replace: true });
     },
   });
 
@@ -46,7 +62,13 @@ export function VerifyPage() {
       <main className="state-page">
         <h1>検証リンクが無効です</h1>
         <p>メール内のリンクをもう一度確認してください。</p>
-        <Link to="/login">ログインリンクを再発行する</Link>
+        <Link
+          to={
+            params.get("intent") === "email_change" ? EMAIL_CHANGE_LOGIN_PATH : "/login"
+          }
+        >
+          ログインリンクを再発行する
+        </Link>
       </main>
     );
   }
@@ -57,7 +79,15 @@ export function VerifyPage() {
       {mutation.isError ? (
         <>
           <p>リンクを確認できませんでした。期限切れの可能性があります。</p>
-          <Link to="/login">ログインリンクを再発行する</Link>
+          <Link
+            to={
+              params.get("intent") === "email_change"
+                ? EMAIL_CHANGE_LOGIN_PATH
+                : "/login"
+            }
+          >
+            ログインリンクを再発行する
+          </Link>
         </>
       ) : (
         <p>確認が終わるまでこの画面でお待ちください。</p>

@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Mail } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 
 import { ApiError } from "../api/errors";
@@ -29,6 +29,9 @@ type AuthFormValues = {
 export function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const location = useLocation();
+  const [params] = useSearchParams();
+  const isEmailChange = params.get("intent") === "email_change";
+  const effectiveMode = isEmailChange ? "login" : mode;
   const toast = useToast();
   const form = useForm<AuthFormValues>({
     resolver: zodResolver(authSchema),
@@ -36,14 +39,15 @@ export function LoginPage() {
   });
   const mutation = useMutation({
     mutationFn: (values: AuthFormValues) =>
-      mode === "login"
-        ? login(values.email)
+      effectiveMode === "login"
+        ? login(values.email, isEmailChange ? "email_change" : undefined)
         : registerByInvite(
             values.email,
             values.inviteCode ?? "",
             values.displayName ?? "",
           ),
     onSuccess: () => {
+      form.resetField("email");
       toast.show({
         tone: "success",
         message: "メールを送信しました。受信したリンクから続行してください。",
@@ -64,7 +68,7 @@ export function LoginPage() {
       });
     },
   });
-  const returnPath = invitationReturnPathFrom(location.state);
+  const returnPath = isEmailChange ? null : invitationReturnPathFrom(location.state);
 
   useEffect(() => {
     if (!returnPath) return;
@@ -77,16 +81,24 @@ export function LoginPage() {
         <div className="brand-mark" aria-hidden="true">
           M
         </div>
-        <h1 id="auth-title">{mode === "login" ? "ログイン" : "招待コードで登録"}</h1>
+        <h1 id="auth-title">
+          {isEmailChange
+            ? "メールアドレス変更のため再ログイン"
+            : effectiveMode === "login"
+              ? "ログイン"
+              : "招待コードで登録"}
+        </h1>
         <p>
-          {returnPath
-            ? "ログイン後に招待確認画面へ戻ります。"
-            : "入力したメールアドレスに確認メールを送信します。"}
+          {isEmailChange
+            ? "現在のメールアドレスを入力し、届いたログインリンクを開いてください。再ログイン後に新しいメールアドレスを入力します。"
+            : returnPath
+              ? "ログイン後に招待確認画面へ戻ります。"
+              : "入力したメールアドレスに確認メールを送信します。"}
         </p>
         <form
           onSubmit={(event) => {
             void form.handleSubmit((values) => {
-              if (mode === "register" && !values.inviteCode?.trim()) {
+              if (effectiveMode === "register" && !values.inviteCode?.trim()) {
                 form.setError("inviteCode", {
                   message: "招待コードを入力してください。",
                 });
@@ -108,7 +120,7 @@ export function LoginPage() {
             />
             <FieldError error={form.formState.errors.email?.message} />
           </label>
-          {mode === "register" ? (
+          {effectiveMode === "register" ? (
             <>
               <label className="field">
                 <span>表示名</span>
@@ -143,15 +155,33 @@ export function LoginPage() {
             メールを送信
           </Button>
         </form>
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => setMode(mode === "login" ? "register" : "login")}
-        >
-          {mode === "login" ? "招待コードで登録する" : "ログインへ戻る"}
-        </button>
-        <Link to="/drive" className="muted-link">
-          ログイン済みの場合はドライブへ
+        {mutation.isSuccess ? (
+          <p role="status">
+            {isEmailChange
+              ? "ログインリンクを送信しました。メール内のリンクから続けてください。"
+              : "確認メールを送信しました。メール内のリンクから続けてください。"}
+          </p>
+        ) : null}
+        {mutation.isError ? (
+          <p role="alert">
+            {mutation.error instanceof Error
+              ? mutation.error.message
+              : "メールを送信できませんでした。"}
+          </p>
+        ) : null}
+        {!isEmailChange ? (
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setMode(mode === "login" ? "register" : "login")}
+          >
+            {mode === "login" ? "招待コードで登録する" : "ログインへ戻る"}
+          </button>
+        ) : null}
+        <Link to={isEmailChange ? "/settings/user" : "/drive"} className="muted-link">
+          {isEmailChange
+            ? "メールアドレス変更をやめる"
+            : "ログイン済みの場合はドライブへ"}
         </Link>
         <Link to="/privacy" className="muted-link">
           プライバシーポリシー
