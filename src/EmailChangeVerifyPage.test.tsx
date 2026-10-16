@@ -13,7 +13,9 @@ vi.mock("./auth/api", async (original) => ({
   verifyEmailChange: vi.fn(),
 }));
 
-beforeEach(() => vi.mocked(verifyEmailChange).mockReset());
+beforeEach(() => {
+  vi.mocked(verifyEmailChange).mockReset();
+});
 
 describe("new address confirmation page", () => {
   it("waits for an explicit click, sends once, clears old session data, and links to login", async () => {

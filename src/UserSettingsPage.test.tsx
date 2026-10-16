@@ -28,6 +28,7 @@ const currentUser: CurrentUser = {
   suspended: false,
   organization_id: 7,
   organization_name: "映像コミュニティ",
+  organization: { id: 7, name: "映像コミュニティ" },
   memberships: [],
 };
 const recentState = () => ({

@@ -13,7 +13,9 @@ vi.mock("./api", async (original) => ({
   login: vi.fn(),
 }));
 
-beforeEach(() => vi.mocked(login).mockReset());
+beforeEach(() => {
+  vi.mocked(login).mockReset();
+});
 
 describe("email change reauthentication login", () => {
   it("shows the login form even for the email change entry and sends the dedicated intent", async () => {
