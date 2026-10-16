@@ -56,6 +56,20 @@ describe("OrganizationInvitationPage", () => {
     expect(mocks.acceptOrganizationInvitation).not.toHaveBeenCalled();
   });
 
+  it("identifies an authenticated account by display name when email fields are null", async () => {
+    mocks.fetchOrganizationInvitation.mockResolvedValue({
+      ...invitation(),
+      email: null,
+      invited_by: { id: 2, display_name: "Admin", email: null },
+    });
+    renderInvitation({ auth: authValue({ email: null }) });
+    expect(await screen.findByText("丸山")).toBeInTheDocument();
+    expect(screen.queryByText("未ログイン")).not.toBeInTheDocument();
+    expect(screen.queryByText("未指定")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("この組織に参加する"));
+    expect(await screen.findByText("組織に参加しました")).toBeInTheDocument();
+  });
+
   it("accepts invitation and opens success screen", async () => {
     renderInvitation();
 
@@ -140,7 +154,7 @@ function authValue({
   email = "invitee@example.com",
 }: {
   status?: AuthContextValue["status"];
-  email?: string;
+  email?: string | null;
 } = {}): AuthContextValue {
   const authenticated = status === "authenticated";
   return {
