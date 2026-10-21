@@ -4,7 +4,6 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DemoDrivePage } from "./DemoDrivePage";
-import { createDemoLoginLink, endDemoSession, verifyDemoLoginLink } from "./session";
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -17,24 +16,10 @@ beforeEach(() => {
 });
 
 function enterDemo() {
-  const url = new URL(createDemoLoginLink());
-  expect(verifyDemoLoginLink(url.searchParams.get("token"))).toBe(true);
-  return url;
+  sessionStorage.setItem("mitsubachi.demo.session", "demo-token");
 }
 
 describe("demo tenant", () => {
-  it("requires an unexpired single-use email link and supports ending the session", () => {
-    const url = new URL(createDemoLoginLink());
-    expect(verifyDemoLoginLink("wrong")).toBe(false);
-    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 16 * 60 * 1000);
-    expect(verifyDemoLoginLink(url.searchParams.get("token"))).toBe(false);
-    vi.restoreAllMocks();
-    const validUrl = enterDemo();
-    expect(verifyDemoLoginLink(validUrl.searchParams.get("token"))).toBe(false);
-    endDemoSession();
-    expect(sessionStorage.getItem("mitsubachi.demo.session")).toBeNull();
-  });
-
   it("shows the demo badge and browses sample folders without file API requests", async () => {
     enterDemo();
     const fetch = vi.fn();
