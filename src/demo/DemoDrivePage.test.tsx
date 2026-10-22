@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fetchDemoItems } from "./api";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -5,7 +7,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DemoDrivePage } from "./DemoDrivePage";
 
+vi.mock("./api", () => ({ fetchDemoItems: vi.fn() }));
+
 beforeEach(() => {
+  vi.mocked(fetchDemoItems).mockResolvedValue([
+    { id: "documents", parent: null, name: "資料", size: null },
+    { id: "guide", parent: null, name: "はじめに.pdf", size: "1.2 MB" },
+    { id: "proposal", parent: "documents", name: "サービス紹介.pdf", size: "2.4 MB" },
+  ]);
   sessionStorage.clear();
   HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
     this.open = true;
@@ -25,12 +34,14 @@ describe("demo tenant", () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     render(
-      <MemoryRouter>
-        <DemoDrivePage />
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <DemoDrivePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(screen.getByText("demo")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "資料" }));
+    await userEvent.click(await screen.findByRole("button", { name: "資料" }));
     expect(screen.getByText("サービス紹介.pdf")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "マイドライブ" }));
     expect(screen.getByText("はじめに.pdf")).toBeInTheDocument();
@@ -42,10 +53,13 @@ describe("demo tenant", () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     render(
-      <MemoryRouter>
-        <DemoDrivePage />
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <DemoDrivePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
+    await screen.findByText("はじめに.pdf");
     for (const name of [
       "アップロード",
       "はじめに.pdfをダウンロード",

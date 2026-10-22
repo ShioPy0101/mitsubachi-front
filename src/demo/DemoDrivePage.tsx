@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { fetchDemoItems } from "./api";
 import { Download, FileText, Folder, UploadCloud } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
@@ -8,21 +10,17 @@ import { StatusBadge } from "../components/StatusBadge";
 import { endDemoSession, hasDemoSession } from "./session";
 import "./demo.css";
 
-// 実際の DriveItem ID・storage_key・URL を持たせず、誤操作でも実ファイルへ到達させない。
-const samples = [
-  { id: "documents", parent: null, name: "資料", size: null },
-  { id: "projects", parent: null, name: "プロジェクト", size: null },
-  { id: "guide", parent: null, name: "はじめに.pdf", size: "1.2 MB" },
-  { id: "proposal", parent: "documents", name: "サービス紹介.pdf", size: "2.4 MB" },
-  { id: "minutes", parent: "documents", name: "議事録.txt", size: "12 KB" },
-  { id: "design", parent: "projects", name: "デザイン案.png", size: "3.1 MB" },
-  { id: "schedule", parent: "projects", name: "スケジュール.xlsx", size: "84 KB" },
-];
-
 export function DemoDrivePage() {
   const navigate = useNavigate();
   const [folder, setFolder] = useState<string | null>(null);
   const [restriction, setRestriction] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: ["demo", "items"],
+    queryFn: fetchDemoItems,
+    enabled: hasDemoSession(),
+    retry: false,
+  });
+  const samples = query.data ?? [];
   if (!hasDemoSession()) return <Navigate to="/login" replace />;
 
   return (
@@ -76,6 +74,13 @@ export function DemoDrivePage() {
             一括ダウンロード
           </Button>
         </div>
+        {query.isPending && <p role="status">サンプルを読み込んでいます…</p>}
+        {query.error && (
+          <div role="alert">
+            <p>{query.error.message}</p>
+            <Button onClick={() => void query.refetch()}>再試行</Button>
+          </div>
+        )}
         <ul className="demo-items" aria-label="サンプルフォルダーとファイル">
           {samples
             .filter((item) => item.parent === folder)
