@@ -10,13 +10,28 @@
   overflow-x: auto;
 }
 .build-info table {
-  min-width: 700px;
-  table-layout: auto;
+  min-width: 980px;
+  table-layout: fixed;
 }
 .build-info td,
 .build-info th {
   padding-block: var(--space-3);
+  white-space: nowrap;
 }
 .build-info code {
   overflow-wrap: anywhere;
+}
+
+/* ファイル一覧向けの共通列幅を上書きし、対象名や commit を縦に分断しない。 */
+.build-info tr > :nth-child(1) {
+  width: 160px;
+}
+.build-info tr > :nth-child(2) {
+  width: 180px;
+}
+.build-info tr > :nth-child(3) {
+  width: 250px;
+}
+.build-info tr > :nth-child(4) {
+  width: auto;
 }
