@@ -30,9 +30,6 @@
   overflow-wrap: anywhere;
   text-align: left;
 }
-.demo-email-url {
-  overflow-wrap: anywhere;
-}
 @media (max-width: 480px) {
   .demo-item > .button {
     width: 100%;

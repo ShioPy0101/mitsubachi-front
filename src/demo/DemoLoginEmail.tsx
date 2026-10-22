@@ -19,14 +19,12 @@ export function DemoLoginEmail({
           <p>デモではメールを実送信せず、送付する内容をここに表示します。</p>
           <p>宛先: {email.to}</p>
           <p>件名: {email.subject}</p>
-          <div className="demo-email-body">{email.body}</div>
-          <p className="demo-email-url">
-            <Link to={email.url} onClick={onClose}>
+          <p>
+            <Link to={email.url} onClick={onClose} className="button button-primary">
               Mitsubachiにログインする
-              <br />
-              {email.url}
             </Link>
           </p>
+          <div className="demo-email-body">{email.body}</div>
         </>
       )}
     </Modal>
