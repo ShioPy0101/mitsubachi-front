@@ -38,3 +38,8 @@
     width: 100%;
   }
 }
+
+.demo-email-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
