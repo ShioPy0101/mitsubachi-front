@@ -40,7 +40,13 @@ export function Modal({ open, title, className = "", children, onClose }: ModalP
       triggerRef.current?.focus();
     };
     dialog.addEventListener("close", handleClose);
-    return () => dialog.removeEventListener("close", handleClose);
+    return () => {
+      dialog.removeEventListener("close", handleClose);
+      // 認証リンクなどで画面遷移すると close event より先に unmount されるため、
+      // スクロールロックとフォーカスをここでも解放する。
+      if (dialog.open) dialog.close();
+      handleClose();
+    };
   }, []);
 
   return (
