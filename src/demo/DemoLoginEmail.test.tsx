@@ -5,6 +5,9 @@ import { DemoLoginEmail } from "./DemoLoginEmail";
 import { DEMO_ORIGIN } from "../features/flags";
 
 beforeEach(() => {
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.open = false;
+  });
   HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
     this.open = true;
   });
