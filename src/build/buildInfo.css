@@ -1,0 +1,22 @@
+.build-info {
+  margin-top: var(--space-5);
+  min-width: 0;
+}
+.build-info h2 {
+  font-size: var(--font-size-lg);
+}
+.build-info-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.build-info table {
+  min-width: 700px;
+  table-layout: auto;
+}
+.build-info td,
+.build-info th {
+  padding-block: var(--space-3);
+}
+.build-info code {
+  overflow-wrap: anywhere;
+}
