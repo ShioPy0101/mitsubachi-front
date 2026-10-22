@@ -23,7 +23,7 @@ describe("demo API isolation", () => {
   });
   it("exchanges a link for a separate bearer session and uses it for the catalog", async () => {
     const fetch = vi
-      .fn()
+      .fn<typeof window.fetch>()
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ token: "signed-demo-session" })),
       )
@@ -32,14 +32,11 @@ describe("demo API isolation", () => {
     expect(await verifyDemoLoginLink("signed-login-link")).toBe(true);
     expect(hasDemoSession()).toBe(true);
     expect(await fetchDemoItems()).toEqual([]);
-    expect(fetch).toHaveBeenLastCalledWith(
-      `${DEMO_API_ORIGIN}/api/v1/demo/items`,
-      expect.objectContaining({
-        credentials: "omit",
-        headers: expect.objectContaining({
-          Authorization: "Bearer signed-demo-session",
-        }),
-      }),
+    const init = fetch.mock.calls[1]?.[1];
+    expect(fetch.mock.calls[1]?.[0]).toBe(`${DEMO_API_ORIGIN}/api/v1/demo/items`);
+    expect(init?.credentials).toBe("omit");
+    expect(new Headers(init?.headers).get("Authorization")).toBe(
+      "Bearer signed-demo-session",
     );
   });
   it("rejects invalid links and does not create a demo session", async () => {
