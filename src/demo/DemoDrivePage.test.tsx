@@ -65,7 +65,7 @@ describe("demo tenant", () => {
       "はじめに.pdfをダウンロード",
       "一括ダウンロード",
     ]) {
-      await userEvent.click(screen.getByRole("button", { name, exact: true }));
+      await userEvent.click(screen.getByRole("button", { name }));
       const dialog = screen.getByRole("dialog");
       expect(within(dialog).getByText(/デモテナントのため/)).toBeInTheDocument();
       await userEvent.click(
