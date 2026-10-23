@@ -1,3 +1,4 @@
+import { buildInfoSchema } from "../build/info";
 import { z } from "zod";
 
 import { apiRequest, apiUrl } from "../api/client";
@@ -131,6 +132,7 @@ export const organizationInviteSchema = z.object({
 });
 
 export const dashboardSchema = z.object({
+  build_info: buildInfoSchema.optional(),
   organizations_count: z.number().optional(),
   users_count: z.number().optional(),
   active_users_count: z.number().optional(),
