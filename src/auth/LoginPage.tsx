@@ -6,8 +6,6 @@ import { useForm } from "react-hook-form";
 import { Link, useLocation } from "react-router-dom";
 import { z } from "zod";
 
-import { featureFlags, redirectToDemo } from "../features/flags";
-import { DEMO_EMAIL } from "../demo/session";
 import { ApiError } from "../api/errors";
 import { Button } from "../components/Button";
 import { FieldError } from "../components/FieldError";
@@ -88,13 +86,6 @@ export function LoginPage() {
         <form
           onSubmit={(event) => {
             void form.handleSubmit((values) => {
-              if (
-                featureFlags.demoTenant &&
-                values.email.trim().toLowerCase() === DEMO_EMAIL
-              ) {
-                redirectToDemo();
-                return;
-              }
               if (mode === "register" && !values.inviteCode?.trim()) {
                 form.setError("inviteCode", {
                   message: "招待コードを入力してください。",
@@ -113,15 +104,7 @@ export function LoginPage() {
               type="email"
               autoComplete="email"
               aria-invalid={Boolean(form.formState.errors.email)}
-              {...form.register("email", {
-                onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-                  if (
-                    featureFlags.demoTenant &&
-                    event.target.value.trim().toLowerCase() === DEMO_EMAIL
-                  )
-                    redirectToDemo();
-                },
-              })}
+              {...form.register("email")}
             />
             <FieldError error={form.formState.errors.email?.message} />
           </label>
