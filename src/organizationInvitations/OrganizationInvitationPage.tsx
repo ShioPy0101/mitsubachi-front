@@ -38,9 +38,15 @@ export function OrganizationInvitationPage() {
     },
   });
   const invitation = invitationQuery.data;
+  const currentAccount = auth.user
+    ? (auth.user.email ??
+      auth.user.display_name ??
+      auth.user.name ??
+      `ユーザー #${auth.user.id}`)
+    : undefined;
   const emailMismatch =
     Boolean(invitation?.email && auth.user?.email) &&
-    invitation?.email?.toLowerCase() !== auth.user?.email.toLowerCase();
+    invitation?.email?.toLowerCase() !== auth.user?.email?.toLowerCase();
 
   if (!token) {
     return <Navigate to="/organizations/join" replace />;
@@ -99,7 +105,7 @@ export function OrganizationInvitationPage() {
             でログインしています。
           </p>
         </div>
-        <InvitationDetails invitation={invitation} currentEmail={auth.user?.email} />
+        <InvitationDetails invitation={invitation} currentAccount={currentAccount} />
         <div className="action-row">
           <Button
             type="button"
@@ -131,7 +137,7 @@ export function OrganizationInvitationPage() {
 
   return (
     <InvitationShell title="組織への招待">
-      <InvitationDetails invitation={invitation} currentEmail={auth.user?.email} />
+      <InvitationDetails invitation={invitation} currentAccount={currentAccount} />
       {acceptMutation.isError ? (
         <div className="notice-panel danger" role="alert">
           <AlertTriangle size={20} aria-hidden="true" />
@@ -206,10 +212,10 @@ function InvitationShell({
 
 function InvitationDetails({
   invitation,
-  currentEmail,
+  currentAccount,
 }: {
   invitation: Awaited<ReturnType<typeof fetchOrganizationInvitation>>;
-  currentEmail?: string;
+  currentAccount?: string;
 }) {
   return (
     <dl className="detail-list invitation-details">
@@ -225,10 +231,12 @@ function InvitationDetails({
         <dt>付与予定ロール</dt>
         <dd>{roleLabel(invitation.role)}</dd>
       </div>
-      <div>
-        <dt>招待先メールアドレス</dt>
-        <dd>{invitation.email ?? "未指定"}</dd>
-      </div>
+      {invitation.email ? (
+        <div>
+          <dt>招待先メールアドレス</dt>
+          <dd>{invitation.email}</dd>
+        </div>
+      ) : null}
       <div>
         <dt>有効期限</dt>
         <dd>{formatDateTime(invitation.expires_at)}</dd>
@@ -237,7 +245,7 @@ function InvitationDetails({
         <dt>現在ログイン中のアカウント</dt>
         <dd>
           <Mail size={14} aria-hidden="true" />
-          {currentEmail ?? "未ログイン"}
+          {currentAccount ?? "未ログイン"}
         </dd>
       </div>
     </dl>

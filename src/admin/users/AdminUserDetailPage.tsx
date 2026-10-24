@@ -62,8 +62,8 @@ export function AdminUserDetailPage() {
             <DetailList
               items={[
                 { label: "ID", value: user.id },
-                { label: "Email", value: user.email },
-                { label: "Name", value: user.name },
+                { label: "メールアドレス", value: "表示しません" },
+                { label: "表示名", value: user.display_name ?? user.name },
                 { label: "Role", value: user.role },
                 {
                   label: "Organization",
@@ -82,7 +82,7 @@ export function AdminUserDetailPage() {
             <ConfirmDialog
               open={confirmOpen}
               title={user.suspended ? "停止解除" : "ユーザー停止"}
-              message={`${user.email} の状態を変更しますか？`}
+              message={`${user.display_name ?? user.name ?? `ユーザー #${user.id}`} の状態を変更しますか？`}
               confirmLabel={user.suspended ? "停止解除" : "停止"}
               danger={!user.suspended}
               loading={mutation.isPending}

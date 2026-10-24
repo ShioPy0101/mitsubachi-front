@@ -25,7 +25,7 @@ export function AdminUsersPage() {
     <AdminFrame title="ユーザー">
       <AdminSearch
         fields={[
-          { name: "q", label: "検索" },
+          { name: "q", label: "名前・メール検索" },
           ...(organizationId === null
             ? [{ name: "organization_id", label: "組織ID" }]
             : []),
@@ -48,14 +48,16 @@ export function AdminUsersPage() {
           },
         ]}
       />
+      <p className="field-hint">
+        メールアドレスは完全一致で検索します。登録メールアドレスは一覧に表示しません。
+      </p>
       <PaginatedState query={query}>
         {(data) => (
           <table className="admin-table">
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Email</th>
-                <th>Name</th>
+                <th>表示名</th>
                 <th>Role</th>
                 <th>Status</th>
                 <th>Detail</th>
@@ -65,8 +67,7 @@ export function AdminUsersPage() {
               {data.data.map((user) => (
                 <tr key={user.id}>
                   <td>{user.id}</td>
-                  <td>{user.email}</td>
-                  <td>{user.name ?? "—"}</td>
+                  <td>{user.display_name ?? user.name ?? `ユーザー #${user.id}`}</td>
                   <td>{user.role}</td>
                   <td>{user.suspended ? "停止中" : "有効"}</td>
                   <td>

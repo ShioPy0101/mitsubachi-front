@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import { API_BASE_URL, clearCsrfToken } from "../api/client";
 import {
+  approveEmailChange,
   cancelEmailChange,
   fetchCurrentUser,
   logout,
+  login,
+  verifyEmailToken,
   requestEmailChange,
   updateCurrentUser,
   verifyEmailChange,
@@ -44,6 +47,46 @@ describe("auth api", () => {
     expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({
       credentials: "include",
     });
+  });
+
+  it("keeps ordinary login unchanged and sends the dedicated email change intent", async () => {
+    stubCsrfBackedFetch({ message: "ok" });
+    await login("user@example.com");
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body).toBe(
+      JSON.stringify({ email: "user@example.com" }),
+    );
+    await login("user@example.com", "email_change");
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body).toBe(
+      JSON.stringify({ email: "user@example.com", intent: "email_change" }),
+    );
+  });
+
+  it("refreshes CSRF for the first write after magic link session regeneration", async () => {
+    let csrfRequests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              url === `${API_BASE_URL}/api/v1/csrf_token`
+                ? { csrf_token: `csrf-${++csrfRequests}` }
+                : { message: "ok", email_change_reauthenticated: true },
+            ),
+            { headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      ),
+    );
+    await expect(verifyEmailToken("reauth-token")).resolves.toMatchObject({
+      email_change_reauthenticated: true,
+    });
+    await approveEmailChange("approval-token");
+    const [url, options] = vi.mocked(fetch).mock.calls.at(-1)!;
+    expect(url).toBe(`${API_BASE_URL}/api/v1/me/email_change/approve`);
+    expect(options?.body).toBe(JSON.stringify({ token: "approval-token" }));
+    expect((options?.headers as Headers).get("X-CSRF-Token")).toBe("csrf-2");
+    expect(csrfRequests).toBe(2);
   });
 
   it("logs out through the Rails session endpoint", async () => {

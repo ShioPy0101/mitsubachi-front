@@ -31,6 +31,7 @@ import { useAuth } from "../auth/useAuth";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ToastProvider } from "../components/ToastProvider";
 import { DrivePage } from "../drive/DrivePage";
+import { EmailChangeApprovePage } from "../EmailChangeApprovePage";
 import { EmailChangeVerifyPage } from "../EmailChangeVerifyPage";
 import { PublicSharePage } from "../externalShares/PublicSharePage";
 import { GroupDashboardPage } from "../GroupDashboardPage";
@@ -49,6 +50,7 @@ const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/privacy", element: <PrivacyPolicyPage /> },
   { path: "/auth/verify", element: <VerifyPage /> },
+  { path: "/settings/email-change/approve", element: <EmailChangeApprovePage /> },
   { path: "/settings/email-change/verify", element: <EmailChangeVerifyPage /> },
   { path: "/share/:token", element: <PublicSharePage /> },
   {

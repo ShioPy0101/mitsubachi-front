@@ -1,132 +1,107 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CurrentUser } from "./api/schemas";
-import { verifyEmailChange } from "./auth/api";
-import { AuthContext } from "./auth/AuthContext";
+import { authKeys, verifyEmailChange } from "./auth/api";
 import { EmailChangeVerifyPage } from "./EmailChangeVerifyPage";
 
-vi.mock("./auth/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./auth/api")>();
-  return {
-    ...actual,
-    verifyEmailChange: vi.fn(),
-  };
+vi.mock("./auth/api", async (original) => ({
+  ...(await original<typeof import("./auth/api")>()),
+  verifyEmailChange: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(verifyEmailChange).mockReset();
 });
 
-describe("EmailChangeVerifyPage", () => {
-  beforeEach(() => {
-    vi.mocked(verifyEmailChange).mockReset();
-  });
-
-  it("verifies token from query string", async () => {
-    vi.mocked(verifyEmailChange).mockResolvedValue({
-      message: "ok",
-      email: "new@example.com",
-    });
-
-    renderPage("/settings/email-change/verify?token=raw-token");
-
-    await waitFor(() => expect(verifyEmailChange).toHaveBeenCalled());
-    expect(vi.mocked(verifyEmailChange).mock.calls[0]?.[0]).toBe("raw-token");
-    expect(await screen.findByText("メールアドレスを変更しました")).toBeInTheDocument();
-    expect(screen.getByText("まもなく移動します。")).toBeInTheDocument();
-  });
-
-  it("redirects authenticated users back to user settings after success", async () => {
-    vi.mocked(verifyEmailChange).mockResolvedValue({
-      message: "ok",
-      email: "new@example.com",
-    });
-
-    renderPage("/settings/email-change/verify?token=raw-token", {
-      user: currentUser,
-      isAuthenticated: true,
-    });
-
-    expect(await screen.findByText("メールアドレスを変更しました")).toBeInTheDocument();
-    expect(screen.getByText("まもなく移動します。")).toBeInTheDocument();
-
+describe("new address confirmation page", () => {
+  it("waits for an explicit click, sends once, clears old session data, and links to login", async () => {
+    vi.mocked(verifyEmailChange).mockResolvedValue({ message: "ok", email: null });
+    const client = renderPage("/settings/email-change/verify?token=new-token");
+    expect(verifyEmailChange).not.toHaveBeenCalled();
+    await userEvent
+      .setup()
+      .dblClick(screen.getByRole("button", { name: "メールアドレスの変更を確定する" }));
+    expect(verifyEmailChange).toHaveBeenCalledOnce();
+    expect(vi.mocked(verifyEmailChange).mock.calls[0]?.[0]).toBe("new-token");
     expect(
-      await screen.findByText("settings redirected", undefined, { timeout: 4000 }),
+      await screen.findByRole("heading", { name: "メールアドレスを変更しました" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "ログイン画面へ" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(
+      screen.getByText("新しいメールアドレスでログインし直してください。"),
+    ).toBeInTheDocument();
+    expect(client.getQueryData(authKeys.me)).toBeNull();
+    expect(client.getQueryData(["drive", "old-user"])).toBeUndefined();
+    expect(screen.getByTestId("url")).not.toHaveTextContent("new-token");
   });
 
-  it("shows invalid link without token", () => {
+  it("shows an invalid link without a token and never sends", () => {
     renderPage("/settings/email-change/verify");
-
-    expect(screen.getByText("確認リンクが無効です")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "確認リンクが無効です" }),
+    ).toBeInTheDocument();
     expect(verifyEmailChange).not.toHaveBeenCalled();
   });
 
-  it("shows verification failure", async () => {
-    vi.mocked(verifyEmailChange).mockRejectedValue(new Error("期限切れです"));
-
-    renderPage("/settings/email-change/verify?token=expired-token");
-
+  it("shows failure and keeps existing user data until the server confirms a change", async () => {
+    vi.mocked(verifyEmailChange).mockRejectedValue(
+      new Error("確認リンクの有効期限が切れています"),
+    );
+    const client = renderPage("/settings/email-change/verify?token=expired-token");
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "メールアドレスの変更を確定する" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "有効期限が切れています",
+    );
     expect(
-      await screen.findByText("メールアドレスを変更できませんでした"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("期限切れです")).toBeInTheDocument();
+      screen.queryByRole("heading", { name: "メールアドレスを変更しました" }),
+    ).not.toBeInTheDocument();
+    expect(client.getQueryData(authKeys.me)).toEqual({ id: 1, email: null });
   });
 });
 
-const currentUser: CurrentUser = {
-  id: 1,
-  email: "current@example.com",
-  pending_email: null,
-  name: "Current User",
-  display_name: "表示名テスト",
-  role: "member",
-  suspended: false,
-  organization_id: 7,
-  organization_name: "映像コミュニティ",
-  organization: { id: 7, name: "映像コミュニティ" },
-  memberships: [
-    {
-      organization: { id: 7, name: "映像コミュニティ" },
-      role: "member",
-      status: "active",
-    },
-  ],
-};
-
-function renderPage(
-  initialEntry: string,
-  auth: { user: CurrentUser | null; isAuthenticated: boolean } = {
-    user: null,
-    isAuthenticated: false,
-  },
-) {
-  const queryClient = new QueryClient({
+function Url() {
+  const location = useLocation();
+  return (
+    <p data-testid="url">
+      {location.pathname}
+      {location.search}
+    </p>
+  );
+}
+function renderPage(path: string) {
+  const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <AuthContext.Provider
-        value={{
-          user: auth.user,
-          status: auth.isAuthenticated ? "authenticated" : "unauthenticated",
-          error: null,
-          isLoading: false,
-          isAuthenticated: auth.isAuthenticated,
-          retryAuthCheck: vi.fn(),
-        }}
-      >
-        <MemoryRouter initialEntries={[initialEntry]}>
+  client.setQueryData(authKeys.me, { id: 1, email: null });
+  client.setQueryData(["drive", "old-user"], { private: true });
+  render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route
               path="/settings/email-change/verify"
-              element={<EmailChangeVerifyPage />}
+              element={
+                <>
+                  <EmailChangeVerifyPage />
+                  <Url />
+                </>
+              }
             />
-            <Route path="/settings/user" element={<div>settings redirected</div>} />
-            <Route path="/login" element={<div>login redirected</div>} />
+            <Route path="/login" element={<div>login</div>} />
           </Routes>
         </MemoryRouter>
-      </AuthContext.Provider>
-    </QueryClientProvider>,
+      </QueryClientProvider>
+    </StrictMode>,
   );
+  return client;
 }
